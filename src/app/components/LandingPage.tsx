@@ -326,9 +326,9 @@ export function LandingPage() {
             <p className="text-blue-200 text-lg">{t("footer.tagline")}</p>
           </div>
           <div className="border-t border-white/20 pt-8 text-center">
-            <p className="text-blue-100">Powered by <a href="https://www.netreachgo.com" target="_blank" rel="noopener noreferrer" className="underline hover:no-underline">
+            <p className="text-blue-100">Powered by <a href="https://www.netreachgo.com" target="_blank" rel="noopener noreferrer" className="text-decoration-none text-blue-300 hover:text-blue-100 transition-colors cursor-pointer text-bold">
               NetReachGo
-            </a>{t("footer.copyright")}</p>
+            </a> {t("footer.copyright")}</p>
           </div>
         </div>
       </footer>
