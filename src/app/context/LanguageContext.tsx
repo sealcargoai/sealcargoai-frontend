@@ -74,6 +74,7 @@ const translations = {
     // Footer
     "footer.tagline": "Conectando Guatemala al Comercio Global",
     "footer.copyright": "© 2026 SEAL Guatemala. Todos los derechos reservados.",
+    "footer.poweredby": "Desarrollado por",
 
     // Chat Interface
     "chat.newAnalysis": "Nuevo Análisis",
@@ -421,6 +422,7 @@ const translations = {
     // Footer
     "footer.tagline": "Connecting Guatemala to Global Trade",
     "footer.copyright": "© 2026 SEAL Guatemala. All rights reserved.",
+    "footer.poweredby": "Powered by",
 
     // Chat Interface
     "chat.newAnalysis": "New Analysis",
