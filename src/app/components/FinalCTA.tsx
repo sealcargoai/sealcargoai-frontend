@@ -27,11 +27,11 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const DUTY_RATES: Record<string, number> = {
-  furniture: 0.06,
-  electronics: 0.0,
-  textiles: 0.12,
-  machinery: 0.02,
-  other: 0.05,
+  furniture: 0.15,
+  electronics: 0.15,
+  textiles: 0.15,
+  machinery: 0.15,
+  other: 0.15,
 };
 const SHIPPING_COSTS: Record<string, number> = {
   US: 4200,
@@ -51,7 +51,7 @@ function calculateCosts(
 ) {
   const productCost = Math.round(price * quantity);
   const shipping = SHIPPING_COSTS[destination] || 4200;
-  const dutyRate = DUTY_RATES[productType] || 0.06;
+  const dutyRate = DUTY_RATES[productType] || 0.15;
   const importDuties = Math.round(productCost * dutyRate);
   const taxes = Math.round((productCost + importDuties) * VAT_RATE);
   const insurance = Math.round(productCost * INSURANCE_RATE);
