@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
 import {
   Package,
@@ -11,6 +11,12 @@ import {
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
+import {
+  canUserSearch,
+  recordSearch,
+  getRemainingSearches,
+  getSearchLimit,
+} from "../../utils/searchLimit";
 
 export function ProductQualification() {
   const navigate = useNavigate();
@@ -31,10 +37,25 @@ export function ProductQualification() {
     budget: "",
     destination: "",
   });
+  const [showLimitModal, setShowLimitModal] = useState(false);
+  const [remainingSearches, setRemainingSearches] = useState<number>(3);
 
+  useEffect(() => {
+    if (userEmail) {
+      const remaining = getRemainingSearches(userEmail, userName);
+      setRemainingSearches(remaining);
+    }
+  }, [userEmail, userName]);
   // ── Submit: call backend then navigate ──────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // ── CHECK LIMIT FIRST ────────────────────────────────
+    if (userEmail && !canUserSearch(userEmail, userName)) {
+      setShowLimitModal(true);
+      return;
+    }
+
     setIsLoading(true);
     setError("");
 
@@ -46,7 +67,8 @@ export function ProductQualification() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...formData,
-            userQuery, // ← include original query for Grok refinement
+            userQuery,
+            userEmail,
           }),
         },
       );
@@ -55,11 +77,21 @@ export function ProductQualification() {
 
       const suppliers = await response.json();
 
-      // Navigate with BOTH form data AND API results
+      // ── RECORD SEARCH AFTER SUCCESS ──────────────────
+      if (userEmail) {
+        recordSearch(
+          userEmail,
+          userName,
+          formData.productType,
+          userQuery || formData.productType
+        );
+        setRemainingSearches(getRemainingSearches(userEmail, userName));
+      }
+
       navigate("/suppliers", {
         state: {
           ...formData,
-          suppliers, // ← real API data
+          suppliers,
         },
       });
     } catch (err) {
@@ -68,7 +100,18 @@ export function ProductQualification() {
         "No se pudo conectar al servidor. Mostrando datos de demostración.",
       );
 
-      // Navigate anyway — SupplierResults will show mock data
+      // Record even on fallback
+      if (userEmail) {
+        recordSearch(
+          userEmail,
+          userName,
+          formData.productType,
+          userQuery || formData.productType
+
+        );
+        setRemainingSearches(getRemainingSearches(userEmail, userName));
+      }
+
       navigate("/suppliers", { state: formData });
     } finally {
       setIsLoading(false);
@@ -125,7 +168,22 @@ export function ProductQualification() {
             />
           </div>
         </div>
-
+        {/* Remaining searches indicator */}
+        {userEmail && remainingSearches <= getSearchLimit() && (
+          <div className={`mb-4 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${remainingSearches === 0
+              ? "bg-red-100 text-red-700 border border-red-200"
+              : remainingSearches === 1
+                ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
+                : "bg-blue-100 text-blue-700 border border-blue-200"
+            }`}>
+            <span>
+              {remainingSearches === 0
+                ? "🔒 Sin búsquedas disponibles"
+                : `🔍 ${remainingSearches} búsqueda${remainingSearches !== 1 ? "s" : ""} restante${remainingSearches !== 1 ? "s" : ""} de ${getSearchLimit()}`
+              }
+            </span>
+          </div>
+        )}
         <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-10">
           <h1 className="text-4xl font-bold text-[#0B3C5D] mb-3">
             {t("qualification.title")}
@@ -363,6 +421,60 @@ export function ProductQualification() {
           </form>
         </div>
       </div>
+      {/* ── Search Limit Modal ─────────────────────────────────── */}
+      {showLimitModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-6">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8 text-center">
+
+            {/* Icon */}
+            <div className="w-20 h-20 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
+              <span className="text-4xl">🔒</span>
+            </div>
+
+            {/* Title */}
+            <h2 className="text-2xl font-bold text-[#0B3C5D] mb-3">
+              Límite de Búsquedas Alcanzado
+            </h2>
+
+            {/* Description */}
+            <p className="text-slate-600 mb-2">
+              Has utilizado tus <strong>{getSearchLimit()} búsquedas gratuitas</strong>.
+            </p>
+            <p className="text-slate-600 mb-6">
+              Para continuar buscando proveedores, contacta al equipo de SEAL y obtén acceso completo.
+            </p>
+
+            {/* Highlight box */}
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-left">
+              <p className="text-sm font-semibold text-[#0B3C5D] mb-2">
+                Con acceso completo obtienes:
+              </p>
+              <ul className="space-y-1 text-sm text-slate-700">
+                <li>✅ Búsquedas ilimitadas de proveedores</li>
+                <li>✅ Análisis de costos detallado</li>
+                <li>✅ Informes PDF y Excel</li>
+                <li>✅ Soporte del equipo SEAL</li>
+              </ul>
+            </div>
+
+            {/* Buttons */}
+            <div className="space-y-3">
+              <a
+                href="tel:+50259964664"
+                className="w-full py-3 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:from-blue-700 hover:to-[#0a2f47] transition-all shadow-lg"
+              >
+                📞 Contactar SEAL: +502 5996 4664
+              </a>
+              <button
+                onClick={() => navigate("/")}
+                className="w-full py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all"
+              >
+                Volver al Inicio
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

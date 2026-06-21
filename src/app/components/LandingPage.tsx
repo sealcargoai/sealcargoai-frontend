@@ -4,6 +4,8 @@ import { Search, Shield, Globe, TrendingUp, CheckCircle } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
+import { getUserData } from "../../utils/searchLimit";
+
 
 export function LandingPage() {
   const { t } = useLanguage();
@@ -32,7 +34,8 @@ export function LandingPage() {
     } catch (err) {
       console.warn("⚠️ Could not send lead email (non-critical):", err);
     }
-
+      // Initialize user in localStorage
+    getUserData(email, name);
     setSubmitting(false);
     navigate("/chat", { state: { query, name, email } });
   };
