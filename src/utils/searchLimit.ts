@@ -1,6 +1,6 @@
-// src/utils/searchLimit.ts
+// REPLACE the entire searchLimit.ts with this improved version:
 
-const SEARCH_LIMIT = 3; // Change to 2, 3, or 4
+const SEARCH_LIMIT = 3;
 const STORAGE_KEY = "sealcargo_user_data";
 
 export interface UserSearchData {
@@ -16,7 +16,6 @@ export interface UserSearchData {
   limitReached: boolean;
 }
 
-// Generate simple ID from email
 function generateUserId(email: string): string {
   let hash = 0;
   for (let i = 0; i < email.length; i++) {
@@ -27,19 +26,34 @@ function generateUserId(email: string): string {
   return `user_${Math.abs(hash)}`;
 }
 
-// Get or create user data
-export function getUserData(email: string, name: string): UserSearchData {
-  const stored = localStorage.getItem(STORAGE_KEY);
+// Get raw data from localStorage
+function getRawData(): UserSearchData | null {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    return stored ? JSON.parse(stored) : null;
+  } catch {
+    return null;
+  }
+}
 
-  if (stored) {
-    const parsed: UserSearchData = JSON.parse(stored);
-    // If same email, return existing data
-    if (parsed.email === email) {
-      return parsed;
+// Save data to localStorage
+function saveData(data: UserSearchData): void {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+export function getUserData(email: string, name: string): UserSearchData {
+  const stored = getRawData();
+
+  if (stored && stored.email === email) {
+    // Update name if changed
+    if (stored.name !== name && name) {
+      stored.name = name;
+      saveData(stored);
     }
+    return stored;
   }
 
-  // New user
+  // New user or different email
   const newUser: UserSearchData = {
     userId: generateUserId(email),
     email,
@@ -49,29 +63,28 @@ export function getUserData(email: string, name: string): UserSearchData {
     limitReached: false,
   };
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(newUser));
+  saveData(newUser);
   return newUser;
 }
 
-// Check if user can search
 export function canUserSearch(email: string, name: string): boolean {
   const data = getUserData(email, name);
+  console.log(`🔐 canUserSearch: email=${email}, count=${data.searchCount}, limit=${SEARCH_LIMIT}`);
   return data.searchCount < SEARCH_LIMIT;
 }
 
-// Get remaining searches
 export function getRemainingSearches(email: string, name: string): number {
   const data = getUserData(email, name);
   return Math.max(0, SEARCH_LIMIT - data.searchCount);
 }
 
-// Record a search
 export function recordSearch(
   email: string,
   name: string,
   productType: string,
   keyword: string
 ): void {
+  // Always read fresh from localStorage
   const data = getUserData(email, name);
 
   data.searchCount += 1;
@@ -85,15 +98,15 @@ export function recordSearch(
     data.limitReached = true;
   }
 
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  saveData(data);
+  
+  console.log(`✅ recordSearch: email=${email}, newCount=${data.searchCount}`);
 }
 
-// Get search limit number
 export function getSearchLimit(): number {
   return SEARCH_LIMIT;
 }
 
-// Reset (for testing only)
 export function resetUserData(): void {
   localStorage.removeItem(STORAGE_KEY);
 }

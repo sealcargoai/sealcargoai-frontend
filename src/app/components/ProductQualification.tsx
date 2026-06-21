@@ -25,8 +25,19 @@ export function ProductQualification() {
 
   // Read original search query forwarded from chat/landing
   const userQuery = location.state?.query || "";
-  const userName = location.state?.name || "";
-  const userEmail = location.state?.email || "";
+
+  // Read from location.state first, fallback to localStorage
+  const storedData = (() => {
+    try {
+      const raw = localStorage.getItem("sealcargo_user_data");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const userName = location.state?.name || storedData?.name || "";
+  const userEmail = location.state?.email || storedData?.email || "";
   const [step, setStep] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -43,12 +54,21 @@ export function ProductQualification() {
   useEffect(() => {
     if (userEmail) {
       const remaining = getRemainingSearches(userEmail, userName);
+      console.log("🔄 useEffect — email:", userEmail, "remaining:", remaining);
       setRemainingSearches(remaining);
+    } else {
+      console.warn("⚠️ useEffect — no userEmail found");
     }
   }, [userEmail, userName]);
+
   // ── Submit: call backend then navigate ──────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // ── DEBUG LOGS (remove after testing) ──────────────
+    console.log("🔍 userEmail:", userEmail);
+    console.log("🔍 userName:", userName);
+    console.log("🔍 canSearch:", userEmail ? canUserSearch(userEmail, userName) : "NO EMAIL");
 
     // ── CHECK LIMIT FIRST ────────────────────────────────
     if (userEmail && !canUserSearch(userEmail, userName)) {
@@ -77,6 +97,9 @@ export function ProductQualification() {
 
       const suppliers = await response.json();
 
+      // ── DEBUG LOG ───────────────────────────────────────
+      console.log("✅ Search success, recording for:", userEmail);
+
       // ── RECORD SEARCH AFTER SUCCESS ──────────────────
       if (userEmail) {
         recordSearch(
@@ -85,7 +108,11 @@ export function ProductQualification() {
           formData.productType,
           userQuery || formData.productType
         );
-        setRemainingSearches(getRemainingSearches(userEmail, userName));
+        const remaining = getRemainingSearches(userEmail, userName);
+        console.log("📊 Remaining searches:", remaining);
+        setRemainingSearches(remaining);
+      } else {
+        console.warn("⚠️ No userEmail found — search NOT recorded");
       }
 
       navigate("/suppliers", {
@@ -94,20 +121,20 @@ export function ProductQualification() {
           suppliers,
         },
       });
+
     } catch (err) {
       console.error("API failed:", err);
       setError(
         "No se pudo conectar al servidor. Mostrando datos de demostración.",
       );
 
-      // Record even on fallback
+      // ── RECORD EVEN ON FALLBACK ──────────────────────
       if (userEmail) {
         recordSearch(
           userEmail,
           userName,
           formData.productType,
           userQuery || formData.productType
-
         );
         setRemainingSearches(getRemainingSearches(userEmail, userName));
       }
@@ -171,10 +198,10 @@ export function ProductQualification() {
         {/* Remaining searches indicator */}
         {userEmail && remainingSearches <= getSearchLimit() && (
           <div className={`mb-4 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${remainingSearches === 0
-              ? "bg-red-100 text-red-700 border border-red-200"
-              : remainingSearches === 1
-                ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
-                : "bg-blue-100 text-blue-700 border border-blue-200"
+            ? "bg-red-100 text-red-700 border border-red-200"
+            : remainingSearches === 1
+              ? "bg-yellow-100 text-yellow-700 border border-yellow-200"
+              : "bg-blue-100 text-blue-700 border border-blue-200"
             }`}>
             <span>
               {remainingSearches === 0
