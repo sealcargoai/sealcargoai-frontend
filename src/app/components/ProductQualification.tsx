@@ -54,7 +54,6 @@ export function ProductQualification() {
   useEffect(() => {
     if (userEmail) {
       const remaining = getRemainingSearches(userEmail, userName);
-      console.log("🔄 useEffect — email:", userEmail, "remaining:", remaining);
       setRemainingSearches(remaining);
     } else {
       console.warn("⚠️ useEffect — no userEmail found");
@@ -64,11 +63,6 @@ export function ProductQualification() {
   // ── Submit: call backend then navigate ──────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
-    // ── DEBUG LOGS (remove after testing) ──────────────
-    console.log("🔍 userEmail:", userEmail);
-    console.log("🔍 userName:", userName);
-    console.log("🔍 canSearch:", userEmail ? canUserSearch(userEmail, userName) : "NO EMAIL");
 
     // ── CHECK LIMIT FIRST ────────────────────────────────
     if (userEmail && !canUserSearch(userEmail, userName)) {
@@ -93,12 +87,16 @@ export function ProductQualification() {
         },
       );
 
+      // Server-side limit reached → show the limit modal, no demo data
+      if (response.status === 429) {
+        setRemainingSearches(0);
+        setShowLimitModal(true);
+        return;
+      }
+
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const suppliers = await response.json();
-
-      // ── DEBUG LOG ───────────────────────────────────────
-      console.log("✅ Search success, recording for:", userEmail);
 
       // ── RECORD SEARCH AFTER SUCCESS ──────────────────
       if (userEmail) {
@@ -108,11 +106,12 @@ export function ProductQualification() {
           formData.productType,
           userQuery || formData.productType
         );
-        const remaining = getRemainingSearches(userEmail, userName);
-        console.log("📊 Remaining searches:", remaining);
-        setRemainingSearches(remaining);
-      } else {
-        console.warn("⚠️ No userEmail found — search NOT recorded");
+        const localRemaining = getRemainingSearches(userEmail, userName);
+        const serverRemaining =
+          typeof suppliers?.remainingSearches === "number"
+            ? suppliers.remainingSearches
+            : localRemaining;
+        setRemainingSearches(Math.min(localRemaining, serverRemaining));
       }
 
       navigate("/suppliers", {
@@ -128,16 +127,7 @@ export function ProductQualification() {
         "No se pudo conectar al servidor. Mostrando datos de demostración.",
       );
 
-      // ── RECORD EVEN ON FALLBACK ──────────────────────
-      if (userEmail) {
-        recordSearch(
-          userEmail,
-          userName,
-          formData.productType,
-          userQuery || formData.productType
-        );
-        setRemainingSearches(getRemainingSearches(userEmail, userName));
-      }
+      // Failed searches (server down) are not counted against the user
 
       navigate("/suppliers", { state: formData });
     } finally {
