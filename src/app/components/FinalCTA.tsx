@@ -18,7 +18,7 @@ import autoTable from "jspdf-autotable";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { NoSupplierNotice, hasUsableSupplier } from "./SelectedSupplier";
+import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, SEAL_DISCLAIMER } from "./SelectedSupplier";
 import { calculateRiskScore } from "./RiskCompliance";
 import {
   SEAL_COMPANY,
@@ -180,6 +180,15 @@ function generateReportPDF(data: {
       finalY2 + 31,
     );
   }
+  // Disclaimer: SEAL does not guarantee search results
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(146, 64, 14);
+  doc.text(
+    doc.splitTextToSize(`Aviso: ${SEAL_DISCLAIMER}`, pageWidth - 28),
+    14,
+    finalY2 + (data.costs.freightPending ? 38 : 33),
+  );
+  doc.setFont("helvetica", "normal");
 
   // Company footer (NEW)
   drawCompanyFooter(doc);
@@ -553,6 +562,12 @@ export function FinalCTA() {
           </div>
         </div>
         )}
+
+        <SupplierDisclaimer
+          supplier={stateSupplier}
+          productDescription={location.state?.productDescription ?? ""}
+          quantity={stateQuantity}
+        />
 
         {/* Report Preview */}
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 mb-8">

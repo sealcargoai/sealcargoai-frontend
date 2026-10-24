@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useNavigate } from "react-router";
-import { MapPin, Award, Star, Package, ExternalLink, AlertCircle, ArrowLeft, Search } from "lucide-react";
+import { MapPin, Award, Star, Package, ExternalLink, AlertCircle, ArrowLeft, Search, ShieldCheck } from "lucide-react";
 import { formatUSD } from "../../utils/costCalculator";
 
 // Supplier as it arrives from the suppliers screen (real Alibaba data only)
@@ -162,6 +163,137 @@ export function NoSupplierNotice({ hasSupplierWithoutPrice }: { hasSupplierWitho
             <Search className="w-4 h-4" />
             Nueva búsqueda
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Disclaimer + SEAL supplier verification in China (paid add-on) ─────────
+export const SEAL_DISCLAIMER =
+  "SEAL no garantiza a los proveedores ni los resultados de esta búsqueda. SmartTrade AI es una herramienta para organizar y comparar proveedores con los datos que publica Alibaba. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+function storedUser(): { name: string; email: string } {
+  try {
+    const raw = localStorage.getItem("sealcargo_user_data");
+    const d = raw ? JSON.parse(raw) : null;
+    return { name: d?.name || "", email: d?.email || "" };
+  } catch {
+    return { name: "", email: "" };
+  }
+}
+
+export function SupplierDisclaimer({
+  supplier,
+  productDescription = "",
+  quantity = "",
+  compact = false,
+}: {
+  supplier?: SelectedSupplierData | null;
+  productDescription?: string;
+  quantity?: string | number;
+  compact?: boolean;
+}) {
+  const stored = storedUser();
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState(stored.name);
+  const [email, setEmail] = useState(stored.email);
+  const [notes, setNotes] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/api/email/quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestType: "Verificación de proveedor en China",
+          name,
+          email,
+          message: notes,
+          supplierName: supplier?.name || "",
+          supplierUrl: supplier?.productUrl || supplier?.storeUrl || "",
+          productDescription,
+          quantity: String(quantity || ""),
+          destination: "Guatemala",
+        }),
+      });
+      if (res.status === 400) {
+        setError("Revise su nombre y correo (por ejemplo nombre@empresa.com).");
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSent(true);
+    } catch {
+      setError("No se pudo enviar. Escríbanos al WhatsApp +502 5996 4664.");
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const input =
+    "w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm";
+
+  return (
+    <div className={`bg-amber-50 border border-amber-200 rounded-xl ${compact ? "p-4" : "p-4 sm:p-5"} mb-6`}>
+      <div className="flex items-start gap-3">
+        <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-amber-900">
+            <span className="font-semibold">Aviso: </span>
+            {SEAL_DISCLAIMER}
+          </p>
+          {sent ? (
+            <p className="mt-3 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
+              ✅ Recibimos su solicitud. Un ejecutivo de SEAL le contacta para la verificación en China.
+            </p>
+          ) : !open ? (
+            <button
+              onClick={() => setOpen(true)}
+              className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47]"
+            >
+              <ShieldCheck className="w-4 h-4" />
+              {supplier?.name ? "Solicitar verificación de este proveedor en China" : "Solicitar verificación de proveedor en China"}
+            </button>
+          ) : (
+            <form onSubmit={submit} className="mt-3 space-y-2">
+              {supplier?.name && (
+                <p className="text-xs text-slate-600">
+                  Proveedor: <span className="font-medium text-slate-800">{supplier.name}</span>
+                </p>
+              )}
+              <div className="grid sm:grid-cols-2 gap-2">
+                <input className={input} placeholder="Su nombre" value={name} onChange={(e) => setName(e.target.value)} required />
+                <input className={input} type="email" placeholder="Su correo" value={email} onChange={(e) => setEmail(e.target.value)} required />
+              </div>
+              <textarea
+                className={`${input} min-h-[70px]`}
+                placeholder="¿Qué le gustaría verificar? (opcional)"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+              />
+              {error && <p className="text-xs text-red-600">{error}</p>}
+              <div className="flex gap-2">
+                <button
+                  type="submit"
+                  disabled={sending}
+                  className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47] disabled:opacity-60"
+                >
+                  {sending ? "Enviando…" : "Enviar solicitud"}
+                </button>
+                <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700">
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </div>
     </div>

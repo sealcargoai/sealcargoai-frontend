@@ -24,7 +24,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
 import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
-import { supplierPriceInfo } from "./SelectedSupplier";
+import { supplierPriceInfo, SupplierDisclaimer } from "./SelectedSupplier";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -402,6 +402,8 @@ function NoResults({
             </form>
           )}
 
+          <SupplierDisclaimer productDescription={productDescription} quantity={quantity} />
+
           <MorePlatforms
             keyword={keyword}
             productDescription={productDescription}
@@ -716,6 +718,12 @@ export function SupplierResults() {
             </p>
           </div>
         </div>
+
+        <SupplierDisclaimer
+          supplier={selectedSupplier}
+          productDescription={location.state?.productDescription ?? ""}
+          quantity={navQuantity}
+        />
 
         {/* Filtered Out */}
         {showFiltered && (

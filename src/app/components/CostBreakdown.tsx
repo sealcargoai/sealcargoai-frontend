@@ -25,6 +25,8 @@ import {
   NoSupplierNotice,
   hasUsableSupplier,
   supplierPriceInfo,
+  SupplierDisclaimer,
+  SEAL_DISCLAIMER,
 } from "./SelectedSupplier";
 import {
   SEAL_COMPANY,
@@ -168,6 +170,15 @@ function exportToPDF(
       finalY + 31,
     );
   }
+  // Disclaimer: SEAL does not guarantee search results
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(146, 64, 14);
+  doc.text(
+    doc.splitTextToSize(`Aviso: ${SEAL_DISCLAIMER}`, pageWidth - 28),
+    14,
+    finalY + (costs.freightPending ? 38 : 33),
+  );
+  doc.setFont("helvetica", "normal");
 
   // Company footer (NEW)
   drawCompanyFooter(doc);
@@ -398,6 +409,11 @@ export function CostBreakdown() {
         </div>
 
         <SelectedSupplierCard supplier={stateSupplier} />
+        <SupplierDisclaimer
+          supplier={stateSupplier}
+          productDescription={location.state?.productDescription ?? ""}
+          quantity={stateQuantity}
+        />
 
         {/* Total Cost Hero */}
         <div className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-[#0B3C5D] to-purple-700 rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-8 md:p-10 mb-8 text-white">
