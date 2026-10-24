@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
 type Language = "es" | "en";
 
@@ -20,14 +20,14 @@ const translations = {
 
     // Hero Section
     "hero.badge": "Impulsado por la Experiencia Logística de SEAL",
-    "hero.title": "Proveedores Clasificados. Costos Reales.",
-    "hero.titleHighlight": "Menos Riesgo.",
+    "hero.title": "Más claridad para",
+    "hero.titleHighlight": "preparar tu importación",
     "hero.subtitle":
-      "Asistente de importación impulsado por IA que te ayuda a encontrar proveedores, analizar costos y gestionar el comercio internacional con confianza",
+      "Un asistente de apoyo para explorar posibles proveedores, organizar estimaciones iniciales de costos e identificar aspectos logísticos y aduaneros que conviene revisar antes de avanzar.",
     "hero.placeholder": "Quiero importar sillas de madera desde China...",
-    "hero.cta": "Comenzar Análisis Gratis",
+    "hero.cta": "Comenzar orientación gratuita",
     "hero.noCreditCard":
-      "No se requiere tarjeta de crédito • Obtén resultados en segundos",
+      "Describe el producto que quieres importar y completa la información paso a paso.",
     "hero.formTitle": "Completa tu Perfil",
     "hero.nameLabel": "Nombre Completo",
     "hero.namePlaceholder": "Juan Pérez",
@@ -38,38 +38,38 @@ const translations = {
     "hero.processing": "Procesando...",
 
     // Trust Badges
-    "trust.verified": "Proveedores Verificados",
-    "trust.compliance": "Cumplimiento Verificado",
-    "trust.pricing": "Precios en Tiempo Real",
-    "trust.network": "Red de Comercio Global",
+    "trust.verified": "Referencias de proveedores para explorar",
+    "trust.compliance": "Orientación inicial sobre aspectos aduaneros",
+    "trust.pricing": "Estimaciones basadas en la información ingresada",
+    "trust.network": "Experiencia logística de SEAL",
 
     // Features Section
     "features.title":
-      "Todo lo que necesitas para importar de manera más inteligente",
+      "Herramientas para explorar tu importación",
     "features.subtitle":
-      "Información impulsada por IA respaldada por experiencia logística",
-    "features.supplier.title": "Descubrimiento de Proveedores",
+      "Información inicial para ayudarte a preparar mejor tus próximos pasos.",
+    "features.supplier.title": "Descubrimiento de proveedores",
     "features.supplier.desc":
-      "Encuentra proveedores verificados en Alibaba con calificaciones de calidad y requisitos de MOQ",
-    "features.cost.title": "Análisis de Costos",
+      "Explora posibles opciones de abastecimiento y revisa la información disponible para investigarlas.",
+    "features.cost.title": "Análisis de costos",
     "features.cost.desc":
-      "Calcula costos totales desembarcados incluyendo aranceles, impuestos y envío",
-    "features.risk.title": "Evaluación de Riesgos",
+      "Consulta una estimación preliminar basada en los datos que ingreses y en los supuestos utilizados.",
+    "features.risk.title": "Aspectos por revisar",
     "features.risk.desc":
-      "Identifica problemas de cumplimiento y requisitos de documentación antes de ordenar",
+      "Identifica documentos, permisos y condiciones que podrían ser relevantes para tu producto y destino.",
 
     // How It Works
-    "howItWorks.title": "Cómo funciona",
-    "howItWorks.subtitle": "De consulta a cotización en minutos",
+    "howItWorks.title": "De tu consulta a una guía inicial",
+    "howItWorks.subtitle": "",
     "howItWorks.step1.title": "Describe",
-    "howItWorks.step1.desc": "Dinos qué quieres importar",
-    "howItWorks.step2.title": "Califica",
-    "howItWorks.step2.desc": "Responde algunas preguntas sobre tus necesidades",
-    "howItWorks.step3.title": "Analiza",
-    "howItWorks.step3.desc": "La IA encuentra proveedores y calcula costos",
-    "howItWorks.step4.title": "Importa",
+    "howItWorks.step1.desc": "Cuéntanos qué producto quieres importar.",
+    "howItWorks.step2.title": "Completa",
+    "howItWorks.step2.desc": "Agrega información sobre cantidad, presupuesto y características del producto.",
+    "howItWorks.step3.title": "Explora",
+    "howItWorks.step3.desc": "Revisa referencias de proveedores, estimaciones y aspectos que conviene investigar.",
+    "howItWorks.step4.title": "Continúa con SEAL",
     "howItWorks.step4.desc":
-      "Obtén tu informe completo y deja la operación en manos de SEAL",
+      "Si lo deseas, comparte tu caso con nuestro equipo para conversar sobre los siguientes pasos.",
 
     // Footer
     "footer.tagline": "Conectando Guatemala al Comercio Global",
@@ -91,7 +91,7 @@ const translations = {
     // Product Qualification
     "qualification.title": "Calificación de Producto",
     "qualification.subtitle":
-      "Ayúdanos a encontrar los proveedores perfectos para tus necesidades",
+      "Explora posibles opciones de abastecimiento",
     "qualification.back": "Volver al Chat",
     "qualification.step": "Paso",
     "qualification.of": "de",
@@ -182,11 +182,11 @@ const translations = {
     "suppliers.viewProduct": "Ver Producto",
 
     // Cost Breakdown
-    "cost.title": "Análisis de Costo Total en Guatemala",
+    "cost.title": "Estimación de costo total en Guatemala",
     "cost.subtitle": "Desglose completo de costos para tu importación de",
     "cost.exportPDF": "Exportar PDF",
     "cost.riskAssessment": "Evaluación de Riesgos",
-    "cost.totalLandedCost": "Costo total en Guatemala",
+    "cost.totalLandedCost": "Costo total estimado en Guatemala",
     "cost.forUnits": "Para 1,000 unidades",
     "cost.costDistribution": "Distribución de Costos",
     "cost.supplierComparison": "Comparación de Costos de Proveedores",
@@ -289,7 +289,7 @@ const translations = {
     "final.reportSubtitle": "Análisis integral de abastecimiento y costos",
     "final.reportID": "ID de Informe",
     "final.bestSupplier": "Proveedor considerado",
-    "final.totalCost": "Costo total en Guatemala",
+    "final.totalCost": "Costo total estimado en Guatemala",
     "final.riskLevel": "Nivel de Riesgo",
     "final.riskScore": "puntuación de riesgo",
     "final.reportContents": "Contenidos del Informe",
@@ -330,7 +330,7 @@ const translations = {
     "final.step4":
       "Considerar servicio completo de logística SEAL para importación sin complicaciones",
     "final.startNew": "Comenzar Nuevo Análisis",
-    "final.basedOnReal": "Análisis basado en proveedor real:",
+    "final.basedOnReal": "Análisis basado en el proveedor considerado:",
     "final.demoData": "Mostrando datos de ejemplo",
     "final.perUnit": "por unidad",
     "final.verified": "Verificado",
@@ -717,10 +717,27 @@ const translations = {
 };
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
-  const [language, setLanguage] = useState<Language>("es");
+  const [language, setLanguage] = useState<Language>(() => {
+    try {
+      return localStorage.getItem("seal_lang") === "en" ? "en" : "es";
+    } catch {
+      return "es";
+    }
+  });
+
+  // Keep <html lang> in sync and remember the choice
+  useEffect(() => {
+    document.documentElement.lang = language;
+    try {
+      localStorage.setItem("seal_lang", language);
+    } catch {
+      /* storage unavailable */
+    }
+  }, [language]);
 
   const t = (key: string): string => {
-    return translations[language][key] || key;
+    const v = (translations[language] as Record<string, string>)[key];
+    return v ?? key;
   };
 
   return (
