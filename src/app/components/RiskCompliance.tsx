@@ -661,13 +661,13 @@ export function RiskCompliance() {
                   <div className="flex justify-between text-slate-600">
                     <span>{t("risk.yearsInBusiness")}</span>
                     <span className="font-semibold">
-                      {supplier?.yearsInBusiness}a
+                      {supplier?.yearsInBusiness ? `${supplier.yearsInBusiness}a` : "N/D"}
                     </span>
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>{t("risk.responseRate")}</span>
                     <span className="font-semibold">
-                      {supplier?.responseRate}%
+                      {supplier?.responseRate != null ? `${supplier.responseRate}%` : "N/D"}
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-1 mt-2">

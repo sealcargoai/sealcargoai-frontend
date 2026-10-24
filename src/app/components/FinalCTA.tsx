@@ -563,7 +563,7 @@ export function FinalCTA() {
               </div>
               <div className="flex items-center gap-1 text-sm text-blue-700">
                 <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                {stateSupplier?.rating ?? 4.9} •{" "}
+                {stateSupplier?.rating ?? "Sin reseñas"} •{" "}
                 {stateSupplier?.verified
                   ? t("final.verified")
                   : t("final.standard")}

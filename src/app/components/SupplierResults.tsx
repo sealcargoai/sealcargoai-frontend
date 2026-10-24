@@ -22,19 +22,219 @@ import {
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
+import { SEAL_COMPANY } from "../../utils/reportExports";
+
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
+
+function getStoredUser(): { name: string; email: string } {
+  try {
+    const raw = localStorage.getItem("sealcargo_user_data");
+    const d = raw ? JSON.parse(raw) : null;
+    return { name: d?.name || "", email: d?.email || "" };
+  } catch {
+    return { name: "", email: "" };
+  }
+}
+
+// ─── No live results: honest message + assisted search request ──────────────
+function NoResults({
+  totalAnalyzed,
+  filteredOut,
+  productDescription,
+  quantity,
+  budget,
+  destination,
+}: {
+  totalAnalyzed: number;
+  filteredOut: { name: string; reason: string }[];
+  productDescription: string;
+  quantity: string;
+  budget: string;
+  destination: string;
+}) {
+  const navigate = useNavigate();
+  const stored = getStoredUser();
+  const [name, setName] = useState(stored.name);
+  const [email, setEmail] = useState(stored.email);
+  const [phone, setPhone] = useState("");
+  const [company, setCompany] = useState("");
+  const [message, setMessage] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  const allFiltered = totalAnalyzed > 0;
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/api/email/quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestType: "Búsqueda asistida de proveedores",
+          name,
+          email,
+          phone,
+          company,
+          message,
+          productDescription,
+          quantity,
+          budget,
+          destination,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSent(true);
+    } catch {
+      setError(
+        `No se pudo enviar la solicitud. Llámenos al ${SEAL_COMPANY.phone}.`,
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
+      <div className="max-w-3xl mx-auto px-6 py-12">
+        <div className="bg-white rounded-3xl shadow-2xl border border-slate-200 p-8 sm:p-10">
+          <div className="w-14 h-14 rounded-full bg-blue-100 flex items-center justify-center mb-5">
+            <Package className="w-7 h-7 text-[#0B3C5D]" />
+          </div>
+          <h1 className="text-3xl font-bold text-[#0B3C5D] mb-3">
+            {allFiltered
+              ? "Ningún proveedor pasó nuestros filtros"
+              : "No pudimos obtener resultados en vivo"}
+          </h1>
+          <p className="text-slate-600 mb-6">
+            {allFiltered
+              ? `Analizamos ${totalAnalyzed} proveedores en Alibaba, pero ninguno cumplió los criterios de calidad, verificación y experiencia de SEAL. Preferimos no recomendarle un proveedor que no cumple.`
+              : "En este momento Alibaba no nos devolvió resultados para su producto. No le vamos a mostrar datos de ejemplo: un ejecutivo de SEAL puede hacer la búsqueda por usted y enviarle proveedores verificados con su costo de nacionalización."}
+          </p>
+
+          {allFiltered && filteredOut.length > 0 && (
+            <details className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
+              <summary className="cursor-pointer font-medium text-red-900">
+                Ver por qué se filtraron ({filteredOut.length})
+              </summary>
+              <ul className="mt-3 space-y-1 text-sm">
+                {filteredOut.map((s, i) => (
+                  <li key={i} className="text-slate-700">
+                    <span className="font-medium">{s.name}</span>{" "}
+                    <span className="text-red-600">— {s.reason}</span>
+                  </li>
+                ))}
+              </ul>
+            </details>
+          )}
+
+          {sent ? (
+            <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-green-800">
+              <div className="font-semibold mb-1 flex items-center gap-2">
+                <CheckCircle className="w-5 h-5" /> Solicitud recibida
+              </div>
+              Un ejecutivo de SEAL le contactará para darle seguimiento a su
+              búsqueda.
+            </div>
+          ) : (
+            <form onSubmit={submit} className="space-y-4">
+              <h2 className="text-lg font-semibold text-[#0B3C5D]">
+                Que SEAL busque los proveedores por usted
+              </h2>
+              {productDescription && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-600 whitespace-pre-line break-words">
+                  <span className="font-medium text-slate-700">Producto: </span>
+                  {productDescription}
+                </div>
+              )}
+              <div className="grid sm:grid-cols-2 gap-4">
+                <input
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  required
+                  placeholder="Nombre"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  required
+                  placeholder="Correo"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="Teléfono / WhatsApp"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <input
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  placeholder="Empresa"
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+              <textarea
+                value={message}
+                onChange={(e) => setMessage(e.target.value)}
+                rows={3}
+                placeholder="¿Algo más que debamos saber? (plazo, proveedor actual, etc.)"
+                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
+              />
+              {error && (
+                <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                  ⚠️ {error}
+                </div>
+              )}
+              <div className="flex flex-col sm:flex-row gap-3">
+                <button
+                  type="submit"
+                  disabled={sending}
+                  className="flex-1 px-6 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {sending ? "Enviando..." : "Solicitar búsqueda asistida"}
+                  <ArrowRight className="w-4 h-4" />
+                </button>
+                <a
+                  href={`tel:${SEAL_COMPANY.phone.replace(/\s+/g, "")}`}
+                  className="px-6 py-3 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
+                >
+                  <Phone className="w-4 h-4" /> {SEAL_COMPANY.phone}
+                </a>
+              </div>
+            </form>
+          )}
+
+          <button
+            onClick={() => navigate("/qualify")}
+            className="mt-6 text-sm text-blue-600 hover:underline"
+          >
+            ← Modificar la descripción y buscar de nuevo
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Supplier {
   id: number;
   name: string;
-  rating: number;
+  rating: number | null;
   reviews: number;
   moq: number;
   price: number;
   verified: boolean;
   location: string;
   yearsInBusiness: number;
-  responseRate: number;
+  responseRate: number | null;
   tags: string[];
   aiScore: number;
   qualityScore: number;
@@ -50,271 +250,7 @@ interface Supplier {
   goldSupplier?: boolean;
 }
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const MOCK_SUPPLIERS: Supplier[] = [
-  {
-    id: 1,
-    name: "Guangzhou Premium Furniture Co., Ltd",
-    rating: 4.8,
-    reviews: 1247,
-    moq: 500,
-    price: 45.5,
-    verified: true,
-    location: "Guangzhou, China",
-    yearsInBusiness: 12,
-    responseRate: 98,
-    tags: ["Gold Supplier", "Verified", "Trade Assurance"],
-    aiScore: 92,
-    qualityScore: 95,
-    reliabilityScore: 88,
-    priceScore: 85,
-    contactEmail: "sales@gzpremium.com",
-    contactPhone: "+86 20 8888 9999",
-    productImage:
-      "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop",
-    images: [
-      "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=400&h=300&fit=crop",
-    ],
-  },
-  {
-    id: 2,
-    name: "Shanghai Wooden Products Factory",
-    rating: 4.6,
-    reviews: 892,
-    moq: 300,
-    price: 42.0,
-    verified: true,
-    location: "Shanghai, China",
-    yearsInBusiness: 8,
-    responseRate: 95,
-    tags: ["Verified", "Trade Assurance"],
-    aiScore: 87,
-    qualityScore: 88,
-    reliabilityScore: 90,
-    priceScore: 92,
-    contactEmail: "info@shwoodenproducts.com",
-    contactPhone: "+86 21 5555 6666",
-    productImage:
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-    images: [
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?w=400&h=300&fit=crop",
-    ],
-  },
-  {
-    id: 3,
-    name: "Foshan Elite Furniture Manufacturing",
-    rating: 4.9,
-    reviews: 2134,
-    moq: 1000,
-    price: 38.75,
-    verified: true,
-    location: "Foshan, China",
-    yearsInBusiness: 15,
-    responseRate: 99,
-    tags: ["Gold Supplier", "Verified", "Audited"],
-    aiScore: 98,
-    qualityScore: 98,
-    reliabilityScore: 99,
-    priceScore: 98,
-    contactEmail: "export@foshanelite.com",
-    contactPhone: "+86 757 8888 1234",
-    productImage:
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-    images: [
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1517705008128-361805f42e86?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=400&h=300&fit=crop",
-    ],
-  },
-  {
-    id: 4,
-    name: "Shenzhen Modern Chairs Ltd",
-    rating: 4.5,
-    reviews: 567,
-    moq: 200,
-    price: 48.2,
-    verified: true,
-    location: "Shenzhen, China",
-    yearsInBusiness: 6,
-    responseRate: 92,
-    tags: ["Verified"],
-    aiScore: 82,
-    qualityScore: 85,
-    reliabilityScore: 84,
-    priceScore: 75,
-    contactEmail: "sales@szmodernchairs.com",
-    contactPhone: "+86 755 3333 4444",
-    productImage:
-      "https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=400&h=300&fit=crop",
-    images: [
-      "https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?w=400&h=300&fit=crop",
-    ],
-  },
-  {
-    id: 5,
-    name: "Dongguan Quality Furniture Group",
-    rating: 4.7,
-    reviews: 1456,
-    moq: 800,
-    price: 40.3,
-    verified: true,
-    location: "Dongguan, China",
-    yearsInBusiness: 10,
-    responseRate: 96,
-    tags: ["Gold Supplier", "Trade Assurance"],
-    aiScore: 90,
-    qualityScore: 91,
-    reliabilityScore: 92,
-    priceScore: 94,
-    contactEmail: "contact@dgquality.com",
-    contactPhone: "+86 769 7777 8888",
-    productImage:
-      "https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?w=400&h=300&fit=crop",
-    images: [
-      "https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1517705008128-361805f42e86?w=400&h=300&fit=crop",
-    ],
-  },
-  {
-    id: 6,
-    name: "Hangzhou Premium Wood Products",
-    rating: 4.8,
-    reviews: 1089,
-    moq: 600,
-    price: 44.8,
-    verified: true,
-    location: "Hangzhou, China",
-    yearsInBusiness: 9,
-    responseRate: 97,
-    tags: ["Verified", "Audited"],
-    aiScore: 89,
-    qualityScore: 92,
-    reliabilityScore: 88,
-    priceScore: 86,
-    contactEmail: "export@hzpremiumwood.com",
-    contactPhone: "+86 571 6666 7777",
-    productImage:
-      "https://images.unsplash.com/photo-1517705008128-361805f42e86?w=400&h=300&fit=crop",
-    images: [
-      "https://images.unsplash.com/photo-1517705008128-361805f42e86?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=400&h=300&fit=crop",
-    ],
-  },
-  {
-    id: 7,
-    name: "Ningbo Furniture Export Center",
-    rating: 4.6,
-    reviews: 734,
-    moq: 350,
-    price: 46.5,
-    verified: true,
-    location: "Ningbo, China",
-    yearsInBusiness: 7,
-    responseRate: 94,
-    tags: ["Gold Supplier", "Verified"],
-    aiScore: 85,
-    qualityScore: 86,
-    reliabilityScore: 87,
-    priceScore: 81,
-    contactEmail: "sales@nbfurniture.com",
-    contactPhone: "+86 574 8888 9999",
-    productImage:
-      "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop",
-    images: [
-      "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-    ],
-  },
-  {
-    id: 8,
-    name: "Suzhou Classic Furniture Manufacturing",
-    rating: 4.7,
-    reviews: 981,
-    moq: 450,
-    price: 43.2,
-    verified: true,
-    location: "Suzhou, China",
-    yearsInBusiness: 11,
-    responseRate: 96,
-    tags: ["Gold Supplier", "Trade Assurance", "Verified"],
-    aiScore: 88,
-    qualityScore: 89,
-    reliabilityScore: 90,
-    priceScore: 89,
-    contactEmail: "info@suzhouclassic.com",
-    contactPhone: "+86 512 5555 6666",
-    productImage:
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-    images: [
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1517705008128-361805f42e86?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop",
-    ],
-  },
-  {
-    id: 9,
-    name: "Xiamen Wooden Chair Specialists",
-    rating: 4.5,
-    reviews: 612,
-    moq: 250,
-    price: 47.9,
-    verified: true,
-    location: "Xiamen, China",
-    yearsInBusiness: 6,
-    responseRate: 93,
-    tags: ["Verified", "Trade Assurance"],
-    aiScore: 83,
-    qualityScore: 84,
-    reliabilityScore: 85,
-    priceScore: 78,
-    contactEmail: "sales@xmwoodenchairs.com",
-    contactPhone: "+86 592 3333 4444",
-    productImage:
-      "https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=400&h=300&fit=crop",
-    images: [
-      "https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?w=400&h=300&fit=crop",
-      "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-    ],
-  },
-];
-
-const MOCK_FILTERED_OUT = [
-  {
-    name: "Wuhan Cheap Chairs Co.",
-    reason: "Tasa de respuesta por debajo del 80%",
-    rating: 3.8,
-  },
-  {
-    name: "Tianjin Furniture Factory",
-    reason: "Menos de 5 años en el negocio",
-    rating: 4.2,
-  },
-  {
-    name: "Chengdu Wood Products",
-    reason: "Proveedor no verificado",
-    rating: 4.0,
-  },
-  {
-    name: "Zhengzhou Furniture Export",
-    reason: "Reseñas insuficientes (< 400)",
-    rating: 4.3,
-  },
-  {
-    name: "Shenyang Chair Manufacturing",
-    reason: "Precio 25% por encima del mercado",
-    rating: 4.5,
-  },
-];
+// (Demo suppliers removed — only real Alibaba results are shown)
 
 // ─── Helper: get 3 product images ────────────────────────────────────────────
 function getProductImages(supplier: Supplier): string[] {
@@ -344,13 +280,10 @@ export function SupplierResults() {
   // ── Resolve suppliers ─────────────────────────────────────────────────────
   const apiData = location.state?.suppliers;
 
-  const displaySuppliers: Supplier[] = (() => {
-    if (apiData?.topSuppliers?.length > 0) return apiData.topSuppliers;
-    return MOCK_SUPPLIERS.filter((s) => s.aiScore >= 80).slice(0, 9);
-  })();
-
-  const filteredOutList =
-    apiData?.filteredOut?.length > 0 ? apiData.filteredOut : MOCK_FILTERED_OUT;
+  // Only real results — no demo data
+  const displaySuppliers: Supplier[] = apiData?.topSuppliers ?? [];
+  const filteredOutList: { name: string; reason: string }[] =
+    apiData?.filteredOut ?? [];
 
   const isLiveData = !!(apiData?.topSuppliers?.length > 0);
 
@@ -362,7 +295,7 @@ export function SupplierResults() {
 
   // ── State ─────────────────────────────────────────────────────────────────
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier>(
-    displaySuppliers[0],
+    displaySuppliers[0] as Supplier,
   );
   const [showFiltered, setShowFiltered] = useState(false);
   const [savedSuppliers, setSavedSuppliers] = useState<number[]>([]);
@@ -423,17 +356,48 @@ export function SupplierResults() {
     );
   };
 
-  const handleContactSupplier = () => {
-    console.log("Lead generated:", {
-      supplier: selectedSupplier,
-      notes: leadNotes,
-      timestamp: new Date().toISOString(),
-    });
-    setShowContactModal(false);
-    alert(
-      "¡Lead guardado! Nuestro equipo hará seguimiento dentro de 24 horas.",
-    );
+  // Sends the supplier contact request to SEAL sales
+  const handleContactSupplier = async () => {
+    const user = getStoredUser();
+    try {
+      const res = await fetch(`${API_URL}/api/email/quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestType: "Contactar proveedor",
+          name: user.name || "Sin nombre",
+          email: user.email,
+          message: leadNotes,
+          supplierName: selectedSupplier.name,
+          supplierUrl: selectedSupplier.productUrl || selectedSupplier.storeUrl,
+          productDescription: location.state?.productDescription,
+          productType: navProductType,
+          quantity: navQuantity,
+          budget: navBudget,
+          destination: navDestination,
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setShowContactModal(false);
+      alert("¡Solicitud enviada! Un ejecutivo de SEAL le dará seguimiento.");
+    } catch {
+      alert(`No se pudo enviar. Llámenos al ${SEAL_COMPANY.phone}.`);
+    }
   };
+
+  // ── No real suppliers → honest empty state with assisted search ──────────
+  if (!displaySuppliers.length) {
+    return (
+      <NoResults
+        totalAnalyzed={apiData?.totalAnalyzed ?? 0}
+        filteredOut={filteredOutList}
+        productDescription={location.state?.productDescription ?? ""}
+        quantity={navQuantity}
+        budget={navBudget}
+        destination={navDestination}
+      />
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-50">
@@ -490,8 +454,8 @@ export function SupplierResults() {
           </p>
           <p className="text-xs text-slate-400 mt-1">
             {isLiveData
-              ? "✅ Live data from Alibaba DataHub"
-              : "⚠️ Showing demo data"}
+              ? "✅ Datos en vivo de Alibaba"
+              : ""}
           </p>
         </div>
 
@@ -670,7 +634,9 @@ export function SupplierResults() {
                           </div>
                           <div className="flex items-center gap-1">
                             <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                            {supplier.rating} ({supplier.reviews})
+                            {supplier.rating
+                              ? `${supplier.rating} (${supplier.reviews})`
+                              : "Sin reseñas"}
                           </div>
                         </div>
                       </div>
@@ -704,7 +670,7 @@ export function SupplierResults() {
                           {t("suppliers.experience")}
                         </div>
                         <div className="font-semibold text-[#0B3C5D] text-sm">
-                          {supplier.yearsInBusiness}a
+                          {supplier.yearsInBusiness ? `${supplier.yearsInBusiness}a` : "N/D"}
                         </div>
                       </div>
                       <div className="bg-slate-50 rounded-lg p-3">
@@ -712,7 +678,7 @@ export function SupplierResults() {
                           {t("suppliers.response")}
                         </div>
                         <div className="font-semibold text-[#0B3C5D] text-sm">
-                          {supplier.responseRate}%
+                          {supplier.responseRate != null ? `${supplier.responseRate}%` : "N/D"}
                         </div>
                       </div>
                       <div className="bg-green-50 rounded-lg p-3">
