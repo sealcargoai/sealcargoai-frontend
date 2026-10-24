@@ -24,7 +24,14 @@ import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
 import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
-import { supplierPriceInfo, SupplierDisclaimer } from "./SelectedSupplier";
+import {
+  supplierPriceInfo,
+  SupplierDisclaimer,
+  TrustBadge,
+  TrustBreakdown,
+  trustInfo,
+  badgeText,
+} from "./SelectedSupplier";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -425,6 +432,22 @@ function NoResults({
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+// Order options for the results list. "seal" keeps the backend order
+// (trust level first, then lowest price inside each level).
+function sortSuppliers<T extends { price: number; rating: number | null; moq: number; trustScore?: number; aiScore: number }>(
+  list: T[],
+  by: string,
+): T[] {
+  if (by === "seal") return list;
+  const copy = [...list];
+  const price = (s: T) => (s.price > 0 ? s.price : Infinity);
+  if (by === "price") copy.sort((a, b) => price(a) - price(b));
+  if (by === "trust") copy.sort((a, b) => (b.trustScore ?? b.aiScore) - (a.trustScore ?? a.aiScore));
+  if (by === "rating") copy.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
+  if (by === "moq") copy.sort((a, b) => (a.moq || 0) - (b.moq || 0));
+  return copy;
+}
+
 interface Supplier {
   id: number;
   name: string;
@@ -438,6 +461,12 @@ interface Supplier {
   responseRate: number | null;
   tags: string[];
   aiScore: number;
+  trustScore?: number;
+  trustLevel?: string;
+  trustBreakdown?: { key: string; label: string; weight: number; score: number | null; detail: string }[];
+  trustCoverage?: { available: number; total: number };
+  trustReasons?: string[];
+  verifiedSupplier?: boolean | null;
   qualityScore: number;
   reliabilityScore: number;
   priceScore: number;
@@ -447,7 +476,7 @@ interface Supplier {
   images?: string[];
   productUrl?: string;
   storeUrl?: string;
-  tradeAssurance?: boolean;
+  tradeAssurance?: boolean | null;
   goldSupplier?: boolean;
 }
 
@@ -501,6 +530,7 @@ export function SupplierResults() {
     displaySuppliers[0] as Supplier,
   );
   const [showFiltered, setShowFiltered] = useState(false);
+  const [sortBy, setSortBy] = useState("seal");
   const [savedSuppliers, setSavedSuppliers] = useState<number[]>([]);
   const [showContactModal, setShowContactModal] = useState(false);
   const [leadNotes, setLeadNotes] = useState("");
@@ -649,7 +679,7 @@ export function SupplierResults() {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto px-6 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
         {/* Title */}
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-[#0B3C5D] mb-2">
@@ -754,18 +784,22 @@ export function SupplierResults() {
         )}
 
         {/* Main Grid */}
-        <div className="grid lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Left: Supplier Cards ──────────────────────────────────────── */}
-          <div className="lg:col-span-2 space-y-4">
+          <div className="lg:col-span-2 space-y-4 min-w-0">
             {/* Sort Bar */}
             <div className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4">
               <Filter className="w-5 h-5 text-slate-400" />
-              <select className="flex-1 outline-none text-sm bg-transparent">
-                <option>{t("suppliers.aiRecommended")}</option>
-                <option>{t("suppliers.lowestPrice")}</option>
-                <option>{t("suppliers.highestAI")}</option>
-                <option>{t("suppliers.highestRating")}</option>
-                <option>{t("suppliers.lowestMOQ")}</option>
+              <select
+                value={sortBy}
+                onChange={(e) => setSortBy(e.target.value)}
+                className="flex-1 min-w-0 outline-none text-sm bg-transparent"
+              >
+                <option value="seal">{t("suppliers.aiRecommended")}</option>
+                <option value="price">{t("suppliers.lowestPrice")}</option>
+                <option value="trust">{t("suppliers.highestAI")}</option>
+                <option value="rating">{t("suppliers.highestRating")}</option>
+                <option value="moq">{t("suppliers.lowestMOQ")}</option>
               </select>
               <span className="text-sm text-slate-500">
                 {displaySuppliers.length} {t("suppliers.results")}
@@ -773,7 +807,7 @@ export function SupplierResults() {
             </div>
 
             {/* Supplier Cards */}
-            {displaySuppliers.map((supplier, index) => {
+            {sortSuppliers(displaySuppliers, sortBy).map((supplier, index) => {
               const images = getProductImages(supplier);
               return (
                 <div
@@ -785,7 +819,7 @@ export function SupplierResults() {
                   }`}
                 >
                   {/* Ranking Badge */}
-                  {index < 3 && (
+                  {sortBy === "seal" && index < 3 && (
                     <div
                       className={`absolute -top-3 -left-3 w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-lg z-10 ${
                         index === 0
@@ -801,50 +835,36 @@ export function SupplierResults() {
 
                   <div
                     onClick={() => setSelectedSupplier(supplier)}
-                    className="p-6"
+                    className="p-4 sm:p-6"
                   >
                     {/* Top Row */}
                     <div className="flex items-start justify-between mb-4">
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-2">
                           <h3 className="font-semibold text-[#0B3C5D]">
                             {supplier.name}
                           </h3>
-                          {supplier.verified && (
-                            <CheckCircle className="w-5 h-5 text-green-500" />
+                          {supplier.verifiedSupplier === true && (
+                            <CheckCircle className="w-5 h-5 text-green-500" aria-label="Verified Supplier" />
                           )}
                         </div>
 
-                        {/* AI Score Bar */}
+                        {/* Índice de Confianza SEAL */}
                         <div className="mb-3">
-                          <div className="flex items-center justify-between text-xs mb-1">
-                            <span className="text-slate-600">
-                              {t("suppliers.matchScore")}
-                            </span>
-                            <span
-                              className={`font-bold ${
-                                supplier.aiScore >= 90
-                                  ? "text-green-600"
-                                  : supplier.aiScore >= 80
-                                    ? "text-blue-600"
-                                    : "text-yellow-600"
-                              }`}
-                            >
-                              {supplier.aiScore}/100
+                          <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                            <TrustBadge supplier={supplier} size="sm" />
+                            <span className={`text-xs font-medium ${trustInfo(supplier).style.text}`}>
+                              {trustInfo(supplier).style.label}
                             </span>
                           </div>
-                          <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
-                            <div
-                              className={`h-full ${
-                                supplier.aiScore >= 90
-                                  ? "bg-gradient-to-r from-green-500 to-green-600"
-                                  : supplier.aiScore >= 80
-                                    ? "bg-gradient-to-r from-blue-500 to-blue-600"
-                                    : "bg-gradient-to-r from-yellow-500 to-yellow-600"
-                              }`}
-                              style={{ width: `${supplier.aiScore}%` }}
-                            />
-                          </div>
+                          <p className="text-xs text-slate-600">
+                            {[
+                              badgeText(supplier),
+                              ...trustInfo(supplier).breakdown
+                                .filter((b) => b.key !== "verification" && b.key !== "track" && b.score !== null && b.score >= 50)
+                                .map((b) => b.detail),
+                            ].join(" · ")}
+                          </p>
                         </div>
 
                         <div className="flex items-center gap-4 text-sm text-slate-600">
@@ -862,12 +882,12 @@ export function SupplierResults() {
                       </div>
 
                       {/* Price */}
-                      <div className="text-right ml-4">
+                      <div className="text-right ml-3 shrink-0">
                         {(() => {
                           const pi = supplierPriceInfo(supplier);
                           return (
                             <>
-                              <div className={`${pi.isRange ? "text-lg sm:text-xl" : "text-2xl"} font-bold text-[#0B3C5D] whitespace-nowrap`}>
+                              <div className={`${pi.isRange ? "text-base sm:text-xl" : "text-xl sm:text-2xl"} font-bold text-[#0B3C5D] sm:whitespace-nowrap`}>
                                 {pi.published}
                               </div>
                               <div className="text-sm text-slate-600">
@@ -885,7 +905,7 @@ export function SupplierResults() {
                     </div>
 
                     {/* Stats */}
-                    <div className="grid grid-cols-4 gap-3 mb-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
                       <div className="bg-slate-50 rounded-lg p-3">
                         <div className="text-xs text-slate-600 mb-1">
                           {t("suppliers.moq")}
@@ -910,12 +930,12 @@ export function SupplierResults() {
                           {supplier.responseRate != null ? `${supplier.responseRate}%` : "N/D"}
                         </div>
                       </div>
-                      <div className="bg-green-50 rounded-lg p-3">
-                        <div className="text-xs text-green-700 mb-1">
+                      <div className="bg-slate-50 rounded-lg p-3">
+                        <div className="text-xs text-slate-600 mb-1">
                           {t("suppliers.quality")}
                         </div>
-                        <div className="font-semibold text-green-700 text-sm">
-                          {supplier.qualityScore}
+                        <div className="font-semibold text-[#0B3C5D] text-sm">
+                          {supplier.tradeAssurance === true ? "Sí" : supplier.tradeAssurance === false ? "No" : "N/D"}
                         </div>
                       </div>
                     </div>
@@ -950,8 +970,8 @@ export function SupplierResults() {
                             alt={`Product view ${i + 1}`}
                             className="w-full h-24 object-cover transition-transform duration-300 ease-in-out group-hover:scale-110"
                             onError={(e) => {
-                              (e.target as HTMLImageElement).src =
-                                "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop";
+                              // No stock photo: an image that isn't the real product is hidden
+                              (e.target as HTMLImageElement).style.visibility = "hidden";
                             }}
                           />
                           {/* Hover overlay hint */}
@@ -1016,77 +1036,33 @@ export function SupplierResults() {
                 {t("suppliers.aiRanking")}
               </h2>
 
-              {/* Selected Supplier Scores */}
+              {/* Selected supplier: Índice de Confianza SEAL breakdown */}
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg">
-                <div className="font-semibold text-[#0B3C5D] mb-3 text-sm leading-tight">
+                <div className="font-semibold text-[#0B3C5D] mb-2 text-sm leading-tight">
                   {selectedSupplier.name}
                 </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">
-                      {t("suppliers.qualityScore")}
-                    </span>
-                    <span className="font-semibold text-green-600">
-                      {selectedSupplier.qualityScore}/100
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">
-                      {t("suppliers.reliabilityScore")}
-                    </span>
-                    <span className="font-semibold text-blue-600">
-                      {selectedSupplier.reliabilityScore}/100
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="text-slate-600">
-                      {t("suppliers.priceScore")}
-                    </span>
-                    <span className="font-semibold text-purple-600">
-                      {selectedSupplier.priceScore}/100
-                    </span>
-                  </div>
-                  <div className="pt-2 border-t border-blue-300 flex items-center justify-between">
-                    <span className="font-semibold text-[#0B3C5D]">
-                      {t("suppliers.overallScore")}
-                    </span>
-                    <span className="text-2xl font-bold text-[#0B3C5D]">
-                      {selectedSupplier.aiScore}
-                    </span>
-                  </div>
+                <div className="mb-3">
+                  <TrustBadge supplier={selectedSupplier} size="sm" />
+                </div>
+                <TrustBreakdown supplier={selectedSupplier} />
+                <div className="pt-2 mt-3 border-t border-blue-300 flex items-center justify-between">
+                  <span className="font-semibold text-[#0B3C5D]">
+                    {t("suppliers.overallScore")}
+                  </span>
+                  <span className="text-2xl font-bold text-[#0B3C5D]">
+                    {trustInfo(selectedSupplier).score}
+                  </span>
                 </div>
               </div>
 
-              {/* Insight Cards */}
-              <div className="space-y-3 mb-6">
-                <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <div className="font-medium text-green-900 mb-1">
-                        {t("suppliers.bestValue")}
-                      </div>
-                      <div className="text-sm text-green-700">
-                        {displaySuppliers[0]?.name}{" "}
-                        {t("suppliers.bestValueDesc")}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                  <div className="flex items-start gap-3">
-                    <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                    <div>
-                      <div className="font-medium text-yellow-900 mb-1">
-                        {t("suppliers.priceAlert")}
-                      </div>
-                      <div className="text-sm text-yellow-700">
-                        {t("suppliers.priceAlertDesc")}
-                      </div>
-                    </div>
-                  </div>
-                </div>
+              {/* How we order */}
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6 text-sm text-slate-700">
+                <div className="font-medium text-[#0B3C5D] mb-1">Cómo ordenamos</div>
+                <p>
+                  Primero por nivel de confianza (A alta, B buena, C media). Dentro de
+                  cada nivel, por menor precio. El precio no forma parte del Índice de
+                  Confianza.
+                </p>
               </div>
 
               {/* Cost Estimate */}
@@ -1166,7 +1142,7 @@ export function SupplierResults() {
                             {s.name.split(" ")[0]}
                           </span>
                           <span className="text-xs text-green-600 font-semibold">
-                            {s.aiScore}
+                            {trustInfo(s).level} · {trustInfo(s).score}
                           </span>
                         </div>
                       ))}
@@ -1222,7 +1198,7 @@ export function SupplierResults() {
                   <div className="flex items-center gap-2 mt-2">
                     <Award className="w-4 h-4 text-green-600" />
                     <span className="font-semibold text-green-600">
-                      Puntuación IA: {selectedSupplier.aiScore}/100
+                      Índice de Confianza SEAL: {trustInfo(selectedSupplier).score}/100 (nivel {trustInfo(selectedSupplier).level})
                     </span>
                   </div>
                 </div>

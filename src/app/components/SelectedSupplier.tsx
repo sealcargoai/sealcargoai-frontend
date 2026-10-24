@@ -18,6 +18,89 @@ export interface SelectedSupplierData {
   location?: string;
   productUrl?: string;
   storeUrl?: string;
+  verifiedSupplier?: boolean | null;
+  tradeAssurance?: boolean | null;
+  trustScore?: number;
+  trustLevel?: string;
+  trustBreakdown?: { key: string; label: string; weight: number; score: number | null; detail: string }[];
+  trustCoverage?: { available: number; total: number };
+  trustReasons?: string[];
+  aiScore?: number;
+}
+
+// ─── Índice de Confianza SEAL (computed in the backend) ─────────────────────
+export const TRUST_LEVELS: Record<string, { label: string; short: string; badge: string; text: string; bar: string }> = {
+  A: { label: "Confianza alta", short: "A", badge: "bg-green-100 text-green-800 border-green-300", text: "text-green-700", bar: "bg-green-500" },
+  B: { label: "Confianza buena", short: "B", badge: "bg-blue-100 text-blue-800 border-blue-300", text: "text-blue-700", bar: "bg-blue-500" },
+  C: { label: "Confianza media · se recomienda verificación", short: "C", badge: "bg-amber-100 text-amber-800 border-amber-300", text: "text-amber-700", bar: "bg-amber-500" },
+};
+
+export function trustInfo(s?: SelectedSupplierData | null) {
+  const score = s?.trustScore ?? s?.aiScore ?? 0;
+  const level = s?.trustLevel && TRUST_LEVELS[s.trustLevel] ? s.trustLevel : score >= 80 ? "A" : score >= 65 ? "B" : "C";
+  return {
+    score,
+    level,
+    style: TRUST_LEVELS[level],
+    breakdown: s?.trustBreakdown ?? [],
+    coverage: s?.trustCoverage,
+    reasons: s?.trustReasons ?? [],
+  };
+}
+
+/** Badge text for the supplier's Alibaba status, without overstating it. */
+export function badgeText(s?: SelectedSupplierData | null): string {
+  const years = s?.yearsInBusiness || 0;
+  const y = years ? ` · ${years} ${years === 1 ? "año" : "años"}` : "";
+  if (s?.verifiedSupplier === true) return `Verified Supplier (auditado)${y}`;
+  if (s?.goldSupplier || s?.verified) return `Gold Supplier${y}`;
+  return "Sin insignia de verificación";
+}
+
+export function TrustBadge({ supplier, size = "md" }: { supplier: SelectedSupplierData; size?: "sm" | "md" }) {
+  const ti = trustInfo(supplier);
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 border rounded-full font-semibold ${ti.style.badge} ${
+        size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm"
+      }`}
+      title="Índice de Confianza SEAL"
+    >
+      <ShieldCheck className={size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4"} />
+      Nivel {ti.level} · {ti.score}/100
+    </span>
+  );
+}
+
+/** Criteria breakdown of the Índice de Confianza SEAL. */
+export function TrustBreakdown({ supplier }: { supplier: SelectedSupplierData }) {
+  const ti = trustInfo(supplier);
+  if (!ti.breakdown.length) return null;
+  return (
+    <div className="space-y-3">
+      {ti.breakdown.map((b) => (
+        <div key={b.key}>
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="text-slate-700">
+              {b.label} <span className="text-xs text-slate-400">({b.weight}%)</span>
+            </span>
+            <span className={`font-semibold ${b.score === null ? "text-slate-400" : "text-[#0B3C5D]"}`}>
+              {b.score === null ? "N/D" : `${b.score}/100`}
+            </span>
+          </div>
+          <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
+            {b.score !== null && <div className={`h-full ${ti.style.bar}`} style={{ width: `${b.score}%` }} />}
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">{b.detail}</p>
+        </div>
+      ))}
+      {ti.coverage && (
+        <p className="text-xs text-slate-500">
+          Datos disponibles: {ti.coverage.available} de {ti.coverage.total}. Lo que no se publica no se inventa: su peso se reparte entre los criterios disponibles.
+        </p>
+      )}
+    </div>
+  );
 }
 
 const COUNTRY: Record<string, string> = {
@@ -67,8 +150,8 @@ export function hasUsableSupplier(s?: SelectedSupplierData | null): boolean {
 export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierData }) {
   const { used, isRange, published } = supplierPriceInfo(supplier);
   const link = supplier.productUrl || supplier.storeUrl;
-  const gold = supplier.goldSupplier || supplier.verified;
-  const years = supplier.yearsInBusiness || 0;
+  const gold = supplier.verifiedSupplier === true || supplier.goldSupplier || supplier.verified;
+  const hasTrust = supplier.trustScore !== undefined || supplier.aiScore !== undefined;
 
   return (
     <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-4 sm:p-6 mb-8">
@@ -80,6 +163,14 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
           <h2 className="text-lg sm:text-xl font-bold text-[#0B3C5D] break-words">
             {supplier.name}
           </h2>
+          {hasTrust && (
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <TrustBadge supplier={supplier} size="sm" />
+              <span className={`text-xs font-medium ${trustInfo(supplier).style.text}`}>
+                {trustInfo(supplier).style.label}
+              </span>
+            </div>
+          )}
           {supplier.productName && (
             <p className="text-sm text-slate-600 mt-1 break-words">{supplier.productName}</p>
           )}
@@ -90,9 +181,7 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Award className={`w-4 h-4 ${gold ? "text-amber-500" : "text-slate-400"}`} />
-              {gold
-                ? `Gold Supplier verificado${years ? ` · ${years} ${years === 1 ? "año" : "años"}` : ""}`
-                : "No verificado"}
+              {badgeText(supplier)}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Star className="w-4 h-4 text-slate-400" />
@@ -171,7 +260,7 @@ export function NoSupplierNotice({ hasSupplierWithoutPrice }: { hasSupplierWitho
 
 // ─── Disclaimer + SEAL supplier verification in China (paid add-on) ─────────
 export const SEAL_DISCLAIMER =
-  "SEAL no garantiza a los proveedores ni los resultados de esta búsqueda. SmartTrade AI es una herramienta para organizar y comparar proveedores con los datos que publica Alibaba. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.";
+  "SEAL no garantiza a los proveedores ni los resultados de esta búsqueda. SmartTrade AI es una herramienta para organizar y comparar proveedores. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 

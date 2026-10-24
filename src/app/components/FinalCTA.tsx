@@ -18,7 +18,7 @@ import autoTable from "jspdf-autotable";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, SEAL_DISCLAIMER } from "./SelectedSupplier";
+import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, SEAL_DISCLAIMER, badgeText, TrustBadge } from "./SelectedSupplier";
 import { calculateRiskScore } from "./RiskCompliance";
 import {
   SEAL_COMPANY,
@@ -599,11 +599,13 @@ export function FinalCTA() {
               </div>
               <div className="flex items-center gap-1 text-sm text-blue-700">
                 <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                {stateSupplier?.rating ?? "Sin reseñas"} •{" "}
-                {stateSupplier?.verified
-                  ? t("final.verified")
-                  : t("final.standard")}
+                {stateSupplier?.rating ?? "Sin reseñas"} • {badgeText(stateSupplier)}
               </div>
+              {(stateSupplier?.trustScore !== undefined || stateSupplier?.aiScore !== undefined) && (
+                <div className="mt-2">
+                  <TrustBadge supplier={stateSupplier} size="sm" />
+                </div>
+              )}
             </div>
 
             <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
