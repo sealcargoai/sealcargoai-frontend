@@ -18,6 +18,7 @@ export interface Rates {
   customsFees: number;      // SEAL customs brokerage fee
   localCharges: number;     // destination charges
   transitDays: string;      // shown to the user
+  exchangeRate: number;     // reference GTQ per 1 USD (costs are shown in quetzales)
 }
 
 export const DEFAULT_RATES: Rates = {
@@ -35,7 +36,23 @@ export const DEFAULT_RATES: Rates = {
   customsFees: 200,
   localCharges: 450,
   transitDays: "30-45",
+  exchangeRate: 7.9,
 };
+
+// Rates and costs are kept in USD; everything shown to the client is in quetzales
+export function formatQ(usdAmount: number, exchangeRate: number, decimals = 0): string {
+  return `Q${(usdAmount * exchangeRate).toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
+}
+
+export function formatUSD(usdAmount: number, decimals = 0): string {
+  return `US$${usdAmount.toLocaleString("en-US", {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  })}`;
+}
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 let ratesCache: Rates | null = null;
@@ -96,9 +113,10 @@ export interface CostResult {
   insuranceRate: number;
   lines: CostLine[];
   noVatNote: string;
+  exchangeRate: number;
+  fxNote: string;
 }
 
-const usd = (n: number) => `$${Math.round(n).toLocaleString("en-US")}`;
 
 export function calculateFreight(
   volumeCbm: number,
@@ -117,7 +135,7 @@ export function calculateFreight(
     return {
       amount: Math.round(perCbm * cbm),
       mode: "LCL",
-      detail: `Carga consolidada • ${cbm.toFixed(2)} m³ × ${usd(perCbm)}/m³ • ${rates.transitDays} días`,
+      detail: `Carga consolidada • ${cbm.toFixed(2)} m³ × ${formatQ(perCbm, rates.exchangeRate)}/m³ • ${rates.transitDays} días`,
       chargeableCbm: cbm,
     };
   }
@@ -168,7 +186,7 @@ export function calculateCosts(
     {
       key: "product",
       label: "Costo de producto (FOB)",
-      detail: `${quantity.toLocaleString("en-US")} unidades × $${Number(params.price).toFixed(2)}`,
+      detail: `${quantity.toLocaleString("en-US")} unidades × ${formatUSD(Number(params.price), 2)} (${formatQ(Number(params.price), rates.exchangeRate, 2)} c/u)`,
       amount: productCost,
       color: "#0B3C5D",
     },
@@ -182,14 +200,14 @@ export function calculateCosts(
     {
       key: "insurance",
       label: "Seguro de carga",
-      detail: `${pct(rates.insuranceRate)} del valor FOB • mínimo ${usd(rates.insuranceMin)}`,
+      detail: `${pct(rates.insuranceRate)} del valor FOB • mínimo ${formatQ(rates.insuranceMin, rates.exchangeRate)}`,
       amount: insurance,
       color: "#BFDBFE",
     },
     {
       key: "duties",
       label: "DAI (arancel)",
-      detail: `${pct(rates.dutyRate)} sobre valor CIF ${usd(cif)}`,
+      detail: `${pct(rates.dutyRate)} sobre valor CIF ${formatQ(cif, rates.exchangeRate)}`,
       amount: importDuties,
       color: "#60A5FA",
     },
@@ -238,5 +256,7 @@ export function calculateCosts(
     insuranceRate: rates.insuranceRate,
     lines,
     noVatNote: "* Costos internacionales sin IVA",
+    exchangeRate: rates.exchangeRate,
+    fxNote: `Montos en quetzales con tipo de cambio referencial de Q${rates.exchangeRate.toFixed(2)} por US$1. El monto final depende del tipo de cambio del día.`,
   };
 }

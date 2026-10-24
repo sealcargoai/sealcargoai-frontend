@@ -92,10 +92,14 @@ export interface ExcelExportData {
     lines?: { key: string; label: string; detail: string; amount: number }[];
     noVatNote?: string;
     freightPending?: boolean;
+    exchangeRate?: number; // GTQ per USD — amounts are written in quetzales
+    fxNote?: string;
   };
   vatRate: number;
   insuranceRate: number;
 }
+
+const DEFAULT_FX = 7.9;
 
 export async function generateBeautifulExcel(
   data: ExcelExportData,
@@ -115,7 +119,7 @@ export async function generateBeautifulExcel(
     { width: 28 }, // A: Concepto
     { width: 38 }, // B: Detalle
     { width: 14 }, // C: Tasa Aplicada (NEW)
-    { width: 16 }, // D: Monto (USD)
+    { width: 16 }, // D: Monto (Q)
     { width: 12 }, // E: % del Total
   ];
 
@@ -223,9 +227,9 @@ export async function generateBeautifulExcel(
   const orderRows = [
     ["Proveedor:", data.supplierName],
     ["Tipo de Producto:", data.productType],
-    ["País de Destino:", data.destination],
+    ["País de Destino:", "Guatemala"],
     ["Cantidad:", `${data.quantity.toLocaleString()} unidades`],
-    ["Precio Unitario:", `$${Number(data.price).toFixed(2)}`],
+    ["Precio Unitario:", `US$${Number(data.price).toFixed(2)} (Q${(Number(data.price) * (data.costs.exchangeRate || DEFAULT_FX)).toFixed(2)})`],
   ];
 
   orderRows.forEach((row, i) => {
@@ -275,7 +279,7 @@ export async function generateBeautifulExcel(
     "CONCEPTO",
     "DETALLE",
     "TASA APLICADA",
-    "MONTO (USD)",
+    "MONTO (Q)",
     "% DEL TOTAL",
   ];
   headers.forEach((header, i) => {
@@ -316,7 +320,8 @@ export async function generateBeautifulExcel(
       RATE_BY_KEY[l.key] !== undefined
         ? `${((RATE_BY_KEY[l.key] as number) * 100).toFixed(0)}%`
         : "—",
-    amount: l.amount,
+    amount: l.amount * (data.costs.exchangeRate || DEFAULT_FX),
+    pending: l.key === "freight" && !!data.costs.freightPending,
     isRate: RATE_BY_KEY[l.key] !== undefined,
     rateKey: l.key,
   }));
@@ -363,8 +368,8 @@ export async function generateBeautifulExcel(
     };
     appliedRateCell.alignment = { vertical: "middle", horizontal: "center" };
 
-    amountCell.value = row.amount;
-    amountCell.numFmt = '"$"#,##0';
+    amountCell.value = row.pending ? "Por cotizar" : Math.round(row.amount);
+    amountCell.numFmt = '"Q"#,##0';
     amountCell.font = {
       name: "Arial",
       size: 10,
@@ -385,7 +390,7 @@ export async function generateBeautifulExcel(
     } else if (row.concept === "Aranceles de Importación" || row.rateKey === "duties") {
       percentDisplay = `${(data.costs.dutyRate * 100).toFixed(0)}%`;
     } else {
-      percentDisplay = `${((row.amount / data.costs.totalCost) * 100).toFixed(1)}%`;
+      percentDisplay = `${((row.amount / (data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX))) * 100).toFixed(1)}%`;
     }
     percentCell.value = percentDisplay;
     percentCell.font = { name: "Arial", size: 10, color: { argb: "FF64748B" } };
@@ -430,11 +435,11 @@ export async function generateBeautifulExcel(
   const totalAmountCell = ws.getRow(totalRowNum).getCell(4);
   const totalPctCell = ws.getRow(totalRowNum).getCell(5);
 
-  totalConceptCell.value = "COSTO TOTAL LANDED";
+  totalConceptCell.value = "COSTO TOTAL EN GUATEMALA";
   totalDetailCell.value = `${data.quantity.toLocaleString()} unidades`;
   totalRateCell.value = "—";
-  totalAmountCell.value = data.costs.totalCost;
-  totalAmountCell.numFmt = '"$"#,##0';
+  totalAmountCell.value = Math.round(data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX));
+  totalAmountCell.numFmt = '"Q"#,##0';
   totalPctCell.value = "100%";
 
   [
@@ -477,8 +482,8 @@ export async function generateBeautifulExcel(
   const perUnitEmpty = ws.getCell(`E${perUnitRowNum}`);
 
   perUnitLabel.value = "COSTO POR UNIDAD";
-  perUnitValue.value = data.costs.perUnit;
-  perUnitValue.numFmt = '"$"#,##0.00';
+  perUnitValue.value = Math.round(data.costs.perUnit * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100;
+  perUnitValue.numFmt = '"Q"#,##0.00';
 
   [perUnitLabel, perUnitValue, perUnitEmpty].forEach((cell, i) => {
     cell.font = {
@@ -512,7 +517,7 @@ export async function generateBeautifulExcel(
   ws.mergeCells(`A${f1}:E${f1}`);
   const footerCell = ws.getCell(`A${f1}`);
   footerCell.value =
-    `Este análisis es una estimación. Los costos reales pueden variar.${data.costs.noVatNote ? "  " + data.costs.noVatNote + "." : ""}`;
+    `Este análisis es una estimación. Los costos reales pueden variar.${data.costs.noVatNote ? "  " + data.costs.noVatNote + "." : ""}${data.costs.fxNote ? "  " + data.costs.fxNote : ""}`;
   footerCell.font = {
     name: "Arial",
     size: 9,
