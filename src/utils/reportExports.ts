@@ -88,6 +88,10 @@ export interface ExcelExportData {
     totalCost: number;
     perUnit: number;
     dutyRate: number;
+    // From utils/costCalculator — when present, rows are built from it
+    lines?: { key: string; label: string; detail: string; amount: number }[];
+    noVatNote?: string;
+    freightPending?: boolean;
   };
   vatRate: number;
   insuranceRate: number;
@@ -298,44 +302,24 @@ export async function generateBeautifulExcel(
   });
   ws.getRow(15).height = 26;
 
-  // Data rows 16-20 — Each item has appliedRate (the actual % the client wants)
-  const dataRows = [
-    {
-      concept: "Costo de Producto",
-      detail: `${data.quantity.toLocaleString()} unidades × $${Number(data.price).toFixed(2)}`,
-      appliedRate: "—",
-      amount: data.costs.productCost,
-      isRate: false,
-    },
-    {
-      concept: "Flete Marítimo",
-      detail: `Envío a ${data.destination} (~25 días tránsito)`,
-      appliedRate: "—",
-      amount: data.costs.shipping,
-      isRate: false,
-    },
-    {
-      concept: "Aranceles de Importación",
-      detail: `Tasa para ${data.productType}`,
-      appliedRate: `${(data.costs.dutyRate * 100).toFixed(0)}%`,
-      amount: data.costs.importDuties,
-      isRate: true,
-    },
-    {
-      concept: "IVA & Impuestos",
-      detail: "Sobre producto + aranceles",
-      appliedRate: `${(data.vatRate * 100).toFixed(0)}%`, // ✅ 12%
-      amount: data.costs.taxes,
-      isRate: true,
-    },
-    {
-      concept: "Seguro de Carga",
-      detail: "Cobertura completa del valor",
-      appliedRate: `${(data.insuranceRate * 100).toFixed(0)}%`, // ✅ 1%
-      amount: data.costs.insurance,
-      isRate: true,
-    },
-  ];
+  // Data rows from row 16 — one per cost line (utils/costCalculator)
+  const RATE_BY_KEY: Record<string, number | undefined> = {
+    duties: data.costs.dutyRate,
+    vat: data.vatRate,
+    insurance: data.insuranceRate,
+  };
+  const dataRows = (data.costs.lines || []).map((l) => ({
+    concept: l.label,
+    detail:
+      l.key === "freight" && data.costs.freightPending ? "Por cotizar" : l.detail,
+    appliedRate:
+      RATE_BY_KEY[l.key] !== undefined
+        ? `${((RATE_BY_KEY[l.key] as number) * 100).toFixed(0)}%`
+        : "—",
+    amount: l.amount,
+    isRate: RATE_BY_KEY[l.key] !== undefined,
+    rateKey: l.key,
+  }));
 
   dataRows.forEach((row, i) => {
     const rowNum = 16 + i;
@@ -394,11 +378,11 @@ export async function generateBeautifulExcel(
     };
 
     let percentDisplay: string;
-    if (row.concept === "IVA & Impuestos") {
+    if (row.concept === "IVA & Impuestos" || row.rateKey === "vat") {
       percentDisplay = `${(data.vatRate * 100).toFixed(0)}%`; // 12%
-    } else if (row.concept === "Seguro de Carga") {
+    } else if (row.concept === "Seguro de Carga" || row.rateKey === "insurance") {
       percentDisplay = `${(data.insuranceRate * 100).toFixed(0)}%`; // 1%
-    } else if (row.concept === "Aranceles de Importación") {
+    } else if (row.concept === "Aranceles de Importación" || row.rateKey === "duties") {
       percentDisplay = `${(data.costs.dutyRate * 100).toFixed(0)}%`;
     } else {
       percentDisplay = `${((row.amount / data.costs.totalCost) * 100).toFixed(1)}%`;
@@ -439,7 +423,7 @@ export async function generateBeautifulExcel(
   });
 
   // ═══ TOTAL ROW (row 21) ═══════════════════════════════════════════════════
-  const totalRowNum = 21;
+  const totalRowNum = 16 + dataRows.length;
   const totalConceptCell = ws.getRow(totalRowNum).getCell(1);
   const totalDetailCell = ws.getRow(totalRowNum).getCell(2);
   const totalRateCell = ws.getRow(totalRowNum).getCell(3);
@@ -486,7 +470,7 @@ export async function generateBeautifulExcel(
   ws.getRow(totalRowNum).height = 28;
 
   // ═══ PER UNIT ROW (row 22) ════════════════════════════════════════════════
-  const perUnitRowNum = 22;
+  const perUnitRowNum = totalRowNum + 1;
   ws.mergeCells(`A${perUnitRowNum}:C${perUnitRowNum}`);
   const perUnitLabel = ws.getCell(`A${perUnitRowNum}`);
   const perUnitValue = ws.getCell(`D${perUnitRowNum}`);
@@ -522,11 +506,13 @@ export async function generateBeautifulExcel(
   });
   ws.getRow(perUnitRowNum).height = 24;
 
-  // ═══ FOOTER (rows 24-25) ══════════════════════════════════════════════════
-  ws.mergeCells("A24:E24");
-  const footerCell = ws.getCell("A24");
+  // ═══ FOOTER (after per-unit row) ══════════════════════════════════════════════════
+  const f1 = perUnitRowNum + 2;
+  const f2 = perUnitRowNum + 3;
+  ws.mergeCells(`A${f1}:E${f1}`);
+  const footerCell = ws.getCell(`A${f1}`);
   footerCell.value =
-    "Este análisis es una estimación. Los costos reales pueden variar.";
+    `Este análisis es una estimación. Los costos reales pueden variar.${data.costs.noVatNote ? "  " + data.costs.noVatNote + "." : ""}`;
   footerCell.font = {
     name: "Arial",
     size: 9,
@@ -534,10 +520,10 @@ export async function generateBeautifulExcel(
     color: { argb: "FF64748B" },
   };
   footerCell.alignment = { vertical: "middle", horizontal: "center" };
-  ws.getRow(24).height = 18;
+  ws.getRow(f1).height = 18;
 
-  ws.mergeCells("A25:E25");
-  const footerCell2 = ws.getCell("A25");
+  ws.mergeCells(`A${f2}:E${f2}`);
+  const footerCell2 = ws.getCell(`A${f2}`);
   footerCell2.value = `${SEAL_COMPANY.name}  •  ${SEAL_COMPANY.phone}`;
   footerCell2.font = {
     name: "Arial",
@@ -546,7 +532,7 @@ export async function generateBeautifulExcel(
     color: { argb: "FF0B3C5D" },
   };
   footerCell2.alignment = { vertical: "middle", horizontal: "center" };
-  ws.getRow(25).height = 18;
+  ws.getRow(f2).height = 18;
 
   // ─── Save file ───
   const buffer = await wb.xlsx.writeBuffer();
