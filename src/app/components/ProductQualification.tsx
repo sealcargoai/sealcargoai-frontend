@@ -21,11 +21,13 @@ import {
 
 // The product is now free text. Downstream screens (costs, risk) still use a
 // category key, so we infer one from the description.
+// Order matters: machinery first (machines mention electrical specs). Short
+// words use \b so e.g. "aplicables" doesn't match "cable".
 const CATEGORY_KEYWORDS: Record<string, RegExp> = {
-  electronics: /electr[oó]nic|electronic|celular|tel[eé]fono|phone|laptop|computador|tablet|cargador|charger|bater[ií]a|battery|led|cable|aud[ií]fono|headphone|bocina|speaker|c[aá]mara|camera|monitor|televisor|\btv\b|chip|circuit/i,
-  textiles: /textil|tela|fabric|ropa|clothing|camis|shirt|pantal[oó]n|pants|vestido|dress|algod[oó]n|cotton|poli[eé]ster|polyester|uniforme|uniform|toalla|towel|zapato|shoe|calzado|bota|boot|gorra|cap/i,
-  furniture: /mueble|furniture|silla|chair|mesa|table|escritorio|desk|sof[aá]|sill[oó]n|cama|\bbed\b|colch[oó]n|mattress|gabinete|cabinet|estanter|shelf|closet|ropero/i,
-  machinery: /m[aá]quina|machine|maquinaria|machinery|equipo industrial|industrial equipment|motor|bomba|pump|compresor|compressor|generador|generator|torno|lathe|cnc|montacarga|forklift|excavadora|excavator|envasadora|empacadora|packing machine|horno industrial/i,
+  machinery: /m[aá]quina|machine|maquinaria|machinery|equipo industrial|industrial equipment|\bmotor(es)?\b|\bbomba|\bpump|compresor|compressor|generador|generator|\btorno|\blathe|\bcnc\b|montacarga|forklift|excavadora|excavator|envasadora|empacadora|packing machine|horno industrial/i,
+  electronics: /electr[oó]nic|electronic|celular|tel[eé]fono|\bphone|laptop|computador|tablet|cargador|charger|bater[ií]a|battery|\bleds?\b|\bcables?\b|aud[ií]fono|headphone|bocina|speaker|c[aá]mara|camera|\bmonitor|televisor|\btv\b|\bchips?\b|circuit/i,
+  textiles: /textil|\btela|fabric|\bropa\b|clothing|camis|shirt|pantal[oó]n|\bpants\b|vestido|\bdress|algod[oó]n|cotton|poli[eé]ster|polyester|uniforme|uniform|toalla|towel|zapato|\bshoe|calzado|\bbotas?\b|\bboots?\b|\bgorras?\b|\bcaps?\b/i,
+  furniture: /mueble|furniture|\bsillas?\b|\bchairs?\b|\bmesas?\b|\btables?\b|escritorio|\bdesk|sof[aá]|sill[oó]n|\bcamas?\b|\bbeds?\b|colch[oó]n|mattress|gabinete|cabinet|estanter|\bshelf|closet|ropero/i,
 };
 
 // Field limits (shown to the client next to each field)

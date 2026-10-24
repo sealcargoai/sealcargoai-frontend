@@ -29,6 +29,7 @@ import {
   SupplierDisclaimer,
   TrustBadge,
   TrustBreakdown,
+  CertificationsLine,
   trustInfo,
   badgeText,
 } from "./SelectedSupplier";
@@ -865,6 +866,7 @@ export function SupplierResults() {
                                 .map((b) => b.detail),
                             ].join(" · ")}
                           </p>
+                          <CertificationsLine supplier={supplier} />
                         </div>
 
                         <div className="flex items-center gap-4 text-sm text-slate-600">

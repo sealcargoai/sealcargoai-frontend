@@ -20,6 +20,8 @@ export interface SelectedSupplierData {
   storeUrl?: string;
   verifiedSupplier?: boolean | null;
   tradeAssurance?: boolean | null;
+  storeRating?: number | null;
+  certifications?: string[];
   trustScore?: number;
   trustLevel?: string;
   trustBreakdown?: { key: string; label: string; weight: number; score: number | null; detail: string }[];
@@ -69,6 +71,19 @@ export function TrustBadge({ supplier, size = "md" }: { supplier: SelectedSuppli
       <ShieldCheck className={size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4"} />
       Nivel {ti.level} · {ti.score}/100
     </span>
+  );
+}
+
+/** Certifications the supplier declares on Alibaba (not verified by SEAL). */
+export function CertificationsLine({ supplier }: { supplier: SelectedSupplierData }) {
+  const certs = supplier.certifications ?? [];
+  if (!certs.length) return null;
+  return (
+    <p className="text-xs text-slate-600 mt-2">
+      <span className="font-medium">Certificaciones declaradas por el proveedor:</span>{" "}
+      <span>{certs.join(", ")}</span>{" "}
+      <span className="text-slate-400">(sin verificar)</span>
+    </p>
   );
 }
 
@@ -193,7 +208,14 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
               <Package className="w-4 h-4 text-slate-400" />
               Pedido mínimo: {supplier.moq ? `${supplier.moq.toLocaleString()} uds.` : "N/D"}
             </span>
+            {supplier.storeRating ? (
+              <span className="inline-flex items-center gap-1.5">
+                <Star className="w-4 h-4 text-slate-400" />
+                Servicio del proveedor: {supplier.storeRating.toFixed(1)}/5
+              </span>
+            ) : null}
           </div>
+          <CertificationsLine supplier={supplier} />
         </div>
 
         <div className="sm:text-right shrink-0">
