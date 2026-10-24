@@ -12,6 +12,7 @@ import {
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
+import { Lx, unitsWord } from "../../utils/lang";
 import {
   canUserSearch,
   recordSearch,
@@ -26,6 +27,7 @@ import {
 const CATEGORY_KEYWORDS: Record<string, RegExp> = {
   machinery: /m[aá]quina|machine|maquinaria|machinery|equipo industrial|industrial equipment|\bmotor(es)?\b|\bbomba|\bpump|compresor|compressor|generador|generator|\btorno|\blathe|\bcnc\b|montacarga|forklift|excavadora|excavator|envasadora|empacadora|packing machine|horno industrial/i,
   electronics: /electr[oó]nic|electronic|celular|tel[eé]fono|\bphone|laptop|computador|tablet|cargador|charger|bater[ií]a|battery|\bleds?\b|\bcables?\b|aud[ií]fono|headphone|bocina|speaker|c[aá]mara|camera|\bmonitor|televisor|\btv\b|\bchips?\b|circuit/i,
+  food: /\balimentos?\b|\bcomida\b|\bfood\b|\bsnacks?\b|\bbebidas?\b|\bbeverages?\b|\bcaf[eé]\b|\bcoffee\b|\bt[eé]\b|\btea\b|\bdulces?\b|\bcandy\b|\bgalletas?\b|\bcookies?\b|\bsalsa|\bespecias\b|\bspices?\b|\bharina\b|\bflour\b|\bconservas?\b/i,
   textiles: /textil|\btela|fabric|\bropa\b|clothing|camis|shirt|pantal[oó]n|\bpants\b|vestido|\bdress|algod[oó]n|cotton|poli[eé]ster|polyester|uniforme|uniform|toalla|towel|zapato|\bshoe|calzado|\bbotas?\b|\bboots?\b|\bgorras?\b|\bcaps?\b/i,
   furniture: /mueble|furniture|\bsillas?\b|\bchairs?\b|\bmesas?\b|\btables?\b|escritorio|\bdesk|sof[aá]|sill[oó]n|\bcamas?\b|\bbeds?\b|colch[oó]n|mattress|gabinete|cabinet|estanter|\bshelf|closet|ropero/i,
 };
@@ -60,28 +62,28 @@ function fieldError(name: string, value: string): string {
   const n = Number(v);
   switch (name) {
     case "productType":
-      if (v.length < LIMITS.productMin) return `Describa el producto con al menos ${LIMITS.productMin} caracteres.`;
-      if (v.length > LIMITS.productMax) return `Máximo ${LIMITS.productMax.toLocaleString()} caracteres.`;
+      if (v.length < LIMITS.productMin) return Lx(`Describa el producto con al menos ${LIMITS.productMin} caracteres.`, `Describe the product with at least ${LIMITS.productMin} characters.`);
+      if (v.length > LIMITS.productMax) return Lx(`Máximo ${LIMITS.productMax.toLocaleString()} caracteres.`, `Maximum ${LIMITS.productMax.toLocaleString()} characters.`);
       return "";
     case "quantity":
-      if (!v) return "La cantidad es obligatoria.";
-      if (!Number.isInteger(n) || n < 1) return "Escriba una cantidad entera mayor a 0.";
-      if (n > LIMITS.quantityMax) return `Máximo ${LIMITS.quantityMax.toLocaleString()} unidades.`;
+      if (!v) return Lx("La cantidad es obligatoria.", "Quantity is required.");
+      if (!Number.isInteger(n) || n < 1) return Lx("Escriba una cantidad entera mayor a 0.", "Enter a whole number greater than 0.");
+      if (n > LIMITS.quantityMax) return Lx(`Máximo ${LIMITS.quantityMax.toLocaleString()} unidades.`, `Maximum ${LIMITS.quantityMax.toLocaleString()} units.`);
       return "";
     case "budget":
       if (!v) return "";
-      if (!(n > 0)) return "El presupuesto debe ser mayor a 0.";
-      if (n > LIMITS.budgetMax) return `Máximo US$${LIMITS.budgetMax.toLocaleString()}.`;
+      if (!(n > 0)) return Lx("El presupuesto debe ser mayor a 0.", "Budget must be greater than 0.");
+      if (n > LIMITS.budgetMax) return Lx(`Máximo US$${LIMITS.budgetMax.toLocaleString()}.`, `Maximum US$${LIMITS.budgetMax.toLocaleString()}.`);
       return "";
     case "volumeCbm":
       if (!v) return "";
-      if (!(n > 0)) return "El volumen debe ser mayor a 0.";
-      if (n > LIMITS.volumeMax) return `Máximo ${LIMITS.volumeMax.toLocaleString()} m³.`;
+      if (!(n > 0)) return Lx("El volumen debe ser mayor a 0.", "Volume must be greater than 0.");
+      if (n > LIMITS.volumeMax) return Lx(`Máximo ${LIMITS.volumeMax.toLocaleString()} m³.`, `Maximum ${LIMITS.volumeMax.toLocaleString()} m³.`);
       return "";
     case "weightKg":
       if (!v) return "";
-      if (!(n > 0)) return "El peso debe ser mayor a 0.";
-      if (n > LIMITS.weightMax) return `Máximo ${LIMITS.weightMax.toLocaleString()} kg.`;
+      if (!(n > 0)) return Lx("El peso debe ser mayor a 0.", "Weight must be greater than 0.");
+      if (n > LIMITS.weightMax) return Lx(`Máximo ${LIMITS.weightMax.toLocaleString()} kg.`, `Maximum ${LIMITS.weightMax.toLocaleString()} kg.`);
       return "";
   }
   return "";
@@ -97,7 +99,7 @@ function inferCategory(description: string): string {
 export function ProductQualification() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useLanguage();
+  const { t, L } = useLanguage();
 
   // Read original search query forwarded from chat/landing
   const userQuery = location.state?.query || "";
@@ -222,7 +224,7 @@ export function ProductQualification() {
 
     if (Object.values(errors).some(Boolean)) {
       setTouched({ productType: true, quantity: true, budget: true, volumeCbm: true, weightKg: true });
-      setError("Revise los datos marcados en rojo antes de buscar.");
+      setError(L("Revise los datos marcados en rojo antes de buscar.", "Check the fields marked in red before searching."));
       return;
     }
 
@@ -295,7 +297,10 @@ export function ProductQualification() {
       // Stay here: the data stays in the form and the search is not counted
       setSearchFailed(true);
       setError(
-        "No pudimos completar la consulta en este momento. Puedes intentarlo nuevamente o pedir al equipo de SEAL que revise tu caso.",
+        L(
+          "No pudimos completar la consulta en este momento. Puedes intentarlo nuevamente o pedir al equipo de SEAL que revise tu caso.",
+          "We couldn't complete the search right now. You can try again or ask the SEAL team to review your case.",
+        ),
       );
     } finally {
       clearTimeout(timer);
@@ -363,8 +368,11 @@ export function ProductQualification() {
             }`}>
             <span>
               {remainingSearches === 0
-                ? "🔒 Sin búsquedas disponibles"
-                : `🔍 ${remainingSearches} búsqueda${remainingSearches !== 1 ? "s" : ""} restante${remainingSearches !== 1 ? "s" : ""} de ${getSearchLimit()}`
+                ? L("🔒 Sin búsquedas disponibles", "🔒 No searches left")
+                : L(
+                    `🔍 ${remainingSearches} búsqueda${remainingSearches !== 1 ? "s" : ""} restante${remainingSearches !== 1 ? "s" : ""} de ${getSearchLimit()}`,
+                    `🔍 ${remainingSearches} search${remainingSearches !== 1 ? "es" : ""} left of ${getSearchLimit()}`,
+                  )
               }
             </span>
           </div>
@@ -402,7 +410,7 @@ export function ProductQualification() {
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[180px] leading-relaxed"
                 />
                 <div className="flex justify-between gap-3 text-xs text-slate-500">
-                  <span>{t("qualification.productHelp")} (mínimo {LIMITS.productMin} caracteres)</span>
+                  <span>{t("qualification.productHelp")} {L(`(mínimo ${LIMITS.productMin} caracteres)`, `(minimum ${LIMITS.productMin} characters)`)}</span>
                   <span className="shrink-0">
                     {formData.productType.length.toLocaleString()}/{LIMITS.productMax.toLocaleString()}
                   </span>
@@ -434,7 +442,7 @@ export function ProductQualification() {
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="text-xs text-slate-500 mt-1">
-                    <span>Obligatoria · número entero de 1 a {LIMITS.quantityMax.toLocaleString()}</span>
+                    <span>{L(`Obligatoria · número entero de 1 a ${LIMITS.quantityMax.toLocaleString()}`, `Required · whole number from 1 to ${LIMITS.quantityMax.toLocaleString()}`)}</span>
                   </p>
                   {showErr("quantity")}
                 </div>
@@ -443,7 +451,7 @@ export function ProductQualification() {
                   <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
                     <DollarSign className="w-4 h-4" />
                     {t("qualification.budget")}{" "}
-                    <span className="text-slate-400 font-normal">(opcional)</span>
+                    <span className="text-slate-400 font-normal">{L("(opcional)", "(optional)")}</span>
                   </label>
                   <input
                     type="number"
@@ -458,7 +466,7 @@ export function ProductQualification() {
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="text-xs text-slate-500 mt-1">
-                    <span>Total de la compra en dólares, hasta US${LIMITS.budgetMax.toLocaleString()}</span>
+                    <span>{L(`Total de la compra en dólares, hasta US$${LIMITS.budgetMax.toLocaleString()}`, `Total purchase in dollars, up to US$${LIMITS.budgetMax.toLocaleString()}`)}</span>
                   </p>
                   {showErr("budget")}
                 </div>
@@ -466,7 +474,7 @@ export function ProductQualification() {
                   <div>
                     <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
                       <Box className="w-4 h-4" />
-                      Volumen aproximado (m³)
+                      <span>{L("Volumen aproximado (m³)", "Approximate volume (m³)")}</span>
                     </label>
                     <input
                       type="number"
@@ -478,7 +486,7 @@ export function ProductQualification() {
                       }
                       onBlur={() => touch("volumeCbm")}
                       max={LIMITS.volumeMax}
-                      placeholder="ej. 3.5"
+                      placeholder={L("ej. 3.5", "e.g. 3.5")}
                       className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     {showErr("volumeCbm")}
@@ -486,7 +494,7 @@ export function ProductQualification() {
                   <div>
                     <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
                       <Weight className="w-4 h-4" />
-                      Peso aproximado (kg)
+                      <span>{L("Peso aproximado (kg)", "Approximate weight (kg)")}</span>
                     </label>
                     <input
                       type="number"
@@ -498,7 +506,7 @@ export function ProductQualification() {
                       }
                       onBlur={() => touch("weightKg")}
                       max={LIMITS.weightMax}
-                      placeholder="ej. 800"
+                      placeholder={L("ej. 800", "e.g. 800")}
                       className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
                     {showErr("weightKg")}
@@ -506,8 +514,10 @@ export function ProductQualification() {
                 </div>
                 <p className="text-xs text-slate-500 -mt-2">
                   <span>
-                    Opcional, pero con el volumen o el peso le estimamos el flete.
-                    Si no lo sabe, déjelo en blanco y un ejecutivo de SEAL se lo cotiza.
+                    {L(
+                      "Opcional, pero con el volumen o el peso le estimamos el flete. Si no lo sabe, déjelo en blanco y un ejecutivo de SEAL se lo cotiza.",
+                      "Optional, but with the volume or weight we estimate the freight. If you don't know it, leave it blank and a SEAL executive will quote it.",
+                    )}
                   </span>
                 </p>
               </div>
@@ -533,8 +543,10 @@ export function ProductQualification() {
                   </select>
                   <p className="text-xs text-slate-500 mt-1">
                     <span>
-                      SmartTrade AI está enfocado en importaciones hacia Guatemala: la estimación usa
-                      los impuestos y gastos de Guatemala.
+                      {L(
+                        "SmartTrade AI está enfocado en importaciones hacia Guatemala: la estimación usa los impuestos y gastos de Guatemala.",
+                        "SmartTrade AI focuses on imports into Guatemala: the estimate uses Guatemala's taxes and charges.",
+                      )}
                     </span>
                   </p>
                 </div>
@@ -555,16 +567,16 @@ export function ProductQualification() {
                       <span className="font-medium">
                         {t("qualification.quantity")}:
                       </span>{" "}
-                      {Number(formData.quantity || 0).toLocaleString()} unidades
+                      {Number(formData.quantity || 0).toLocaleString()} {unitsWord(Number(formData.quantity || 0))}
                     </p>
                     <p>
                       <span className="font-medium">
                         {t("qualification.budget")}:
                       </span>{" "}
-                      {formData.budget ? `US$${Number(formData.budget).toLocaleString()}` : "No indicado"}
+                      {formData.budget ? `US$${Number(formData.budget).toLocaleString()}` : L("No indicado", "Not provided")}
                     </p>
                     <p>
-                      <span className="font-medium">Volumen / peso:</span>{" "}
+                      <span className="font-medium">{L("Volumen / peso:", "Volume / weight:")}</span>{" "}
                       {formData.volumeCbm || formData.weightKg
                         ? [
                             formData.volumeCbm && `${formData.volumeCbm} m³`,
@@ -572,7 +584,7 @@ export function ProductQualification() {
                           ]
                             .filter(Boolean)
                             .join(" • ")
-                        : "Por cotizar"}
+                        : L("Por cotizar", "To be quoted")}
                     </p>
                   </div>
                 </div>
@@ -642,7 +654,7 @@ export function ProductQualification() {
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                         />
                       </svg>
-                      <span key="loading">Consultando referencias para tu producto…</span>
+                      <span key="loading">{L("Consultando referencias para tu producto…", "Looking up references for your product…")}</span>
                     </>
                   ) : (
                     <>
@@ -659,8 +671,11 @@ export function ProductQualification() {
               <p className="text-xs text-slate-500 text-center" aria-live="polite">
                 <span>
                   {elapsed < 15
-                    ? "Revisando plataformas de proveedores…"
-                    : `Esto puede tardar hasta un minuto (${elapsed} s). Tus datos ya quedaron guardados.`}
+                    ? L("Revisando plataformas de proveedores…", "Checking supplier platforms…")
+                    : L(
+                        `Esto puede tardar hasta un minuto (${elapsed} s). Tus datos ya quedaron guardados.`,
+                        `This can take up to a minute (${elapsed} s). Your data is already saved.`,
+                      )}
                 </span>
               </p>
             )}
@@ -675,11 +690,11 @@ export function ProductQualification() {
                       type="submit"
                       className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47]"
                     >
-                      <span>Intentar nuevamente</span>
+                      <span>{L("Intentar nuevamente", "Try again")}</span>
                     </button>
                     {helpSent === "sent" ? (
                       <span className="px-2 py-2 text-sm text-green-700">
-                        ✅ Recibimos tu caso. Un ejecutivo de SEAL te contactará.
+                        ✅ {L("Recibimos tu caso. Un ejecutivo de SEAL te contactará.", "We received your case. A SEAL executive will contact you.")}
                       </span>
                     ) : (
                       <button
@@ -689,13 +704,13 @@ export function ProductQualification() {
                         className="px-4 py-2 rounded-lg border-2 border-[#0B3C5D] text-[#0B3C5D] text-sm font-semibold hover:bg-blue-50 disabled:opacity-60"
                       >
                         <span>
-                          {helpSent === "sending" ? "Enviando…" : "Pedir a SEAL que revise mi caso"}
+                          {helpSent === "sending" ? L("Enviando…", "Sending…") : L("Pedir a SEAL que revise mi caso", "Ask SEAL to review my case")}
                         </span>
                       </button>
                     )}
                     {helpSent === "error" && (
                       <span className="px-2 py-2 text-sm text-red-600">
-                        No se pudo enviar. Escríbenos al WhatsApp +502 5996 4664.
+                        {L("No se pudo enviar. Escríbenos al WhatsApp +502 5996 4664.", "Could not send. Message us on WhatsApp +502 5996 4664.")}
                       </span>
                     )}
                   </div>
@@ -717,27 +732,27 @@ export function ProductQualification() {
 
             {/* Title */}
             <h2 className="text-2xl font-bold text-[#0B3C5D] mb-3">
-              Límite de Búsquedas Alcanzado
+              {L("Límite de búsquedas alcanzado", "Search limit reached")}
             </h2>
 
             {/* Description */}
             <p className="text-slate-600 mb-2">
-              Has utilizado tus <strong>{getSearchLimit()} búsquedas gratuitas</strong>.
+              {L("Has utilizado tus", "You have used your")} <strong>{getSearchLimit()} {L("búsquedas gratuitas", "free searches")}</strong>.
             </p>
             <p className="text-slate-600 mb-6">
-              Para continuar buscando proveedores, contacta al equipo de SEAL y obtén acceso completo.
+              {L("Para continuar buscando proveedores, contacta al equipo de SEAL y obtén acceso completo.", "To keep searching for suppliers, contact the SEAL team to get full access.")}
             </p>
 
             {/* Highlight box */}
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-left">
               <p className="text-sm font-semibold text-[#0B3C5D] mb-2">
-                Con acceso completo obtienes:
+                {L("Con acceso completo obtienes:", "With full access you get:")}
               </p>
               <ul className="space-y-1 text-sm text-slate-700">
-                <li>✅ Búsquedas ilimitadas de proveedores</li>
-                <li>✅ Análisis de costos detallado</li>
-                <li>✅ Informes PDF y Excel</li>
-                <li>✅ Soporte del equipo SEAL</li>
+                <li>✅ {L("Búsquedas ilimitadas de proveedores", "Unlimited supplier searches")}</li>
+                <li>✅ {L("Análisis de costos detallado", "Detailed cost analysis")}</li>
+                <li>✅ {L("Informes PDF y Excel", "PDF and Excel reports")}</li>
+                <li>✅ {L("Soporte del equipo SEAL", "Support from the SEAL team")}</li>
               </ul>
             </div>
 
@@ -747,13 +762,13 @@ export function ProductQualification() {
                 href="tel:+50259964664"
                 className="w-full py-3 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:from-blue-700 hover:to-[#0a2f47] transition-all shadow-lg"
               >
-                📞 Contactar SEAL: +502 5996 4664
+                📞 {L("Contactar SEAL", "Contact SEAL")}: +502 5996 4664
               </a>
               <button
                 onClick={() => navigate("/")}
                 className="w-full py-3 border-2 border-slate-300 text-slate-700 rounded-xl font-medium hover:bg-slate-50 transition-all"
               >
-                Volver al Inicio
+                {L("Volver al inicio", "Back to home")}
               </button>
             </div>
           </div>

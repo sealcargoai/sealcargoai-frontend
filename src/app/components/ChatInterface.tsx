@@ -15,40 +15,39 @@ export function ChatInterface() {
   const navigate = useNavigate();
   const location = useLocation();
   const { query, name, email } = location.state || {};
-  const { t } = useLanguage();
+  const { t, L } = useLanguage();
 
-  const [messages, setMessages] = useState<Message[]>([
+  // Assistant texts are resolved at render time so they follow the ES / EN switch
+  const intro: Message[] = [
     {
       role: "ai",
-      content: `${name ? `Hola, ${name}.` : "Hola."} Soy el asistente de orientación de SEAL. Puedo ayudarte a organizar la información de tu importación, explorar posibles proveedores y revisar algunos aspectos que conviene considerar.${query ? ` Tu consulta: "${query}".` : ""}`,
+      content: L(
+        `${name ? `Hola, ${name}.` : "Hola."} Soy el asistente de orientación de SEAL. Puedo ayudarte a organizar la información de tu importación, explorar posibles proveedores y revisar algunos aspectos que conviene considerar.${query ? ` Tu consulta: "${query}".` : ""}`,
+        `${name ? `Hi, ${name}.` : "Hi."} I'm SEAL's guidance assistant. I can help you organize the information for your import, explore possible suppliers and review some aspects worth considering.${query ? ` Your request: "${query}".` : ""}`,
+      ),
     },
     {
       role: "ai",
-      content:
+      content: L(
         "Para preparar una orientación más útil, necesito algunos datos sobre el producto, la cantidad y el destino.",
+        "To prepare more useful guidance, I need some details about the product, the quantity and the destination.",
+      ),
     },
-  ]);
+  ];
+  const REPLY = L(
+    "Gracias. Por ahora no respondo preguntas abiertas en este chat. Para orientarte, continúa con el formulario: ahí ordenamos tus datos y preparamos las referencias y estimaciones. Si prefieres hablar con una persona, escribe al WhatsApp de SEAL +502 5996 4664.",
+    "Thanks. For now I don't answer open questions in this chat. To guide you, continue with the form: there we organize your data and prepare the references and estimates. If you'd rather talk to a person, message SEAL on WhatsApp +502 5996 4664.",
+  );
+  // "ai" entries in state are placeholders for the fixed reply above
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [conversations] = useState([
-    "Importación de sillas de madera",
-    "Electrónica desde China",
-    "Proveedores de textiles",
-  ]);
 
   const handleSend = () => {
     if (!input.trim()) return;
     setMessages([...messages, { role: "user", content: input }]);
     setInput("");
-
     setTimeout(() => {
-      setMessages((prev) => [
-        ...prev,
-        {
-          role: "ai",
-          content:
-            "Gracias. Por ahora no respondo preguntas abiertas en este chat. Para orientarte, continúa con el formulario: ahí ordenamos tus datos y preparamos las referencias y estimaciones. Si prefieres hablar con una persona, escribe al WhatsApp de SEAL +502 5996 4664.",
-        },
-      ]);
+      setMessages((prev) => [...prev, { role: "ai", content: "" }]);
     }, 1000);
   };
 
@@ -117,7 +116,7 @@ export function ChatInterface() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {messages.map((msg, i) => (
+          {[...intro, ...messages.map((m) => (m.role === "ai" ? { ...m, content: REPLY } : m))].map((msg, i) => (
             <div
               key={i}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
@@ -133,7 +132,7 @@ export function ChatInterface() {
                       </span>
                     </div>
                     <span className="text-xs font-semibold text-slate-500">
-                      Asistente de SEAL
+                      {L("Asistente de SEAL", "SEAL assistant")}
                     </span>
                   </div>
                 )}

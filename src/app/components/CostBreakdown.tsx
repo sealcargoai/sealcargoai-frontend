@@ -15,8 +15,8 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+import { buildCostPdf } from "../../utils/costPdf";
+import { Lx, unitsWord } from "../../utils/lang";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
@@ -26,7 +26,7 @@ import {
   hasUsableSupplier,
   supplierPriceInfo,
   SupplierDisclaimer,
-  SEAL_DISCLAIMER,
+  sealDisclaimer,
 } from "./SelectedSupplier";
 import {
   SEAL_COMPANY,
@@ -39,7 +39,8 @@ import {
   useRates,
   formatQ,
   formatUSD,
-  ESTIMATE_NOTE,
+  estimateNote,
+  scenarioVariables,
   type CostResult,
 } from "../../utils/costCalculator";
 
@@ -52,145 +53,22 @@ function exportToPDF(
   supplierName: string,
   quantity: number,
   price: number,
-  destination: string,
-  productType: string,
+  productDescription: string,
   priceNote = "",
 ) {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const now = new Date().toLocaleDateString("es-ES", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
+  buildCostPdf({
+    title: Lx("Escenario estimado de costos de importación (no es cotización)", "Estimated import cost scenario (not a quote)"),
+    supplierName,
+    productDescription,
+    quantity,
+    price,
+    priceNote,
+    costs,
+    disclaimer: sealDisclaimer(),
+    fileName: `SEAL_Estimacion_${supplierName.replace(/\s+/g, "_")}_${Date.now()}.pdf`,
   });
-
-  // Main header
-  doc.setFillColor(11, 60, 93);
-  doc.rect(0, 0, pageWidth, 40, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20);
-  doc.setFont("helvetica", "bold");
-  doc.text("SEAL SmartTrade AI", 14, 16);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  doc.text("Estimación de Costos de Importación (no es cotización)", 14, 26);
-  doc.text(`Generado: ${now}`, 14, 34);
-
-  // Company info bar (NEW)
-  const yAfterCompany = drawCompanyInfoBox(doc, pageWidth, 40);
-
-  // Order details box
-  doc.setTextColor(11, 60, 93);
-  doc.setFillColor(239, 246, 255);
-  doc.rect(14, yAfterCompany + 6, pageWidth - 28, 31, "F");
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.text("DETALLES DEL PEDIDO", 18, yAfterCompany + 16);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
-  doc.text(`Proveedor: ${supplierName}`, 18, yAfterCompany + 24);
-  doc.text(
-    `Producto: ${productType}  |  Destino: Guatemala`,
-    18,
-    yAfterCompany + 30,
-  );
-  doc.text(
-    `Cantidad: ${quantity.toLocaleString()} unidades`,
-    100,
-    yAfterCompany + 24,
-  );
-  doc.text(
-    `Precio unitario: ${formatUSD(Number(price), 2)} (${formatQ(Number(price), costs.exchangeRate, 2)})`,
-    100,
-    yAfterCompany + 30,
-  );
-  if (priceNote) {
-    doc.setFontSize(7.5);
-    doc.text(`(${priceNote})`, 100, yAfterCompany + 34);
-    doc.setFontSize(9);
-  }
-
-  // Section title
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(11, 60, 93);
-  doc.text("Desglose de Costos", 14, yAfterCompany + 48);
-
-  // Cost table
-  autoTable(doc, {
-    startY: yAfterCompany + 53,
-    head: [["Concepto", "Detalle", "Monto (Q)", "% del Total"]],
-    body: costs.lines.map((l) => [
-      l.label,
-      l.key === "freight" && costs.freightPending ? "Por cotizar" : l.detail,
-      l.key === "freight" && costs.freightPending ? "Por cotizar" : formatQ(l.amount, costs.exchangeRate),
-      `${((l.amount / costs.totalCost) * 100).toFixed(1)}%`,
-    ]),
-    foot: [
-      [
-        "COSTO TOTAL EN GUATEMALA",
-        `${quantity.toLocaleString()} unidades`,
-        formatQ(costs.totalCost, costs.exchangeRate),
-        "100%",
-      ],
-    ],
-    headStyles: { fillColor: [11, 60, 93], textColor: 255, fontStyle: "bold" },
-    footStyles: {
-      fillColor: [59, 130, 246],
-      textColor: 255,
-      fontStyle: "bold",
-      fontSize: 10,
-    },
-    alternateRowStyles: { fillColor: [239, 246, 255] },
-    styles: { fontSize: 9 },
-  });
-
-  // Per unit summary bar
-  const finalY = (doc as any).lastAutoTable.finalY + 10;
-  doc.setFillColor(11, 60, 93);
-  doc.rect(14, finalY, pageWidth - 28, 18, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(
-    `Costo por Unidad: ${formatQ(costs.perUnit, costs.exchangeRate, 2)}  |  Total: ${formatQ(costs.totalCost, costs.exchangeRate)} (${formatUSD(costs.totalCost)})`,
-    pageWidth / 2,
-    finalY + 11,
-    { align: "center" },
-  );
-
-  // Footnotes
-  doc.setTextColor(100, 116, 139);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text(costs.fxNote, 14, finalY + 22);
-  doc.text(ESTIMATE_NOTE, 14, finalY + 26);
-  if (costs.freightPending) {
-    doc.text(
-      "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
-      14,
-      finalY + 31,
-    );
-  }
-  // Disclaimer: SEAL does not guarantee search results
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(146, 64, 14);
-  doc.text(
-    doc.splitTextToSize(`Aviso: ${SEAL_DISCLAIMER}`, pageWidth - 28),
-    14,
-    finalY + (costs.freightPending ? 38 : 33),
-  );
-  doc.setFont("helvetica", "normal");
-
-  // Company footer (NEW)
-  drawCompanyFooter(doc);
-
-  doc.save(
-    `SEAL_CostBreakdown_${supplierName.replace(/\s+/g, "_")}_${Date.now()}.pdf`,
-  );
 }
 
-// ─── Excel Export (NEW: Beautiful XLSX) ───────────────────────────────────────
 async function exportToExcel(
   costs: Costs,
   supplierName: string,
@@ -201,7 +79,7 @@ async function exportToExcel(
   priceNote = "",
 ) {
   await generateBeautifulExcel({
-    reportTitle: "Estimación de Costos de Importación",
+    reportTitle: Lx("Escenario estimado de costos de importación", "Estimated import cost scenario"),
     supplierName,
     productType,
     destination,
@@ -218,7 +96,7 @@ async function exportToExcel(
 export function CostBreakdown() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useLanguage();
+  const { t, L } = useLanguage();
 
   // ── Read state ────────────────────────────────────────────────────────────
   const stateSupplier = location.state?.supplier ?? null;
@@ -238,6 +116,10 @@ export function CostBreakdown() {
   const supplierName = stateSupplier?.name || "";
   const isLiveData = hasUsableSupplier(stateSupplier);
   const priceInfo = supplierPriceInfo(stateSupplier);
+  const productDescription = String(location.state?.productDescription ?? "");
+  const priceNote = priceInfo.isRange
+    ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
+    : "";
 
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
@@ -256,10 +138,10 @@ export function CostBreakdown() {
   const sumKeys = (keys: string[]) =>
     costs.lines.filter((l) => keys.includes(l.key)).reduce((a, l) => a + l.amount, 0);
   const moneyGroups = [
-    { key: "product", name: "Producto (FOB)", desc: "Lo que le paga al proveedor", amount: sumKeys(["product"]), color: "#0B3C5D" },
-    { key: "logistics", name: "Traerlo a Guatemala", desc: "Flete, seguro y gastos en destino", amount: sumKeys(["freight", "insurance", "local"]), color: "#3B82F6" },
-    { key: "taxes", name: "Impuestos SAT", desc: "DAI e IVA de importación", amount: sumKeys(["duties", "vat"]), color: "#60A5FA" },
-    { key: "seal", name: "Servicio de aduana SEAL", desc: "Honorarios del agente aduanero", amount: sumKeys(["customs"]), color: "#8B5CF6" },
+    { key: "product", name: L("Producto (FOB)", "Product (FOB)"), desc: L("Lo que le paga al proveedor", "What you pay the supplier"), amount: sumKeys(["product"]), color: "#0B3C5D" },
+    { key: "logistics", name: L("Traerlo a Guatemala", "Bringing it to Guatemala"), desc: L("Flete, seguro y gastos en destino", "Freight, insurance and destination charges"), amount: sumKeys(["freight", "insurance", "local"]), color: "#3B82F6" },
+    { key: "taxes", name: L("Impuestos SAT", "SAT taxes"), desc: L("DAI e IVA de importación", "Import DAI and IVA"), amount: sumKeys(["duties", "vat"]), color: "#60A5FA" },
+    { key: "seal", name: L("Servicio de aduana SEAL", "SEAL customs service"), desc: L("Honorarios del agente aduanero", "Customs broker fee"), amount: sumKeys(["customs"]), color: "#8B5CF6" },
   ];
   // Whole "of each US$100" shares that add up to exactly 100 (largest remainder)
   {
@@ -324,15 +206,7 @@ export function CostBreakdown() {
             </button>
             <button
               onClick={() =>
-                exportToPDF(
-                  costs,
-                  supplierName,
-                  quantity,
-                  price,
-                  destination,
-                  productType,
-                  priceInfo.isRange ? `precio medio del rango ${priceInfo.published}` : "",
-                )
+                exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote)
               }
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-red-300 text-red-700 rounded-xl hover:bg-red-50 transition-all flex items-center gap-2 shadow-sm hover:shadow-md text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
             >
@@ -342,15 +216,7 @@ export function CostBreakdown() {
             </button>
             <button
               onClick={() =>
-                exportToExcel(
-                  costs,
-                  supplierName,
-                  quantity,
-                  price,
-                  destination,
-                  productType,
-                  priceInfo.isRange ? `precio medio del rango ${priceInfo.published}` : "",
-                )
+                exportToExcel(costs, supplierName, quantity, price, destination, productDescription || productType, priceNote)
               }
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-green-300 text-green-700 rounded-xl hover:bg-green-50 transition-all flex items-center gap-2 shadow-sm hover:shadow-md text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
             >
@@ -403,7 +269,7 @@ export function CostBreakdown() {
             {isLiveData ? (
               <span className="text-green-600">
                 ✅ {t("cost.dynamicCalc")} — {quantity.toLocaleString()}{" "}
-                {t("cost.units")} × {formatUSD(Number(price), 2)} ({Q(Number(price), 2)}) →{" "}
+                {unitsWord(quantity)} × {formatUSD(Number(price), 2)} ({Q(Number(price), 2)}) →{" "}
                 {t("cost.destination")} Guatemala
               </span>
             ) : null}
@@ -429,19 +295,21 @@ export function CostBreakdown() {
                 {Q(costs.totalCost)}
               </div>
               <div className="text-blue-100 text-xs sm:text-base md:text-lg">
-                {quantity.toLocaleString()} {t("cost.units")} •{" "}
+                {quantity.toLocaleString()} {unitsWord(quantity)} •{" "}
                 <span className="font-bold text-white">
                   {Q(costs.perUnit, 2)} {t("cost.perUnitLabel")}
                 </span>
               </div>
               <div className="text-blue-200 text-xs sm:text-sm mt-1">
                 <span>
-                  Equivale a {formatUSD(costs.totalCost)} • tipo de cambio referencial Q
-                  {costs.exchangeRate.toFixed(2)} por US$1
+                  {L(
+                    `Equivale a ${formatUSD(costs.totalCost)} • tipo de cambio referencial Q${costs.exchangeRate.toFixed(2)} por US$1`,
+                    `Equals ${formatUSD(costs.totalCost)} • reference exchange rate Q${costs.exchangeRate.toFixed(2)} per US$1`,
+                  )}
                 </span>
               </div>
               <div className="mt-3 inline-block bg-white/15 border border-white/25 rounded-lg px-3 py-1.5 text-xs sm:text-sm text-white">
-                <span>{ESTIMATE_NOTE}</span>
+                <span>{estimateNote()}</span>
               </div>
             </div>
             <div className="w-16 h-16 sm:w-24 sm:h-24 md:w-36 md:h-36 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl flex-shrink-0">
@@ -482,7 +350,7 @@ export function CostBreakdown() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-xs text-slate-500">Total</span>
+                <span className="text-xs text-slate-500">{L("Total estimado", "Estimated total")}</span>
                 <span className="text-lg font-bold text-[#0B3C5D]">
                   {Q(costs.totalCost)}
                 </span>
@@ -510,17 +378,17 @@ export function CostBreakdown() {
             </ul>
             {costs.freightPending && (
               <p className="text-xs text-slate-500 mt-3">
-                El flete marítimo no está incluido: se cotiza con el volumen o peso de su carga.
+                {L("El flete marítimo no está incluido: se cotiza con el volumen o peso de su carga.", "Ocean freight is not included: it's quoted with the volume or weight of your cargo.")}
               </p>
             )}
           </div>
 
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-4 sm:p-6 min-w-0">
             <h2 className="font-semibold text-[#0B3C5D] mb-1">
-              ¿En qué se va su dinero?
+              {L("¿En qué se va su dinero?", "Where does your money go?")}
             </h2>
             <p className="text-sm text-slate-500 mb-5">
-              Porcentaje del costo total
+              {L("Porcentaje del costo total estimado", "Share of the estimated total cost")}
             </p>
             <div className="space-y-5">
               {moneyGroups.map((g) => {
@@ -533,7 +401,7 @@ export function CostBreakdown() {
                         <p className="text-sm font-semibold text-slate-800">{g.name}</p>
                         <p className="text-xs text-slate-500">
                           {g.desc}
-                          {pendingFreight ? " (flete por cotizar)" : ""}
+                          {pendingFreight ? L(" (flete por cotizar)", " (freight to be quoted)") : ""}
                         </p>
                       </div>
                       <div className="text-right shrink-0">
@@ -557,8 +425,8 @@ export function CostBreakdown() {
             </div>
             <div className="mt-6 pt-4 border-t border-slate-200 flex items-baseline justify-between">
               <p className="text-sm text-slate-600">
-                Por cada unidad, además del precio de fábrica
-                {costs.freightPending ? " (sin flete)" : ""}
+                {L("Por cada unidad, además del precio de fábrica", "Per unit, on top of the factory price")}
+                {costs.freightPending ? L(" (sin flete)", " (without freight)") : ""}
               </p>
               <p className="text-base font-bold text-[#0B3C5D]">
                 +{Q(Math.max(costs.perUnit - price, 0), 2)}
@@ -604,73 +472,64 @@ export function CostBreakdown() {
           <p className="text-xs text-slate-500 px-1">{costs.fxNote}</p>
           {costs.freightPending && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-              ⚠️ El total no incluye flete porque no indicó volumen ni peso. Un
-              ejecutivo de SEAL le cotiza el flete exacto, o puede volver a la
-              calificación y agregar el volumen (m³) o peso (kg).
+              ⚠️ {L(
+                "El total no incluye flete porque no indicó volumen ni peso. Un ejecutivo de SEAL le cotiza el flete, o puede volver al formulario y agregar el volumen (m³) o peso (kg).",
+                "The total doesn't include freight because no volume or weight was given. A SEAL executive can quote it, or you can go back to the form and add the volume (m³) or weight (kg).",
+              )}
             </div>
           )}
         </div>
 
-        {/* Insights */}
+        {/* Preliminary scenario + what can change it */}
         <div className="grid md:grid-cols-2 gap-6">
           <div className="bg-green-50 border border-green-200 rounded-xl p-6">
             <h3 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
               <TrendingUp className="w-5 h-5" />
-              Resumen de su importación
+              {L("Escenario estimado", "Estimated scenario")}
             </h3>
             <ul className="space-y-2 text-sm text-green-800">
-              {budget > 0 ? (
-                (() => {
-                  const budgetPerUnit = budget / quantity;
-                  const diff = Math.abs(budgetPerUnit - costs.perUnit);
-                  const fits = costs.perUnit <= budgetPerUnit;
-                  return (
-                    <li className="flex items-start gap-2">
-                      <span className="text-green-500 mt-1">•</span>
-                      <span>
-                        Cada unidad le sale en{" "}
-                        <b>{Q(costs.perUnit, 2)}</b> puesta en Guatemala,
-                        con todo incluido. Su presupuesto es de{" "}
-                        <b>{Q(budgetPerUnit, 2)}</b> por unidad
-                        {fits ? (
-                          <>
-                            : <b>le alcanza</b> y le sobran {Q(diff, 2)} por
-                            unidad ({Q(diff * quantity)} en
-                            total).
-                          </>
-                        ) : (
-                          <>
-                            : <b>no le alcanza</b>, le faltan {Q(diff, 2)} por
-                            unidad ({Q(diff * quantity)} en
-                            total).
-                          </>
-                        )}
-                      </span>
-                    </li>
-                  );
-                })()
-              ) : (
-                <li className="flex items-start gap-2">
-                  <span className="text-green-500 mt-1">•</span>
-                  <span>
-                    Cada unidad le sale en <b>{Q(costs.perUnit, 2)}</b>{" "}
-                    puesta en Guatemala, con todo incluido.
-                  </span>
-                </li>
-              )}
-              {/* Taxes share */}
               <li className="flex items-start gap-2">
                 <span className="text-green-500 mt-1">•</span>
                 <span>
-                  DAI e IVA suman{" "}
-                  <b>{Q(costs.importDuties + costs.taxes)}</b>, el{" "}
-                  <b>
-                    {(((costs.importDuties + costs.taxes) / costs.totalCost) * 100).toFixed(0)}%
-                  </b>{" "}
-                  del costo total.
+                  {L("En este escenario, cada unidad quedaría en", "In this scenario, each unit would come to")}{" "}
+                  <b>{Q(costs.perUnit, 2)}</b>{" "}
+                  {L(
+                    "puesta en Guatemala. Es una estimación preliminar, sujeta a revisión.",
+                    "landed in Guatemala. It's a preliminary estimate, subject to review.",
+                  )}
+                  {costs.freightPending ? L(" No incluye flete.", " Freight not included.") : ""}
                 </span>
               </li>
-              {/* Freight tip — only when it is useful */}
+              {budget > 0 && (() => {
+                const budgetPerUnit = budget / quantity;
+                const diff = budgetPerUnit - costs.perUnit;
+                return (
+                  <li className="flex items-start gap-2">
+                    <span className="text-green-500 mt-1">•</span>
+                    <span>
+                      {L("Su presupuesto equivale a", "Your budget is")} <b>{Q(budgetPerUnit, 2)}</b>{" "}
+                      {L("por unidad. En este escenario quedaría", "per unit. In this scenario it would be")}{" "}
+                      <b>{Q(Math.abs(diff), 2)}</b>{" "}
+                      {diff >= 0
+                        ? L("por debajo de su presupuesto", "below your budget")
+                        : L("por encima de su presupuesto", "above your budget")}
+                      {L(
+                        " por unidad. Confírmelo con una cotización antes de decidir.",
+                        " per unit. Confirm it with a quote before deciding.",
+                      )}
+                    </span>
+                  </li>
+                );
+              })()}
+              <li className="flex items-start gap-2">
+                <span className="text-green-500 mt-1">•</span>
+                <span>
+                  {L("Con los supuestos usados, DAI e IVA suman", "With the assumptions used, DAI and IVA add up to")}{" "}
+                  <b>{Q(costs.importDuties + costs.taxes)}</b>{" "}
+                  ({(((costs.importDuties + costs.taxes) / costs.totalCost) * 100).toFixed(0)}%{" "}
+                  {L("del total estimado", "of the estimated total")}).
+                </span>
+              </li>
               {(() => {
                 const cbm = costs.chargeableCbm;
                 if (costs.freightMode === "LCL" && cbm >= rates.lclMaxCbm * 0.75) {
@@ -678,9 +537,10 @@ export function CostBreakdown() {
                     <li className="flex items-start gap-2">
                       <span className="text-green-500 mt-1">•</span>
                       <span>
-                        Con {cbm.toFixed(1)} m³ está cerca de llenar un contenedor. A
-                        partir de {rates.lclMaxCbm} m³ le cotizamos contenedor
-                        completo.
+                        {L(
+                          `Con ${cbm.toFixed(1)} m³ está cerca de llenar un contenedor. A partir de ${rates.lclMaxCbm} m³ se cotiza contenedor completo.`,
+                          `At ${cbm.toFixed(1)} m³ you are close to filling a container. From ${rates.lclMaxCbm} m³ a full container is quoted.`,
+                        )}
                       </span>
                     </li>
                   );
@@ -693,10 +553,10 @@ export function CostBreakdown() {
                       <li className="flex items-start gap-2">
                         <span className="text-green-500 mt-1">•</span>
                         <span>
-                          Su carga ocupa {cbm.toFixed(0)} de{" "}
-                          {n * rates.container40Cbm} m³. Puede aprovechar los{" "}
-                          {free.toFixed(0)} m³ que le quedan libres en el
-                          contenedor.
+                          {L(
+                            `Su carga ocupa ${cbm.toFixed(0)} de ${n * rates.container40Cbm} m³. Le quedan ${free.toFixed(0)} m³ libres en el contenedor.`,
+                            `Your cargo uses ${cbm.toFixed(0)} of ${n * rates.container40Cbm} m³. ${free.toFixed(0)} m³ remain free in the container.`,
+                          )}
                         </span>
                       </li>
                     );
@@ -710,40 +570,32 @@ export function CostBreakdown() {
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
             <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
               <AlertCircle className="w-5 h-5" />
-              Próximos pasos con SEAL
+              {L("Variables que pueden cambiar este escenario", "Variables that can change this scenario")}
             </h3>
             <ul className="space-y-2 text-sm text-blue-800">
+              {scenarioVariables(costs, { priceIsMidpoint: priceInfo.isRange }).map((v, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-1">•</span>
+                  <span>{v}</span>
+                </li>
+              ))}
               <li className="flex items-start gap-2">
                 <span className="text-blue-500 mt-1">•</span>
                 <span>
-                  Tránsito marítimo estimado: <b>{rates.transitDays} días</b>.
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-500 mt-1">•</span>
-                <span>
-                  Este cálculo usa un DAI del {(rates.dutyRate * 100).toFixed(0)}% (el
-                  más alto). Si nos confirma la partida arancelaria, el costo puede
-                  bajar.
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-blue-500 mt-1">•</span>
-                <span>
-                  Un ejecutivo de SEAL le confirma este costo de nacionalización antes
-                  del embarque.
+                  {L("Tránsito marítimo de referencia:", "Reference ocean transit:")}{" "}
+                  <b>{rates.transitDays} {L("días", "days")}</b>.
                 </span>
               </li>
             </ul>
             <a
               href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
-                `Hola SEAL, quiero confirmar el costo de importación de ${quantity.toLocaleString()} unidades (total estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}).`,
+                `Hola SEAL, quiero una cotización confirmada para ${quantity.toLocaleString()} unidades (escenario estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}).`,
               )}`}
               target="_blank"
               rel="noopener noreferrer"
               className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47] transition-colors"
             >
-              Hablar con un ejecutivo
+              <span>{L("Pedir una cotización confirmada", "Request a confirmed quote")}</span>
               <ArrowRight className="w-4 h-4" />
             </a>
           </div>
@@ -753,14 +605,7 @@ export function CostBreakdown() {
         <div className="mt-8 flex justify-center">
           <button
             onClick={() =>
-              exportToPDF(
-                costs,
-                supplierName,
-                quantity,
-                price,
-                destination,
-                productType,
-              )
+              exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote)
             }
             className="px-10 py-4 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-2xl hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center gap-3 shadow-xl hover:shadow-2xl text-lg font-semibold"
           >

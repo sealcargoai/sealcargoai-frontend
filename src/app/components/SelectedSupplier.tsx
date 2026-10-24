@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useNavigate } from "react-router";
 import { MapPin, Award, Star, Package, ExternalLink, AlertCircle, ArrowLeft, Search, ShieldCheck } from "lucide-react";
 import { formatUSD } from "../../utils/costCalculator";
+import { Lx } from "../../utils/lang";
 
 // Supplier as it arrives from the suppliers screen (real Alibaba data only)
 export interface SelectedSupplierData {
@@ -31,10 +32,10 @@ export interface SelectedSupplierData {
 }
 
 // ─── Índice de Confianza SEAL (computed in the backend) ─────────────────────
-export const TRUST_LEVELS: Record<string, { label: string; short: string; badge: string; text: string; bar: string }> = {
-  A: { label: "Confianza alta", short: "A", badge: "bg-green-100 text-green-800 border-green-300", text: "text-green-700", bar: "bg-green-500" },
-  B: { label: "Confianza buena", short: "B", badge: "bg-blue-100 text-blue-800 border-blue-300", text: "text-blue-700", bar: "bg-blue-500" },
-  C: { label: "Confianza media · se recomienda verificación", short: "C", badge: "bg-amber-100 text-amber-800 border-amber-300", text: "text-amber-700", bar: "bg-amber-500" },
+export const TRUST_LEVELS: Record<string, { label: string; labelEs: string; labelEn: string; short: string; badge: string; text: string; bar: string }> = {
+  A: { label: "", labelEs: "Confianza alta", labelEn: "High trust", short: "A", badge: "bg-green-100 text-green-800 border-green-300", text: "text-green-700", bar: "bg-green-500" },
+  B: { label: "", labelEs: "Confianza buena", labelEn: "Good trust", short: "B", badge: "bg-blue-100 text-blue-800 border-blue-300", text: "text-blue-700", bar: "bg-blue-500" },
+  C: { label: "", labelEs: "Confianza media · se recomienda verificación", labelEn: "Medium trust · verification recommended", short: "C", badge: "bg-amber-100 text-amber-800 border-amber-300", text: "text-amber-700", bar: "bg-amber-500" },
 };
 
 export function trustInfo(s?: SelectedSupplierData | null) {
@@ -43,7 +44,7 @@ export function trustInfo(s?: SelectedSupplierData | null) {
   return {
     score,
     level,
-    style: TRUST_LEVELS[level],
+    style: { ...TRUST_LEVELS[level], label: Lx(TRUST_LEVELS[level].labelEs, TRUST_LEVELS[level].labelEn) },
     breakdown: s?.trustBreakdown ?? [],
     coverage: s?.trustCoverage,
     reasons: s?.trustReasons ?? [],
@@ -53,10 +54,10 @@ export function trustInfo(s?: SelectedSupplierData | null) {
 /** Badge text for the supplier's Alibaba status, without overstating it. */
 export function badgeText(s?: SelectedSupplierData | null): string {
   const years = s?.yearsInBusiness || 0;
-  const y = years ? ` · ${years} ${years === 1 ? "año" : "años"}` : "";
-  if (s?.verifiedSupplier === true) return `Verified Supplier (auditado)${y}`;
+  const y = years ? ` · ${years} ${Lx(years === 1 ? "año" : "años", years === 1 ? "year" : "years")}` : "";
+  if (s?.verifiedSupplier === true) return `Verified Supplier (${Lx("auditado", "audited")})${y}`;
   if (s?.goldSupplier || s?.verified) return `Gold Supplier${y}`;
-  return "Sin insignia de verificación";
+  return Lx("Sin insignia de verificación", "No verification badge");
 }
 
 export function TrustBadge({ supplier, size = "md" }: { supplier: SelectedSupplierData; size?: "sm" | "md" }) {
@@ -66,10 +67,10 @@ export function TrustBadge({ supplier, size = "md" }: { supplier: SelectedSuppli
       className={`inline-flex items-center gap-1.5 border rounded-full font-semibold ${ti.style.badge} ${
         size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm"
       }`}
-      title="Índice de Confianza SEAL"
+      title={Lx("Índice de Confianza SEAL", "SEAL Trust Index")}
     >
       <ShieldCheck className={size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4"} />
-      Nivel {ti.level} · {ti.score}/100
+      <span>{Lx("Nivel", "Level")} {ti.level} · {ti.score}/100</span>
     </span>
   );
 }
@@ -80,9 +81,9 @@ export function CertificationsLine({ supplier }: { supplier: SelectedSupplierDat
   if (!certs.length) return null;
   return (
     <p className="text-xs text-slate-600 mt-2">
-      <span className="font-medium">Certificaciones declaradas por el proveedor:</span>{" "}
+      <span className="font-medium">{Lx("Certificaciones declaradas por el proveedor:", "Certifications declared by the supplier:")}</span>{" "}
       <span>{certs.join(", ")}</span>{" "}
-      <span className="text-slate-400">(sin verificar)</span>
+      <span className="text-slate-400">{Lx("(sin verificar)", "(not verified)")}</span>
     </p>
   );
 }
@@ -97,21 +98,26 @@ export function TrustBreakdown({ supplier }: { supplier: SelectedSupplierData })
         <div key={b.key}>
           <div className="flex items-baseline justify-between gap-2 text-sm">
             <span className="text-slate-700">
-              {b.label} <span className="text-xs text-slate-400">({b.weight}%)</span>
+              {Lx(b.label, TRUST_LABEL_EN[b.key] || b.label)} <span className="text-xs text-slate-400">({b.weight}%)</span>
             </span>
             <span className={`font-semibold ${b.score === null ? "text-slate-400" : "text-[#0B3C5D]"}`}>
-              {b.score === null ? "N/D" : `${b.score}/100`}
+              {b.score === null ? Lx("N/D", "N/A") : `${b.score}/100`}
             </span>
           </div>
           <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden mt-1">
             {b.score !== null && <div className={`h-full ${ti.style.bar}`} style={{ width: `${b.score}%` }} />}
           </div>
-          <p className="text-xs text-slate-500 mt-0.5">{b.detail}</p>
+          <p className="text-xs text-slate-500 mt-0.5">{trustDetail(b.detail)}</p>
         </div>
       ))}
       {ti.coverage && (
         <p className="text-xs text-slate-500">
-          Datos disponibles: {ti.coverage.available} de {ti.coverage.total}. Lo que no se publica no se inventa: su peso se reparte entre los criterios disponibles.
+          <span>
+            {Lx(
+              `Datos disponibles: ${ti.coverage.available} de ${ti.coverage.total}. Lo que no se publica no se inventa: su peso se reparte entre los criterios disponibles.`,
+              `Data available: ${ti.coverage.available} of ${ti.coverage.total}. Nothing unpublished is made up: its weight is spread over the available criteria.`,
+            )}
+          </span>
         </p>
       )}
     </div>
@@ -137,8 +143,10 @@ const COUNTRY: Record<string, string> = {
 };
 
 export function countryName(code?: string): string {
-  if (!code) return "N/D";
-  return COUNTRY[code.toUpperCase()] || code;
+  if (!code) return Lx("N/D", "N/A");
+  const c = code.toUpperCase();
+  if (Lx("es", "en") === "en") return COUNTRY_EN[c] || c;
+  return COUNTRY[c] || code;
 }
 
 /** Price as Alibaba publishes it, plus the value the calculator uses. */
@@ -154,7 +162,7 @@ export function supplierPriceInfo(s?: SelectedSupplierData | null) {
     ? `${formatUSD(nums[0], 2)} – ${formatUSD(nums[1], 2)}`
     : used > 0
       ? formatUSD(used, 2)
-      : "N/D";
+      : Lx("N/D", "N/A");
   return { used, isRange, published };
 }
 
@@ -173,7 +181,7 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="min-w-0">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
-            Proveedor considerado
+            {Lx("Proveedor considerado", "Supplier considered")}
           </p>
           <h2 className="text-lg sm:text-xl font-bold text-[#0B3C5D] break-words">
             {supplier.name}
@@ -201,17 +209,17 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
             <span className="inline-flex items-center gap-1.5">
               <Star className="w-4 h-4 text-slate-400" />
               {supplier.rating
-                ? `${supplier.rating.toFixed(1)}${supplier.reviews ? ` (${supplier.reviews} reseñas)` : ""}`
-                : "Sin reseñas"}
+                ? `${supplier.rating.toFixed(1)}${supplier.reviews ? ` (${supplier.reviews} ${Lx("reseñas", "reviews")})` : ""}`
+                : Lx("Sin reseñas", "No reviews")}
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Package className="w-4 h-4 text-slate-400" />
-              Pedido mínimo: {supplier.moq ? `${supplier.moq.toLocaleString()} uds.` : "N/D"}
+              {Lx("Pedido mínimo:", "Minimum order:")} {supplier.moq ? `${supplier.moq.toLocaleString()} ${Lx("uds.", "units")}` : Lx("N/D", "N/A")}
             </span>
             {supplier.storeRating ? (
               <span className="inline-flex items-center gap-1.5">
                 <Star className="w-4 h-4 text-slate-400" />
-                Servicio del proveedor: {supplier.storeRating.toFixed(1)}/5
+                {Lx("Servicio del proveedor:", "Supplier service:")} {supplier.storeRating.toFixed(1)}/5
               </span>
             ) : null}
           </div>
@@ -219,11 +227,11 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
         </div>
 
         <div className="sm:text-right shrink-0">
-          <p className="text-xs text-slate-500">Precio publicado en Alibaba</p>
+          <p className="text-xs text-slate-500">{Lx("Precio publicado en Alibaba", "Price published on Alibaba")}</p>
           <p className="text-lg font-bold text-[#0B3C5D]">{published}</p>
           {isRange && (
             <p className="text-xs text-slate-500 mt-0.5">
-              Se calculó con {formatUSD(used, 2)} (precio medio)
+              {Lx(`Se calculó con ${formatUSD(used, 2)} (precio medio)`, `Calculated with ${formatUSD(used, 2)} (midpoint)`)}
             </p>
           )}
           {link && (
@@ -233,7 +241,7 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
               rel="noopener noreferrer"
               className="mt-3 inline-flex items-center gap-1.5 text-sm font-medium text-blue-600 hover:underline"
             >
-              Ver en Alibaba <ExternalLink className="w-4 h-4" />
+              <span>{Lx("Ver en Alibaba", "View on Alibaba")}</span> <ExternalLink className="w-4 h-4" />
             </a>
           )}
         </div>
@@ -251,13 +259,13 @@ export function NoSupplierNotice({ hasSupplierWithoutPrice }: { hasSupplierWitho
         <AlertCircle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
         <h1 className="text-xl font-bold text-[#0B3C5D] mb-2">
           {hasSupplierWithoutPrice
-            ? "Este proveedor no publica precio"
-            : "Primero escoja un proveedor"}
+            ? Lx("Este proveedor no publica precio", "This supplier does not publish a price")
+            : Lx("Primero escoja un proveedor", "First choose a supplier")}
         </h1>
         <p className="text-sm text-slate-600 mb-6">
           {hasSupplierWithoutPrice
-            ? "Sin el precio real no podemos calcular el costo en Guatemala. Escoja otro proveedor de la lista."
-            : "El costo en Guatemala se calcula con el precio real del proveedor que usted escoja en la lista de resultados."}
+            ? Lx("Sin el precio real no podemos calcular el costo en Guatemala. Escoja otro proveedor de la lista.", "Without the real price we cannot estimate the cost in Guatemala. Choose another supplier from the list.")
+            : Lx("El costo en Guatemala se calcula con el precio real del proveedor que usted escoja en la lista de resultados.", "The cost in Guatemala is estimated with the real price of the supplier you choose from the results.")}
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
@@ -265,14 +273,14 @@ export function NoSupplierNotice({ hasSupplierWithoutPrice }: { hasSupplierWitho
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47]"
           >
             <ArrowLeft className="w-4 h-4" />
-            Volver a proveedores
+            <span>{Lx("Volver a proveedores", "Back to suppliers")}</span>
           </button>
           <button
             onClick={() => navigate("/qualify")}
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border-2 border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
           >
             <Search className="w-4 h-4" />
-            Nueva búsqueda
+            <span>{Lx("Nueva búsqueda", "New search")}</span>
           </button>
         </div>
       </div>
@@ -281,8 +289,44 @@ export function NoSupplierNotice({ hasSupplierWithoutPrice }: { hasSupplierWitho
 }
 
 // ─── Disclaimer + SEAL supplier verification in China (paid add-on) ─────────
-export const SEAL_DISCLAIMER =
-  "SEAL no garantiza a los proveedores ni los resultados de esta búsqueda. SmartTrade AI es una herramienta para organizar y comparar proveedores. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.";
+export function sealDisclaimer(): string {
+  return Lx(
+    "SEAL no garantiza a los proveedores ni los resultados de esta búsqueda. SmartTrade AI es una herramienta para organizar y comparar proveedores. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.",
+    "SEAL does not guarantee the suppliers or the results of this search. SmartTrade AI is a tool to organize and compare suppliers. To buy more safely, the specific supplier verification service in China is required.",
+  );
+}
+
+const TRUST_LABEL_EN: Record<string, string> = {
+  verification: "Verification",
+  track: "Track record",
+  performance: "Commercial performance",
+  reputation: "Reputation",
+  protection: "Payment protection",
+};
+
+// Backend details are in Spanish; translate the fixed phrases for English
+export function trustDetail(d: string): string {
+  if (Lx("es", "en") !== "en") return d;
+  return d
+    .replace("Verified Supplier (auditoría de tercero)", "Verified Supplier (third-party audit)")
+    .replace("Gold Supplier (membresía, sin auditoría en planta)", "Gold Supplier (membership, no on-site audit)")
+    .replace("Sin insignia de verificación", "No verification badge")
+    .replace(/(\d+) años? en Alibaba/, (_m, n) => `${n} year${n === "1" ? "" : "s"} on Alibaba`)
+    .replace(/ con (\d+) reseñas \(ajustado/, " with $1 reviews (adjusted")
+    .replace("servicio del proveedor", "supplier service")
+    .replace("Sin reseñas", "No reviews")
+    .replace("entregas a tiempo", "on-time delivery")
+    .replace("respuesta", "response")
+    .replace("recompra", "reorder")
+    .replace("Sin Trade Assurance", "No Trade Assurance")
+    .replace(/^N\/D$/, "N/A");
+}
+
+const COUNTRY_EN: Record<string, string> = {
+  CN: "China", HK: "Hong Kong", TW: "Taiwan", VN: "Vietnam", IN: "India", TH: "Thailand",
+  MY: "Malaysia", ID: "Indonesia", KR: "South Korea", JP: "Japan", TR: "Turkey",
+  PK: "Pakistan", BD: "Bangladesh", US: "United States", MX: "Mexico",
+};
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -325,7 +369,7 @@ export function SupplierDisclaimer({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          requestType: "Verificación de proveedor en China",
+          requestType: "Verificación de proveedor en China", // sales team reads Spanish
           name,
           email,
           message: notes,
@@ -337,13 +381,13 @@ export function SupplierDisclaimer({
         }),
       });
       if (res.status === 400) {
-        setError("Revise su nombre y correo (por ejemplo nombre@empresa.com).");
+        setError(Lx("Revise su nombre y correo (por ejemplo nombre@empresa.com).", "Check your name and email (for example name@company.com)."));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSent(true);
     } catch {
-      setError("No se pudo enviar. Escríbanos al WhatsApp +502 5996 4664.");
+      setError(Lx("No se pudo enviar. Escríbanos al WhatsApp +502 5996 4664.", "Could not send. Message us on WhatsApp +502 5996 4664."));
     } finally {
       setSending(false);
     }
@@ -358,12 +402,12 @@ export function SupplierDisclaimer({
         <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
         <div className="min-w-0 flex-1">
           <p className="text-sm text-amber-900">
-            <span className="font-semibold">Aviso: </span>
-            {SEAL_DISCLAIMER}
+            <span className="font-semibold">{Lx("Aviso: ", "Notice: ")}</span>
+            <span>{sealDisclaimer()}</span>
           </p>
           {sent ? (
             <p className="mt-3 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
-              ✅ Recibimos su solicitud. Un ejecutivo de SEAL le contacta para la verificación en China.
+              ✅ {Lx("Recibimos su solicitud. Un ejecutivo de SEAL le contacta para la verificación en China.", "We received your request. A SEAL executive will contact you about the verification in China.")}
             </p>
           ) : !open ? (
             <button
@@ -371,22 +415,26 @@ export function SupplierDisclaimer({
               className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47]"
             >
               <ShieldCheck className="w-4 h-4" />
-              {supplier?.name ? "Solicitar verificación de este proveedor en China" : "Solicitar verificación de proveedor en China"}
+              <span>
+                {supplier?.name
+                  ? Lx("Solicitar verificación de este proveedor en China", "Request verification of this supplier in China")
+                  : Lx("Solicitar verificación de proveedor en China", "Request supplier verification in China")}
+              </span>
             </button>
           ) : (
             <form onSubmit={submit} className="mt-3 space-y-2">
               {supplier?.name && (
                 <p className="text-xs text-slate-600">
-                  Proveedor: <span className="font-medium text-slate-800">{supplier.name}</span>
+                  {Lx("Proveedor:", "Supplier:")} <span className="font-medium text-slate-800">{supplier.name}</span>
                 </p>
               )}
               <div className="grid sm:grid-cols-2 gap-2">
-                <input className={input} placeholder="Su nombre" value={name} onChange={(e) => setName(e.target.value)} required />
-                <input className={input} type="email" placeholder="Su correo" value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <input className={input} placeholder={Lx("Su nombre", "Your name")} value={name} onChange={(e) => setName(e.target.value)} required />
+                <input className={input} type="email" placeholder={Lx("Su correo", "Your email")} value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
               <textarea
                 className={`${input} min-h-[70px]`}
-                placeholder="¿Qué le gustaría verificar? (opcional)"
+                placeholder={Lx("¿Qué le gustaría verificar? (opcional)", "What would you like to verify? (optional)")}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />
@@ -397,10 +445,10 @@ export function SupplierDisclaimer({
                   disabled={sending}
                   className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47] disabled:opacity-60"
                 >
-                  {sending ? "Enviando…" : "Enviar solicitud"}
+                  <span>{sending ? Lx("Enviando…", "Sending…") : Lx("Enviar solicitud", "Send request")}</span>
                 </button>
                 <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 rounded-lg border border-slate-300 text-sm text-slate-700">
-                  Cancelar
+                  {Lx("Cancelar", "Cancel")}
                 </button>
               </div>
             </form>

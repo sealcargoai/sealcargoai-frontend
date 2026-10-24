@@ -18,8 +18,10 @@ import autoTable from "jspdf-autotable";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, SEAL_DISCLAIMER, badgeText, TrustBadge } from "./SelectedSupplier";
-import { calculateRiskScore } from "./RiskCompliance";
+import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, sealDisclaimer, badgeText, TrustBadge, supplierPriceInfo } from "./SelectedSupplier";
+import { getReviewTopics } from "./RiskCompliance";
+import { buildCostPdf } from "../../utils/costPdf";
+import { Lx } from "../../utils/lang";
 import {
   SEAL_COMPANY,
   drawCompanyInfoBox,
@@ -31,177 +33,40 @@ import {
   useRates,
   formatQ,
   formatUSD,
-  ESTIMATE_NOTE,
+  estimateNote,
   type CostResult,
 } from "../../utils/costCalculator";
 
 // Cost logic lives in utils/costCalculator (shared with costs page and Excel)
 type Costs = CostResult;
 
-// ─── PDF Generation (with company info) ──────────────────────────────────────
+// ─── PDF (shared generator: utils/costPdf) ──────────────────────────────────
 function generateReportPDF(data: {
   supplierName: string;
   quantity: number;
   price: number;
-  destination: string;
+  priceNote?: string;
+  productDescription: string;
   productType: string;
-  riskScore: number;
+  supplier: any;
   costs: Costs;
   reportId: string;
   saveFile?: boolean;
 }): string {
-  const doc = new jsPDF();
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const now = new Date().toLocaleDateString("es-ES", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
+  return buildCostPdf({
+    title: Lx("Informe de orientación para su importación · costos estimados", "Guidance report for your import · estimated costs"),
+    supplierName: data.supplierName,
+    productDescription: data.productDescription,
+    quantity: data.quantity,
+    price: data.price,
+    priceNote: data.priceNote,
+    costs: data.costs,
+    topics: getReviewTopics(data.productType, data.supplier),
+    disclaimer: sealDisclaimer(),
+    reportId: data.reportId,
+    fileName: `SEAL_Informe_${data.supplierName.replace(/\s+/g, "_")}_${Date.now()}.pdf`,
+    saveFile: data.saveFile,
   });
-
-  // Main header
-  doc.setFillColor(11, 60, 93);
-  doc.rect(0, 0, pageWidth, 40, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20);
-  doc.setFont("helvetica", "bold");
-  doc.text("SEAL SmartTrade AI", 14, 16);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  doc.text("Informe de Análisis de Importación · costos estimados", 14, 26);
-  doc.text(`Generado: ${now}  |  ID: ${data.reportId}`, 14, 34);
-
-  // Company info bar (NEW)
-  const yAfterCompany = drawCompanyInfoBox(doc, pageWidth, 40);
-
-  // Executive summary
-  doc.setTextColor(11, 60, 93);
-  doc.setFillColor(239, 246, 255);
-  doc.rect(14, yAfterCompany + 6, pageWidth - 28, 32, "F");
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("RESUMEN EJECUTIVO", 18, yAfterCompany + 16);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.text(`Proveedor considerado:  ${data.supplierName}`, 18, yAfterCompany + 24);
-  doc.text(
-    `Producto: ${data.productType}  |  Destino: Guatemala`,
-    18,
-    yAfterCompany + 30,
-  );
-  doc.text(
-    `Cantidad: ${data.quantity.toLocaleString()} uds  |  Precio: ${formatUSD(Number(data.price), 2)}/u (${formatQ(Number(data.price), data.costs.exchangeRate, 2)})`,
-    18,
-    yAfterCompany + 36,
-  );
-
-  // Cost section
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.text("Desglose de Costos", 14, yAfterCompany + 50);
-
-  autoTable(doc, {
-    startY: yAfterCompany + 54,
-    head: [["Concepto", "Detalle", "Monto (Q)"]],
-    body: data.costs.lines.map((l) => {
-      const pending = l.key === "freight" && data.costs.freightPending;
-      return [
-        l.label,
-        pending ? "Por cotizar" : l.detail,
-        pending ? "Por cotizar" : formatQ(l.amount, data.costs.exchangeRate),
-      ];
-    }),
-    foot: [
-      [
-        "COSTO TOTAL EN GUATEMALA",
-        `${data.quantity.toLocaleString()} unidades`,
-        formatQ(data.costs.totalCost, data.costs.exchangeRate),
-      ],
-    ],
-    headStyles: { fillColor: [11, 60, 93], textColor: 255 },
-    footStyles: {
-      fillColor: [59, 130, 246],
-      textColor: 255,
-      fontStyle: "bold",
-    },
-    alternateRowStyles: { fillColor: [239, 246, 255] },
-    styles: { fontSize: 9 },
-  });
-
-  // Risk section
-  const finalY1 = (doc as any).lastAutoTable.finalY + 10;
-  doc.setFontSize(12);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(11, 60, 93);
-  doc.text("Evaluación de Riesgos", 14, finalY1);
-
-  const riskLevel =
-    data.riskScore < 40 ? "BAJO" : data.riskScore < 70 ? "MEDIO" : "ALTO";
-  const riskColor: [number, number, number] =
-    data.riskScore < 40
-      ? [34, 197, 94]
-      : data.riskScore < 70
-        ? [234, 179, 8]
-        : [239, 68, 68];
-
-  doc.setFillColor(...riskColor);
-  doc.rect(14, finalY1 + 4, pageWidth - 28, 22, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(
-    `Nivel de Riesgo: ${riskLevel}  (${data.riskScore}/100)`,
-    pageWidth / 2,
-    finalY1 + 17,
-    { align: "center" },
-  );
-
-  // Per unit summary
-  const finalY2 = finalY1 + 36;
-  doc.setFillColor(11, 60, 93);
-  doc.rect(14, finalY2, pageWidth - 28, 18, "F");
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(
-    `Costo por Unidad: ${formatQ(data.costs.perUnit, data.costs.exchangeRate, 2)}  |  Total: ${formatQ(data.costs.totalCost, data.costs.exchangeRate)} (${formatUSD(data.costs.totalCost)})`,
-    pageWidth / 2,
-    finalY2 + 11,
-    { align: "center" },
-  );
-
-  // Footnotes
-  doc.setTextColor(100, 116, 139);
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8);
-  doc.text(data.costs.fxNote, 14, finalY2 + 22);
-  doc.text(ESTIMATE_NOTE, 14, finalY2 + 26);
-  if (data.costs.freightPending) {
-    doc.text(
-      "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
-      14,
-      finalY2 + 31,
-    );
-  }
-  // Disclaimer: SEAL does not guarantee search results
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(146, 64, 14);
-  doc.text(
-    doc.splitTextToSize(`Aviso: ${SEAL_DISCLAIMER}`, pageWidth - 28),
-    14,
-    finalY2 + (data.costs.freightPending ? 38 : 33),
-  );
-  doc.setFont("helvetica", "normal");
-
-  // Company footer (NEW)
-  drawCompanyFooter(doc);
-
-  if (data.saveFile) {
-    doc.save(
-      `SEAL_FullReport_${data.supplierName.replace(/\s+/g, "_")}_${Date.now()}.pdf`,
-    );
-  }
-
-  return doc.output("datauristring").split(",")[1];
 }
 
 // ─── Excel Export (NEW: Beautiful XLSX) ───────────────────────────────────────
@@ -209,12 +74,14 @@ async function exportToExcel(data: {
   supplierName: string;
   quantity: number;
   price: number;
+  priceNote?: string;
   destination: string;
   productType: string;
   costs: Costs;
 }) {
   await generateBeautifulExcel({
-    reportTitle: "Informe Completo de Análisis",
+    reportTitle: Lx("Informe de orientación · costos estimados", "Guidance report · estimated costs"),
+    priceNote: data.priceNote,
     supplierName: data.supplierName,
     productType: data.productType,
     destination: data.destination,
@@ -230,7 +97,7 @@ async function exportToExcel(data: {
 export function FinalCTA() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { t } = useLanguage();
+  const { t, L } = useLanguage();
 
   // ── Read state ────────────────────────────────────────────────────────────
   const stateSupplier = location.state?.supplier ?? null;
@@ -238,24 +105,22 @@ export function FinalCTA() {
   const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
   const stateProductType = location.state?.productType ?? "furniture";
-  // Same score the risk screen computes from the real supplier data
-  const stateRiskScore: number =
-    location.state?.riskScore ??
-    calculateRiskScore(
-      location.state?.supplier,
-      String(location.state?.productType ?? ""),
-      String(location.state?.destination ?? "GT"),
-    );
   const stateSuppliersData = location.state?.suppliersData ?? null;
 
   const quantity = parseInt(String(stateQuantity)) || 1000;
   const destination = String(stateDestination);
   const productType = String(stateProductType);
+  const productDescription = String(location.state?.productDescription ?? "");
+  const reviewTopics = getReviewTopics(productType, stateSupplier);
 
   // Real supplier only: no demo name or price (see NoSupplierNotice below)
   const price = stateSupplier?.price > 0 ? stateSupplier.price : 0;
   const supplierName = stateSupplier?.name || "";
   const isLiveData = hasUsableSupplier(stateSupplier);
+  const priceInfo = supplierPriceInfo(stateSupplier);
+  const priceNote = priceInfo.isRange
+    ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
+    : "";
 
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
@@ -277,19 +142,6 @@ export function FinalCTA() {
         }
       : null;
 
-  // ── Risk display ──────────────────────────────────────────────────────────
-  const riskLevel =
-    stateRiskScore < 40
-      ? t("risk.low")
-      : stateRiskScore < 70
-        ? t("risk.medium")
-        : t("risk.high");
-  const riskColor =
-    stateRiskScore < 40
-      ? "text-green-600"
-      : stateRiskScore < 70
-        ? "text-yellow-600"
-        : "text-red-600";
 
   // ── Modal state ───────────────────────────────────────────────────────────
   const [showQuoteModal, setShowQuoteModal] = useState(false);
@@ -311,17 +163,14 @@ export function FinalCTA() {
 
   const reportId = `SEAL-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
 
+  // Exactly what the PDF contains
   const reportSections = [
-    { name: t("final.section1") },
-    {
-      name: leadStats
-        ? `${t("final.section2Prefix")} (${leadStats.qualified} ${t("final.section2Suffix")})`
-        : t("final.section2Prefix"),
-    },
-    { name: t("final.section3") },
-    { name: t("final.section4") },
-    { name: t("final.section5") },
-    { name: t("final.section6") },
+    { name: L("Datos de la consulta y descripción del producto", "Request details and product description") },
+    { name: L("Proveedor considerado", "Supplier considered") },
+    { name: L("Escenario estimado de costos en Guatemala", "Estimated cost scenario in Guatemala") },
+    { name: L("Variables que pueden cambiar el escenario", "Variables that can change the scenario") },
+    { name: L(`Aspectos por revisar (${reviewTopics.length})`, `Aspects to review (${reviewTopics.length})`) },
+    { name: L("Aviso y alcance de la herramienta", "Notice and scope of the tool") },
   ];
 
   // ── Action: Download Full Report ──────────────────────────────────────────
@@ -330,9 +179,10 @@ export function FinalCTA() {
       supplierName,
       quantity,
       price,
-      destination,
+      priceNote,
+      productDescription,
       productType,
-      riskScore: stateRiskScore,
+      supplier: stateSupplier,
       costs,
       reportId,
       saveFile: true,
@@ -345,8 +195,9 @@ export function FinalCTA() {
       supplierName,
       quantity,
       price,
+      priceNote,
       destination,
-      productType,
+      productType: productDescription || productType,
       costs,
     });
   };
@@ -402,9 +253,10 @@ export function FinalCTA() {
         supplierName,
         quantity,
         price,
-        destination,
+        priceNote,
+        productDescription,
         productType,
-        riskScore: stateRiskScore,
+        supplier: stateSupplier,
         costs,
         reportId,
         saveFile: true,
@@ -423,9 +275,10 @@ export function FinalCTA() {
         supplierName,
         quantity,
         price,
-        destination,
+        priceNote,
+        productDescription,
         productType,
-        riskScore: stateRiskScore,
+        supplier: stateSupplier,
         costs,
         reportId,
         saveFile: false,
@@ -601,7 +454,7 @@ export function FinalCTA() {
               </div>
               <div className="flex items-center gap-1 text-sm text-blue-700">
                 <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
-                {stateSupplier?.rating ?? "Sin reseñas"} • {badgeText(stateSupplier)}
+                {stateSupplier?.rating ?? L("Sin reseñas", "No reviews")} • {badgeText(stateSupplier)}
               </div>
               {(stateSupplier?.trustScore !== undefined || stateSupplier?.aiScore !== undefined) && (
                 <div className="mt-2">
@@ -621,19 +474,19 @@ export function FinalCTA() {
                 {Q(costs.perUnit, 2)} {t("final.perUnit")}
               </div>
               <div className="text-xs text-green-800 mt-1">
-                <span>Estimación, no cotización</span>
+                <span>{L("Escenario estimado, no cotización", "Estimated scenario, not a quote")}</span>
               </div>
             </div>
 
             <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
               <div className="text-sm text-purple-700 mb-2">
-                {t("final.riskLevel")}
+                {L("Aspectos por revisar", "Aspects to review")}
               </div>
-              <div className={`font-bold text-xl ${riskColor} mb-1`}>
-                {riskLevel}
+              <div className="font-bold text-xl text-[#0B3C5D] mb-1">
+                {L(`${reviewTopics.length} temas`, `${reviewTopics.length} topics`)}
               </div>
               <div className="text-sm text-purple-700">
-                {stateRiskScore}/100 {t("final.riskScore")}
+                {L("Antes de comprar e importar", "Before buying and importing")}
               </div>
             </div>
           </div>
@@ -833,7 +686,7 @@ export function FinalCTA() {
               <input
                 type="email"
                 pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
-                title="Correo completo, por ejemplo nombre@empresa.com"
+                title={L("Correo completo, por ejemplo nombre@empresa.com", "Complete email, for example name@company.com")}
                 required
                 placeholder={t("final.quoteEmail")}
                 value={quoteEmail}
@@ -905,7 +758,7 @@ export function FinalCTA() {
               <input
                 type="email"
                 pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
-                title="Correo completo, por ejemplo nombre@empresa.com"
+                title={L("Correo completo, por ejemplo nombre@empresa.com", "Complete email, for example name@company.com")}
                 required
                 placeholder={t("final.emailYourEmail")}
                 value={emailRecipient}

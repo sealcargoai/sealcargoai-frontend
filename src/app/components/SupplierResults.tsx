@@ -24,12 +24,14 @@ import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
 import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
+import { Lx } from "../../utils/lang";
 import {
   supplierPriceInfo,
   SupplierDisclaimer,
   TrustBadge,
   TrustBreakdown,
   CertificationsLine,
+  trustDetail,
   trustInfo,
   badgeText,
 } from "./SelectedSupplier";
@@ -113,13 +115,13 @@ function MorePlatforms({
         }),
       });
       if (res.status === 400) {
-        setError("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.");
+        setError(Lx("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSent(true);
     } catch {
-      setError(`No se pudo enviar. Llámenos al ${SEAL_COMPANY.phone}.`);
+      setError(Lx(`No se pudo enviar. Llámenos al ${SEAL_COMPANY.phone}.`, `Could not send. Call us at ${SEAL_COMPANY.phone}.`));
     } finally {
       setSending(false);
     }
@@ -131,12 +133,12 @@ function MorePlatforms({
   return (
     <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 mt-6">
       <h3 className="font-semibold text-[#0B3C5D] mb-1">
-        Ver más proveedores en otras plataformas
+        {Lx("Ver más proveedores en otras plataformas", "See more suppliers on other platforms")}
       </h3>
       <p className="text-sm text-slate-600 mb-4">
-        Abrimos la búsqueda de{" "}
-        <span className="font-medium text-slate-800">"{kw}"</span> en cada
-        plataforma para que compare.
+        {Lx("Abrimos la búsqueda de", "We open the search for")}{" "}
+        <span className="font-medium text-slate-800">"{kw}"</span>{" "}
+        {Lx("en cada plataforma para que compare.", "on each platform so you can compare.")}
       </p>
       <div className="flex flex-wrap gap-2">
         {PLATFORMS.map((p) => (
@@ -156,16 +158,14 @@ function MorePlatforms({
       <div className="mt-5 pt-5 border-t border-slate-200">
         {sent ? (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
-            ✅ Recibimos el proveedor. Un ejecutivo de SEAL le cotiza flete y
-            nacionalización.
+            ✅ {Lx("Recibimos el proveedor. Un ejecutivo de SEAL le cotiza flete y nacionalización.", "We received the supplier. A SEAL executive will quote freight and customs clearance.")}
           </div>
         ) : !open ? (
           <button
             onClick={() => setOpen(true)}
             className="text-sm font-semibold text-[#0B3C5D] hover:underline"
           >
-            ¿Encontró un proveedor en otra plataforma? Páselo a SEAL y le
-            cotizamos flete y aduana →
+            {Lx("¿Encontró un proveedor en otra plataforma? Páselo a SEAL y le cotizamos flete y aduana →", "Found a supplier on another platform? Send it to SEAL and we'll quote freight and customs →")}
           </button>
         ) : (
           <form onSubmit={submit} className="space-y-3">
@@ -174,20 +174,20 @@ function MorePlatforms({
                 value={supplierName}
                 onChange={(e) => setSupplierName(e.target.value)}
                 required
-                placeholder="Nombre del proveedor"
+                placeholder={Lx("Nombre del proveedor", "Supplier name")}
                 className={input}
               />
               <input
                 value={supplierUrl}
                 onChange={(e) => setSupplierUrl(e.target.value)}
-                placeholder="Enlace del producto (opcional)"
+                placeholder={Lx("Enlace del producto (opcional)", "Product link (optional)")}
                 className={input}
               />
               <input
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                placeholder="Su nombre"
+                placeholder={Lx("Su nombre", "Your name")}
                 className={input}
               />
               <input
@@ -196,8 +196,8 @@ function MorePlatforms({
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
-                title="Correo completo, por ejemplo nombre@empresa.com"
-                placeholder="Su correo"
+                title={Lx("Correo completo, por ejemplo nombre@empresa.com", "Complete email, for example name@company.com")}
+                placeholder={Lx("Su correo", "Your email")}
                 className={input}
               />
             </div>
@@ -205,7 +205,7 @@ function MorePlatforms({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              placeholder="Precio que le dieron, cantidad, comentarios..."
+              placeholder={Lx("Precio que le dieron, cantidad, comentarios...", "Price you were given, quantity, comments...")}
               className={input}
             />
             {error && (
@@ -218,7 +218,7 @@ function MorePlatforms({
               disabled={sending}
               className="px-5 py-2.5 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47] disabled:opacity-60"
             >
-              {sending ? "Enviando..." : "Enviar a SEAL"}
+              <span>{sending ? Lx("Enviando...", "Sending...") : Lx("Enviar a SEAL", "Send to SEAL")}</span>
             </button>
           </form>
         )}
@@ -230,6 +230,7 @@ function MorePlatforms({
 // ─── No live results: honest message + assisted search request ──────────────
 function NoResults({
   keyword,
+  noRelevant = false,
   totalAnalyzed,
   filteredOut,
   productDescription,
@@ -238,6 +239,7 @@ function NoResults({
   destination,
 }: {
   keyword: string;
+  noRelevant?: boolean;
   totalAnalyzed: number;
   filteredOut: { name: string; reason: string }[];
   productDescription: string;
@@ -280,14 +282,14 @@ function NoResults({
         }),
       });
       if (res.status === 400) {
-        setError("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.");
+        setError(Lx("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSent(true);
     } catch {
       setError(
-        `No se pudo enviar la solicitud. Llámenos al ${SEAL_COMPANY.phone}.`,
+        Lx(`No se pudo enviar la solicitud. Llámenos al ${SEAL_COMPANY.phone}.`, `Could not send the request. Call us at ${SEAL_COMPANY.phone}.`),
       );
     } finally {
       setSending(false);
@@ -302,20 +304,33 @@ function NoResults({
             <Package className="w-7 h-7 text-[#0B3C5D]" />
           </div>
           <h1 className="text-3xl font-bold text-[#0B3C5D] mb-3">
-            {allFiltered
-              ? "Ningún proveedor pasó nuestros filtros"
-              : "No pudimos obtener resultados en vivo"}
+            {noRelevant
+              ? Lx("No encontramos opciones suficientemente relacionadas con su producto", "We didn't find options closely related to your product")
+              : allFiltered
+                ? Lx("Ningún proveedor pasó nuestros filtros", "No supplier passed our filters")
+                : Lx("No pudimos obtener resultados en este momento", "We couldn't get results right now")}
           </h1>
           <p className="text-slate-600 mb-6">
-            {allFiltered
-              ? `Analizamos ${totalAnalyzed} proveedores en Alibaba, pero ninguno cumplió los criterios de calidad, verificación y experiencia de SEAL. Preferimos no recomendarle un proveedor que no cumple.`
-              : "En este momento Alibaba no nos devolvió resultados para su producto. No le vamos a mostrar datos de ejemplo: un ejecutivo de SEAL puede hacer la búsqueda por usted y enviarle proveedores verificados con su costo de nacionalización."}
+            {noRelevant
+              ? Lx(
+                  "Los resultados de la plataforma no coincidían con lo que describió, así que preferimos no mostrarlos. Agregue más detalles (tipo exacto de producto, uso, capacidad, material) y busque de nuevo, o pida a SEAL que haga la búsqueda por usted.",
+                  "The platform results didn't match what you described, so we prefer not to show them. Add more details (exact product type, use, capacity, material) and search again, or ask SEAL to do the search for you.",
+                )
+              : allFiltered
+                ? Lx(
+                    `Analizamos ${totalAnalyzed} proveedores, pero ninguno cumplió los criterios de verificación, reputación y pedido mínimo de SEAL. Preferimos no mostrarle opciones que no los cumplen.`,
+                    `We analyzed ${totalAnalyzed} suppliers, but none met SEAL's verification, reputation and minimum-order criteria. We prefer not to show options that don't meet them.`,
+                  )
+                : Lx(
+                    "En este momento la plataforma no nos devolvió resultados para su producto. No le vamos a mostrar datos de ejemplo: un ejecutivo de SEAL puede hacer la búsqueda por usted y enviarle opciones para revisar con su costo estimado.",
+                    "Right now the platform didn't return results for your product. We won't show you sample data: a SEAL executive can do the search for you and send you options to review with their estimated cost.",
+                  )}
           </p>
 
           {allFiltered && filteredOut.length > 0 && (
             <details className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
               <summary className="cursor-pointer font-medium text-red-900">
-                Ver por qué se filtraron ({filteredOut.length})
+                {Lx("Ver por qué se filtraron", "See why they were filtered")} ({filteredOut.length})
               </summary>
               <ul className="mt-3 space-y-1 text-sm">
                 {filteredOut.map((s, i) => (
@@ -331,19 +346,18 @@ function NoResults({
           {sent ? (
             <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-green-800">
               <div className="font-semibold mb-1 flex items-center gap-2">
-                <CheckCircle className="w-5 h-5" /> Solicitud recibida
+                <CheckCircle className="w-5 h-5" /> {Lx("Solicitud recibida", "Request received")}
               </div>
-              Un ejecutivo de SEAL le contactará para darle seguimiento a su
-              búsqueda.
+              {Lx("Un ejecutivo de SEAL le contactará para darle seguimiento a su búsqueda.", "A SEAL executive will contact you to follow up on your search.")}
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-4">
               <h2 className="text-lg font-semibold text-[#0B3C5D]">
-                Que SEAL busque los proveedores por usted
+                {Lx("Que SEAL busque los proveedores por usted", "Let SEAL search for suppliers for you")}
               </h2>
               {productDescription && (
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-600 whitespace-pre-line break-words">
-                  <span className="font-medium text-slate-700">Producto: </span>
+                  <span className="font-medium text-slate-700">{Lx("Producto: ", "Product: ")}</span>
                   {productDescription}
                 </div>
               )}
@@ -352,7 +366,7 @@ function NoResults({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   required
-                  placeholder="Nombre"
+                  placeholder={Lx("Nombre", "Name")}
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
@@ -361,21 +375,21 @@ function NoResults({
                   onChange={(e) => setEmail(e.target.value)}
                   required
                   pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
-                  title="Correo completo, por ejemplo nombre@empresa.com"
-                  placeholder="Correo"
+                  title={Lx("Correo completo, por ejemplo nombre@empresa.com", "Complete email, for example name@company.com")}
+                  placeholder={Lx("Correo", "Email")}
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   type="tel"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="Teléfono / WhatsApp"
+                  placeholder={Lx("Teléfono / WhatsApp", "Phone / WhatsApp")}
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
                 <input
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
-                  placeholder="Empresa"
+                  placeholder={Lx("Empresa", "Company")}
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
@@ -383,7 +397,7 @@ function NoResults({
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 rows={3}
-                placeholder="¿Algo más que debamos saber? (plazo, proveedor actual, etc.)"
+                placeholder={Lx("¿Algo más que debamos saber? (plazo, proveedor actual, etc.)", "Anything else we should know? (timeline, current supplier, etc.)")}
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y"
               />
               {error && (
@@ -397,7 +411,7 @@ function NoResults({
                   disabled={sending}
                   className="flex-1 px-6 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center justify-center gap-2 disabled:opacity-60"
                 >
-                  {sending ? "Enviando..." : "Solicitar búsqueda asistida"}
+                  <span>{sending ? Lx("Enviando...", "Sending...") : Lx("Solicitar búsqueda asistida", "Request assisted search")}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
                 <a
@@ -424,7 +438,7 @@ function NoResults({
             onClick={() => navigate("/qualify")}
             className="mt-6 text-sm text-blue-600 hover:underline"
           >
-            ← Modificar la descripción y buscar de nuevo
+            {Lx("← Modificar la descripción y buscar de nuevo", "← Edit the description and search again")}
           </button>
         </div>
       </div>
@@ -623,9 +637,9 @@ export function SupplierResults() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setShowContactModal(false);
-      alert("¡Solicitud enviada! Un ejecutivo de SEAL le dará seguimiento.");
+      alert(Lx("¡Solicitud enviada! Un ejecutivo de SEAL le dará seguimiento.", "Request sent! A SEAL executive will follow up."));
     } catch {
-      alert(`No se pudo enviar. Llámenos al ${SEAL_COMPANY.phone}.`);
+      alert(Lx(`No se pudo enviar. Llámenos al ${SEAL_COMPANY.phone}.`, `Could not send. Call us at ${SEAL_COMPANY.phone}.`));
     }
   };
 
@@ -634,6 +648,7 @@ export function SupplierResults() {
     return (
       <NoResults
         keyword={apiData?.searchKeyword ?? ""}
+        noRelevant={!!apiData?.noRelevantMatches}
         totalAnalyzed={apiData?.totalAnalyzed ?? 0}
         filteredOut={filteredOutList}
         productDescription={location.state?.productDescription ?? ""}
@@ -699,7 +714,7 @@ export function SupplierResults() {
           </p>
           <p className="text-xs text-slate-400 mt-1">
             {isLiveData
-              ? "✅ Datos en vivo de Alibaba"
+              ? Lx("✅ Datos en vivo de Alibaba", "✅ Live data from Alibaba")
               : ""}
           </p>
         </div>
@@ -863,7 +878,7 @@ export function SupplierResults() {
                               badgeText(supplier),
                               ...trustInfo(supplier).breakdown
                                 .filter((b) => b.key !== "verification" && b.key !== "track" && b.score !== null && b.score >= 50)
-                                .map((b) => b.detail),
+                                .map((b) => trustDetail(b.detail)),
                             ].join(" · ")}
                           </p>
                           <CertificationsLine supplier={supplier} />
@@ -878,7 +893,7 @@ export function SupplierResults() {
                             <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
                             {supplier.rating
                               ? `${supplier.rating} (${supplier.reviews})`
-                              : "Sin reseñas"}
+                              : Lx("Sin reseñas", "No reviews")}
                           </div>
                         </div>
                       </div>
@@ -897,7 +912,7 @@ export function SupplierResults() {
                               </div>
                               {pi.isRange && (
                                 <div className="text-xs text-slate-500">
-                                  medio {formatUSD(pi.used, 2)}
+                                  {Lx("medio", "midpoint")} {formatUSD(pi.used, 2)}
                                 </div>
                               )}
                             </>
@@ -921,7 +936,7 @@ export function SupplierResults() {
                           {t("suppliers.experience")}
                         </div>
                         <div className="font-semibold text-[#0B3C5D] text-sm">
-                          {supplier.yearsInBusiness ? `${supplier.yearsInBusiness}a` : "N/D"}
+                          {supplier.yearsInBusiness ? `${supplier.yearsInBusiness}${Lx("a", "y")}` : Lx("N/D", "N/A")}
                         </div>
                       </div>
                       <div className="bg-slate-50 rounded-lg p-3">
@@ -929,7 +944,7 @@ export function SupplierResults() {
                           {t("suppliers.response")}
                         </div>
                         <div className="font-semibold text-[#0B3C5D] text-sm">
-                          {supplier.responseRate != null ? `${supplier.responseRate}%` : "N/D"}
+                          {supplier.responseRate != null ? `${supplier.responseRate}%` : Lx("N/D", "N/A")}
                         </div>
                       </div>
                       <div className="bg-slate-50 rounded-lg p-3">
@@ -937,7 +952,7 @@ export function SupplierResults() {
                           {t("suppliers.quality")}
                         </div>
                         <div className="font-semibold text-[#0B3C5D] text-sm">
-                          {supplier.tradeAssurance === true ? "Sí" : supplier.tradeAssurance === false ? "No" : "N/D"}
+                          {supplier.tradeAssurance === true ? Lx("Sí", "Yes") : supplier.tradeAssurance === false ? "No" : Lx("N/D", "N/A")}
                         </div>
                       </div>
                     </div>
@@ -979,7 +994,7 @@ export function SupplierResults() {
                           {/* Hover overlay hint */}
                           <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-all duration-300 flex items-center justify-center">
                             <span className="opacity-0 group-hover:opacity-100 text-white text-xs font-semibold bg-black/50 px-2 py-1 rounded-full transition-opacity duration-300">
-                              Ver
+                              {Lx("Ver", "View")}
                             </span>
                           </div>
                         </div>
@@ -1059,11 +1074,12 @@ export function SupplierResults() {
 
               {/* How we order */}
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6 text-sm text-slate-700">
-                <div className="font-medium text-[#0B3C5D] mb-1">Cómo ordenamos</div>
+                <div className="font-medium text-[#0B3C5D] mb-1">{Lx("Cómo ordenamos", "How we order")}</div>
                 <p>
-                  Primero por nivel de confianza (A alta, B buena, C media). Dentro de
-                  cada nivel, por menor precio. El precio no forma parte del Índice de
-                  Confianza.
+                  {Lx(
+                    "Solo mostramos productos relacionados con su descripción. Luego ordenamos por nivel de confianza (A alta, B buena, C media) y, dentro de cada nivel, por cercanía a su producto y menor precio. El precio no forma parte del Índice de Confianza.",
+                    "We only show products related to your description. Then we order by trust level (A high, B good, C medium) and, within each level, by closeness to your product and lowest price. Price is not part of the Trust Index.",
+                  )}
                 </p>
               </div>
 
@@ -1092,17 +1108,17 @@ export function SupplierResults() {
                         <div className="flex items-center justify-between">
                           <span>{t("suppliers.estShipping")}</span>
                           <span className="font-medium">
-                            {est.freightPending ? "Por cotizar" : formatQ(est.shipping, est.exchangeRate)}
+                            {est.freightPending ? Lx("Por cotizar", "To be quoted") : formatQ(est.shipping, est.exchangeRate)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span>Impuestos (DAI + IVA)</span>
+                          <span>{Lx("Impuestos (DAI + IVA)", "Taxes (DAI + IVA)")}</span>
                           <span className="font-medium">
                             {formatQ(est.importDuties + est.taxes, est.exchangeRate)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span>Seguro, aduana y destino</span>
+                          <span>{Lx("Seguro, aduana y destino", "Insurance, customs and destination")}</span>
                           <span className="font-medium">
                             {formatQ(est.insurance + est.customsFees + est.localCharges, est.exchangeRate)}
                           </span>
@@ -1190,17 +1206,17 @@ export function SupplierResults() {
                   <div className="flex items-center gap-2">
                     <Mail className="w-4 h-4" />
                     {selectedSupplier.contactEmail ||
-                      "Contactar via plataforma"}
+                      Lx("Contactar vía plataforma", "Contact via platform")}
                   </div>
                   <div className="flex items-center gap-2">
                     <Phone className="w-4 h-4" />
                     {selectedSupplier.contactPhone ||
-                      "Contactar via plataforma"}
+                      Lx("Contactar vía plataforma", "Contact via platform")}
                   </div>
                   <div className="flex items-center gap-2 mt-2">
                     <Award className="w-4 h-4 text-green-600" />
                     <span className="font-semibold text-green-600">
-                      Índice de Confianza SEAL: {trustInfo(selectedSupplier).score}/100 (nivel {trustInfo(selectedSupplier).level})
+                      {Lx("Índice de Confianza SEAL", "SEAL Trust Index")}: {trustInfo(selectedSupplier).score}/100 ({Lx("nivel", "level")} {trustInfo(selectedSupplier).level})
                     </span>
                   </div>
                 </div>

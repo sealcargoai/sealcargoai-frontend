@@ -1,5 +1,6 @@
 import { useRouteError, useNavigate } from "react-router";
 import { AlertTriangle, RotateCcw, ArrowLeft, Phone } from "lucide-react";
+import { Lx } from "../../utils/lang";
 
 // Shown when a screen fails to render (e.g. the browser's automatic
 // translation rewrote the page). What the client typed is kept in
@@ -22,20 +23,22 @@ export function AppError() {
       <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 max-w-lg w-full text-center">
         <AlertTriangle className="w-10 h-10 text-amber-500 mx-auto mb-3" />
         <h1 className="text-xl font-bold text-[#0B3C5D] mb-2">
-          <span>Algo falló al mostrar esta pantalla</span>
+          <span>{Lx("Algo falló al mostrar esta pantalla", "Something went wrong showing this screen")}</span>
         </h1>
         <p className="text-sm text-slate-600 mb-4">
           <span>
             {hasDraft
-              ? "Lo que usted ingresó quedó guardado. Puede reintentar o volver al formulario sin escribirlo de nuevo."
-              : "Puede reintentar o volver a empezar."}
+              ? Lx("Lo que usted ingresó quedó guardado. Puede reintentar o volver al formulario sin escribirlo de nuevo.", "What you entered was saved. You can retry or go back to the form without typing it again.")
+              : Lx("Puede reintentar o volver a empezar.", "You can retry or start over.")}
           </span>
         </p>
         {looksLikeTranslation && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-left">
             <span>
-              Parece que el traductor automático del navegador modificó la página. Desactívelo
-              para este sitio y use el botón ES / EN de la herramienta.
+              {Lx(
+                "Parece que el traductor automático del navegador modificó la página. Desactívelo para este sitio y use el botón ES / EN de la herramienta.",
+                "It looks like the browser's automatic translator changed the page. Turn it off for this site and use the tool's ES / EN button.",
+              )}
             </span>
           </p>
         )}
@@ -45,14 +48,14 @@ export function AppError() {
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47]"
           >
             <RotateCcw className="w-4 h-4" />
-            <span>Reintentar</span>
+            <span>{Lx("Reintentar", "Retry")}</span>
           </button>
           <button
             onClick={() => navigate(hasDraft ? "/qualify" : "/")}
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border-2 border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
           >
             <ArrowLeft className="w-4 h-4" />
-            <span>{hasDraft ? "Volver al formulario" : "Ir al inicio"}</span>
+            <span>{hasDraft ? Lx("Volver al formulario", "Back to the form") : Lx("Ir al inicio", "Go to home")}</span>
           </button>
         </div>
         <a
@@ -62,11 +65,11 @@ export function AppError() {
           className="mt-5 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
         >
           <Phone className="w-4 h-4" />
-          <span>¿Sigue fallando? Escríbanos al +502 5996 4664</span>
+          <span>{Lx("¿Sigue fallando? Escríbanos al +502 5996 4664", "Still failing? Message us at +502 5996 4664")}</span>
         </a>
         {message && (
           <p className="mt-4 text-[11px] text-slate-400 break-words">
-            <span>Detalle técnico: {message.slice(0, 200)}</span>
+            <span>{Lx("Detalle técnico:", "Technical detail:")} {message.slice(0, 200)}</span>
           </p>
         )}
       </div>

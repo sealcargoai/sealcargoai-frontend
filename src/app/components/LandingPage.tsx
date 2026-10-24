@@ -14,7 +14,7 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 
 
 export function LandingPage() {
-  const { t } = useLanguage();
+  const { t, L } = useLanguage();
   const [query, setQuery] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
@@ -30,9 +30,9 @@ export function LandingPage() {
     e.preventDefault();
     const n = name.trim();
     const m = email.trim();
-    if (!queryOk) return setFormError(`Describe lo que quieres importar (mínimo ${QUERY_MIN} caracteres).`);
-    if (n.length < NAME_MIN) return setFormError("Escribe tu nombre completo.");
-    if (!EMAIL_RE.test(m)) return setFormError("Escribe un correo completo, por ejemplo nombre@empresa.com.");
+    if (!queryOk) return setFormError(L(`Describe lo que quieres importar (mínimo ${QUERY_MIN} caracteres).`, `Describe what you want to import (minimum ${QUERY_MIN} characters).`));
+    if (n.length < NAME_MIN) return setFormError(L("Escribe tu nombre completo.", "Enter your full name."));
+    if (!EMAIL_RE.test(m)) return setFormError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
     setFormError("");
     setSubmitting(true);
 
@@ -88,7 +88,7 @@ export function LandingPage() {
         <div className="absolute inset-0 z-0">
           <img
             src="https://assets.cdn.filesafe.space/3n7o4ZY2ZXykwB7qRwZ3/media/69e52dc650b9a3263a1ff2ab.png"
-            alt="Guatemala port with shipping containers"
+            alt=""
             className="w-full h-full object-cover"
           />
           <div className="absolute inset-0 bg-gradient-to-br from-[#0B3C5D]/85 via-[#0B3C5D]/80 to-blue-900/75" />
@@ -143,8 +143,8 @@ export function LandingPage() {
                     <div className="flex justify-between gap-3 px-3 pt-2 text-xs text-slate-500">
                       <span>
                         {queryTrim.length < QUERY_MIN
-                          ? `Mínimo ${QUERY_MIN} caracteres`
-                          : "Puedes detallar más en el siguiente paso"}
+                          ? L(`Mínimo ${QUERY_MIN} caracteres`, `Minimum ${QUERY_MIN} characters`)
+                          : L("Puedes detallar más en el siguiente paso", "You can add more detail in the next step")}
                       </span>
                       <span className="shrink-0">
                         {query.length.toLocaleString()}/{QUERY_MAX.toLocaleString()}
@@ -154,7 +154,7 @@ export function LandingPage() {
                 </form>
                 <p className="text-xs sm:text-sm text-blue-100 mt-3 sm:mt-4 drop-shadow px-2">
                   <span>
-                    {t("hero.noCreditCard")} Incluye {getSearchLimit()} consultas gratis por correo.
+                    {t("hero.noCreditCard")} {L(`Incluye ${getSearchLimit()} consultas gratis por correo.`, `Includes ${getSearchLimit()} free searches per email.`)}
                   </span>
                 </p>
               </div>
@@ -191,7 +191,7 @@ export function LandingPage() {
                       <input
                         type="email"
                         pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
-                        title="Correo completo, por ejemplo nombre@empresa.com"
+                        title={L("Correo completo, por ejemplo nombre@empresa.com", "Complete email, for example name@company.com")}
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
@@ -203,10 +203,10 @@ export function LandingPage() {
                     </div>
                     <p className="text-xs text-slate-600 text-left leading-relaxed">
                       <span>
-                        Usamos tu nombre y correo para enviarte el informe y para que un
-                        ejecutivo de SEAL le dé seguimiento a tu consulta. Tu correo también
-                        controla las {getSearchLimit()} consultas gratis. No lo compartimos con
-                        los proveedores.
+                        {L(
+                          `Usamos tu nombre y correo para enviarte el informe y para que un ejecutivo de SEAL le dé seguimiento a tu consulta. Tu correo también controla las ${getSearchLimit()} consultas gratis. No lo compartimos con los proveedores.`,
+                          `We use your name and email to send you the report and so a SEAL executive can follow up on your request. Your email also tracks the ${getSearchLimit()} free searches. We don't share it with suppliers.`,
+                        )}
                       </span>
                     </p>
                     {formError && (
