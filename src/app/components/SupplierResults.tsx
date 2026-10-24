@@ -23,7 +23,7 @@ import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
-import { calculateCosts, useRates } from "../../utils/costCalculator";
+import { calculateCosts, useRates, formatQ } from "../../utils/costCalculator";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -1084,29 +1084,29 @@ export function SupplierResults() {
                       <>
                         <div className="flex items-center justify-between">
                           <span>{t("suppliers.baseCost")}</span>
-                          <span className="font-medium">${est.productCost.toLocaleString()}</span>
+                          <span className="font-medium">{formatQ(est.productCost, est.exchangeRate)}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span>{t("suppliers.estShipping")}</span>
                           <span className="font-medium">
-                            {est.freightPending ? "Por cotizar" : `$${est.shipping.toLocaleString()}`}
+                            {est.freightPending ? "Por cotizar" : formatQ(est.shipping, est.exchangeRate)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span>Impuestos (DAI + IVA)</span>
                           <span className="font-medium">
-                            ${(est.importDuties + est.taxes).toLocaleString()}
+                            {formatQ(est.importDuties + est.taxes, est.exchangeRate)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span>Seguro, aduana y destino</span>
                           <span className="font-medium">
-                            ${(est.insurance + est.customsFees + est.localCharges).toLocaleString()}
+                            {formatQ(est.insurance + est.customsFees + est.localCharges, est.exchangeRate)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between pt-2 border-t border-slate-200 font-semibold text-[#0B3C5D]">
                           <span>{t("suppliers.totalEstimate")}</span>
-                          <span>${est.totalCost.toLocaleString()}</span>
+                          <span>{formatQ(est.totalCost, est.exchangeRate)}</span>
                         </div>
                       </>
                     );
