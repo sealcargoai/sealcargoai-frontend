@@ -105,6 +105,10 @@ const translations = {
     "qualification.other": "Otro",
     "qualification.material": "Material",
     "qualification.materialPlaceholder": "ej., Madera, Plástico, Metal",
+    "qualification.productPlaceholder":
+      "Describa el producto con el mayor detalle posible: qué es, para qué se usa, material, medidas, capacidad o voltaje, colores, marca o modelo de referencia, certificaciones que necesita, empaque, etc.",
+    "qualification.productHelp":
+      "Entre más detalle nos dé, más precisos serán los proveedores y el costo estimado.",
     "qualification.quantity": "Cantidad (unidades)",
     "qualification.budget": "Presupuesto (USD)",
     "qualification.destination": "País de Destino",
@@ -453,6 +457,10 @@ const translations = {
     "qualification.other": "Other",
     "qualification.material": "Material",
     "qualification.materialPlaceholder": "e.g., Wood, Plastic, Metal",
+    "qualification.productPlaceholder":
+      "Describe the product in as much detail as possible: what it is, what it is used for, material, size, capacity or voltage, colors, reference brand or model, required certifications, packaging, etc.",
+    "qualification.productHelp":
+      "The more detail you give us, the more accurate the suppliers and cost estimate will be.",
     "qualification.quantity": "Quantity (units)",
     "qualification.budget": "Budget (USD)",
     "qualification.destination": "Destination Country",
