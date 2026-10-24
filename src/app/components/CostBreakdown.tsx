@@ -21,6 +21,12 @@ import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import {
+  SelectedSupplierCard,
+  NoSupplierNotice,
+  hasUsableSupplier,
+  supplierPriceInfo,
+} from "./SelectedSupplier";
+import {
   SEAL_COMPANY,
   drawCompanyInfoBox,
   drawCompanyFooter,
@@ -45,6 +51,7 @@ function exportToPDF(
   price: number,
   destination: string,
   productType: string,
+  priceNote = "",
 ) {
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -72,7 +79,7 @@ function exportToPDF(
   // Order details box
   doc.setTextColor(11, 60, 93);
   doc.setFillColor(239, 246, 255);
-  doc.rect(14, yAfterCompany + 6, pageWidth - 28, 28, "F");
+  doc.rect(14, yAfterCompany + 6, pageWidth - 28, 31, "F");
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.text("DETALLES DEL PEDIDO", 18, yAfterCompany + 16);
@@ -94,6 +101,11 @@ function exportToPDF(
     100,
     yAfterCompany + 30,
   );
+  if (priceNote) {
+    doc.setFontSize(7.5);
+    doc.text(`(${priceNote})`, 100, yAfterCompany + 34);
+    doc.setFontSize(9);
+  }
 
   // Section title
   doc.setFontSize(12);
@@ -173,6 +185,7 @@ async function exportToExcel(
   price: number,
   destination: string,
   productType: string,
+  priceNote = "",
 ) {
   await generateBeautifulExcel({
     reportTitle: "Análisis de Costos de Importación",
@@ -181,6 +194,7 @@ async function exportToExcel(
     destination,
     quantity,
     price,
+    priceNote,
     costs,
     vatRate: costs.vatRate,
     insuranceRate: costs.insuranceRate,
@@ -206,13 +220,16 @@ export function CostBreakdown() {
   const destination = String(stateDestination);
   const productType = String(stateProductType);
 
-  const price = stateSupplier?.price > 0 ? stateSupplier.price : 38.75;
-  const supplierName = stateSupplier?.name || "Selected Supplier";
-  const isLiveData = !!stateSupplier;
+  // Real supplier only: no demo name or price (see NoSupplierNotice below)
+  const price = stateSupplier?.price > 0 ? stateSupplier.price : 0;
+  const supplierName = stateSupplier?.name || "";
+  const isLiveData = hasUsableSupplier(stateSupplier);
+  const priceInfo = supplierPriceInfo(stateSupplier);
 
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
+  if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg }, rates);
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
 
@@ -301,6 +318,7 @@ export function CostBreakdown() {
                   price,
                   destination,
                   productType,
+                  priceInfo.isRange ? `precio medio del rango ${priceInfo.published}` : "",
                 )
               }
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-red-300 text-red-700 rounded-xl hover:bg-red-50 transition-all flex items-center gap-2 shadow-sm hover:shadow-md text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
@@ -318,6 +336,7 @@ export function CostBreakdown() {
                   price,
                   destination,
                   productType,
+                  priceInfo.isRange ? `precio medio del rango ${priceInfo.published}` : "",
                 )
               }
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-green-300 text-green-700 rounded-xl hover:bg-green-50 transition-all flex items-center gap-2 shadow-sm hover:shadow-md text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
@@ -373,11 +392,11 @@ export function CostBreakdown() {
                 {t("cost.units")} × {formatUSD(Number(price), 2)} ({Q(Number(price), 2)}) →{" "}
                 {t("cost.destination")} Guatemala
               </span>
-            ) : (
-              <span className="text-yellow-600">⚠️ {t("cost.demoCalc")}</span>
-            )}
+            ) : null}
           </p>
         </div>
+
+        <SelectedSupplierCard supplier={stateSupplier} />
 
         {/* Total Cost Hero */}
         <div className="relative overflow-hidden bg-gradient-to-r from-blue-600 via-[#0B3C5D] to-purple-700 rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-8 md:p-10 mb-8 text-white">

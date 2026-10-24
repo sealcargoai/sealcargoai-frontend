@@ -23,7 +23,8 @@ import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
-import { calculateCosts, useRates, formatQ } from "../../utils/costCalculator";
+import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
+import { supplierPriceInfo } from "./SelectedSupplier";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -847,15 +848,24 @@ export function SupplierResults() {
 
                       {/* Price */}
                       <div className="text-right ml-4">
-                        <div className="text-2xl font-bold text-[#0B3C5D]">
-                          $
-                          {typeof supplier.price === "number"
-                            ? supplier.price.toFixed(2)
-                            : supplier.price}
-                        </div>
-                        <div className="text-sm text-slate-600">
-                          {t("suppliers.perUnit")}
-                        </div>
+                        {(() => {
+                          const pi = supplierPriceInfo(supplier);
+                          return (
+                            <>
+                              <div className={`${pi.isRange ? "text-lg sm:text-xl" : "text-2xl"} font-bold text-[#0B3C5D] whitespace-nowrap`}>
+                                {pi.published}
+                              </div>
+                              <div className="text-sm text-slate-600">
+                                {t("suppliers.perUnit")}
+                              </div>
+                              {pi.isRange && (
+                                <div className="text-xs text-slate-500">
+                                  medio {formatUSD(pi.used, 2)}
+                                </div>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
 

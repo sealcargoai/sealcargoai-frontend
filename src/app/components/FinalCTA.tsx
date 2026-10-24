@@ -18,6 +18,7 @@ import autoTable from "jspdf-autotable";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
+import { NoSupplierNotice, hasUsableSupplier } from "./SelectedSupplier";
 import {
   SEAL_COMPANY,
   drawCompanyInfoBox,
@@ -232,9 +233,10 @@ export function FinalCTA() {
   const destination = String(stateDestination);
   const productType = String(stateProductType);
 
-  const price = stateSupplier?.price > 0 ? stateSupplier.price : 38.75;
-  const supplierName = stateSupplier?.name || "Proveedor Seleccionado";
-  const isLiveData = !!stateSupplier;
+  // Real supplier only: no demo name or price (see NoSupplierNotice below)
+  const price = stateSupplier?.price > 0 ? stateSupplier.price : 0;
+  const supplierName = stateSupplier?.name || "";
+  const isLiveData = hasUsableSupplier(stateSupplier);
 
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
@@ -280,6 +282,8 @@ export function FinalCTA() {
   // Email form
   const [emailRecipient, setEmailRecipient] = useState("");
   const [emailRecipientName, setEmailRecipientName] = useState("");
+
+  if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
 
   const reportId = `SEAL-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
 
