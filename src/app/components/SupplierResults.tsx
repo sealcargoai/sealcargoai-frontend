@@ -37,8 +37,217 @@ function getStoredUser(): { name: string; email: string } {
   }
 }
 
+// ─── More platforms: direct search links (no scraping) + hand-off to SEAL ────
+const PLATFORMS = [
+  {
+    name: "Made-in-China",
+    url: (kw: string) =>
+      `https://www.made-in-china.com/products-search/hot-china-products/${kw
+        .trim()
+        .split(/\s+/)
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join("_")}.html`,
+    needsCopy: false,
+  },
+  {
+    name: "Global Sources",
+    url: (kw: string) =>
+      `https://www.globalsources.com/searchList/products?keyWord=${encodeURIComponent(kw.trim())}`,
+    needsCopy: false,
+  },
+  {
+    name: "Feria de Cantón",
+    // Canton Fair 365 doesn't accept the keyword in the link: the user pastes it
+    url: () => "https://365.cantonfair.org.cn/en-US/search",
+    needsCopy: true,
+  },
+];
+
+function MorePlatforms({
+  keyword,
+  productDescription,
+  quantity,
+  budget,
+  destination,
+}: {
+  keyword: string;
+  productDescription: string;
+  quantity: string;
+  budget: string;
+  destination: string;
+}) {
+  const stored = getStoredUser();
+  const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [supplierName, setSupplierName] = useState("");
+  const [supplierUrl, setSupplierUrl] = useState("");
+  const [name, setName] = useState(stored.name);
+  const [email, setEmail] = useState(stored.email);
+  const [notes, setNotes] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [error, setError] = useState("");
+
+  const kw = (keyword || productDescription || "").trim();
+  if (!kw) return null;
+
+  const copyKeyword = async () => {
+    try {
+      await navigator.clipboard.writeText(kw);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    } catch {
+      /* clipboard not available */
+    }
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSending(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/api/email/quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestType: "Proveedor de otra plataforma",
+          name,
+          email,
+          message: notes,
+          supplierName,
+          supplierUrl,
+          productDescription,
+          quantity,
+          budget,
+          destination,
+        }),
+      });
+      if (res.status === 400) {
+        setError("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.");
+        return;
+      }
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSent(true);
+    } catch {
+      setError(`No se pudo enviar. Llámenos al ${SEAL_COMPANY.phone}.`);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const input =
+    "w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm";
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 p-5 sm:p-6 mt-6">
+      <h3 className="font-semibold text-[#0B3C5D] mb-1">
+        Ver más proveedores en otras plataformas
+      </h3>
+      <p className="text-sm text-slate-600 mb-4">
+        Abrimos la búsqueda de{" "}
+        <span className="font-medium text-slate-800">"{kw}"</span> en cada
+        plataforma para que compare.
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {PLATFORMS.map((p) => (
+          <a
+            key={p.name}
+            href={p.url(kw)}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => p.needsCopy && copyKeyword()}
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-sm font-medium text-slate-700 transition-colors"
+          >
+            <ExternalLink className="w-4 h-4" />
+            {p.name}
+          </a>
+        ))}
+      </div>
+      <p className="text-xs text-slate-500 mt-2">
+        En la Feria de Cantón pegue la búsqueda en el buscador
+        {copied ? " (ya la copiamos ✅)" : ""}.{" "}
+        <button type="button" onClick={copyKeyword} className="text-xs font-medium text-blue-600 hover:underline">
+          Copiar "{kw}"
+        </button>
+      </p>
+
+      <div className="mt-5 pt-5 border-t border-slate-200">
+        {sent ? (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
+            ✅ Recibimos el proveedor. Un ejecutivo de SEAL le cotiza flete y
+            nacionalización.
+          </div>
+        ) : !open ? (
+          <button
+            onClick={() => setOpen(true)}
+            className="text-sm font-semibold text-[#0B3C5D] hover:underline"
+          >
+            ¿Encontró un proveedor en otra plataforma? Páselo a SEAL y le
+            cotizamos flete y aduana →
+          </button>
+        ) : (
+          <form onSubmit={submit} className="space-y-3">
+            <div className="grid sm:grid-cols-2 gap-3">
+              <input
+                value={supplierName}
+                onChange={(e) => setSupplierName(e.target.value)}
+                required
+                placeholder="Nombre del proveedor"
+                className={input}
+              />
+              <input
+                value={supplierUrl}
+                onChange={(e) => setSupplierUrl(e.target.value)}
+                placeholder="Enlace del producto (opcional)"
+                className={input}
+              />
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                placeholder="Su nombre"
+                className={input}
+              />
+              <input
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
+                title="Correo completo, por ejemplo nombre@empresa.com"
+                placeholder="Su correo"
+                className={input}
+              />
+            </div>
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              rows={2}
+              placeholder="Precio que le dieron, cantidad, comentarios..."
+              className={input}
+            />
+            {error && (
+              <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+                ⚠️ {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={sending}
+              className="px-5 py-2.5 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47] disabled:opacity-60"
+            >
+              {sending ? "Enviando..." : "Enviar a SEAL"}
+            </button>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── No live results: honest message + assisted search request ──────────────
 function NoResults({
+  keyword,
   totalAnalyzed,
   filteredOut,
   productDescription,
@@ -46,6 +255,7 @@ function NoResults({
   budget,
   destination,
 }: {
+  keyword: string;
   totalAnalyzed: number;
   filteredOut: { name: string; reason: string }[];
   productDescription: string;
@@ -217,6 +427,14 @@ function NoResults({
               </div>
             </form>
           )}
+
+          <MorePlatforms
+            keyword={keyword}
+            productDescription={productDescription}
+            quantity={quantity}
+            budget={budget}
+            destination={destination}
+          />
 
           <button
             onClick={() => navigate("/qualify")}
@@ -401,6 +619,7 @@ export function SupplierResults() {
   if (!displaySuppliers.length) {
     return (
       <NoResults
+        keyword={apiData?.searchKeyword ?? ""}
         totalAnalyzed={apiData?.totalAnalyzed ?? 0}
         filteredOut={filteredOutList}
         productDescription={location.state?.productDescription ?? ""}
@@ -962,6 +1181,13 @@ export function SupplierResults() {
             </div>
           </div>
         </div>
+        <MorePlatforms
+          keyword={apiData?.searchKeyword ?? ""}
+          productDescription={location.state?.productDescription ?? ""}
+          quantity={navQuantity}
+          budget={navBudget}
+          destination={navDestination}
+        />
       </div>
 
       {/* ── Contact Modal ─────────────────────────────────────────────────────── */}
