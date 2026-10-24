@@ -245,7 +245,7 @@ export function CostBreakdown() {
               <span className="hidden sm:inline">
                 {t("cost.riskAssessment")}
               </span>
-              <span className="sm:hidden">Riesgos</span>
+              <span className="sm:hidden">{L("Revisar", "Review")}</span>
               <ArrowRight className="w-4 h-4" />
             </button>
             <div className="hidden lg:block flex-shrink-0">
