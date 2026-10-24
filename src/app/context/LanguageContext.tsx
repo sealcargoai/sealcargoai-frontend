@@ -80,12 +80,12 @@ const translations = {
     "chat.newAnalysis": "Nuevo Análisis",
     "chat.conversations": "Conversaciones",
     "chat.savedReports": "Informes Guardados",
-    "chat.title": "Asistente de Análisis de Importación",
-    "chat.subtitle": "Experto en abastecimiento y aduanas impulsado por IA",
+    "chat.title": "Asistente de orientación de SEAL",
+    "chat.subtitle": "Organiza la información de tu importación a Guatemala",
     "chat.placeholder": "Pregunta sobre proveedores, costos, cumplimiento...",
-    "chat.ctaTitle": "¿Listo para encontrar proveedores?",
+    "chat.ctaTitle": "¿Listo para continuar?",
     "chat.ctaDesc":
-      "Completa la calificación del producto para obtener coincidencias precisas de proveedores y estimaciones de costos.",
+      "Completa los datos del producto para revisar referencias de proveedores y una estimación preliminar de costos.",
     "chat.ctaButton": "Continuar a Calificación",
 
     // Product Qualification
@@ -108,16 +108,16 @@ const translations = {
     "qualification.productPlaceholder":
       "Describa el producto con el mayor detalle posible: qué es, para qué se usa, material, medidas, capacidad o voltaje, colores, marca o modelo de referencia, certificaciones que necesita, empaque, etc.",
     "qualification.productHelp":
-      "Entre más detalle nos dé, más precisos serán los proveedores y el costo estimado.",
+      "Cuantos más detalles compartas, mejor podremos organizar las referencias y los supuestos de la estimación.",
     "qualification.quantity": "Cantidad (unidades)",
     "qualification.budget": "Presupuesto (USD)",
-    "qualification.destination": "País de Destino",
+    "qualification.destination": "País de destino",
     "qualification.selectDestination": "Seleccionar destino",
     "qualification.review": "Revisa tus Detalles",
     "qualification.product": "Producto:",
     "qualification.previous": "Anterior",
     "qualification.next": "Siguiente Paso",
-    "qualification.findSuppliers": "Encontrar Proveedores",
+    "qualification.findSuppliers": "Consultar referencias",
 
     // Supplier Results
     "suppliers.title": "Proveedores ordenados por confianza",
@@ -233,7 +233,7 @@ const translations = {
     "risk.backToCosts": "← Costos",
     "risk.dynamicAnalysis": "Análisis dinámico para",
     "risk.genericAnalysis":
-      "Análisis genérico — selecciona un proveedor para datos precisos",
+      "Análisis general — seleccione un proveedor para ver el análisis de ese proveedor",
     "risk.overallRiskScore": "Puntuación General de Riesgo",
     "risk.riskLevel": "Nivel de Riesgo",
     "risk.riskWord": "RIESGO",
@@ -309,7 +309,7 @@ const translations = {
     "final.close": "Cerrar",
     "final.sealTitle": "Deja que SEAL Maneje tu Importación",
     "final.sealSubtitle":
-      "¿Por qué gestionar la logística tú mismo? Deja que nuestros expertos manejen todo desde el abastecimiento hasta la entrega.",
+      "Si lo deseas, el equipo de SEAL puede acompañarte con la logística y la aduana de tu importación.",
     "final.negotiation": "Negociación con Proveedores",
     "final.negotiationDesc": "Obtén mejores precios y términos",
     "final.qualityControl": "Control de Calidad",
