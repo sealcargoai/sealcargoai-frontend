@@ -235,33 +235,24 @@ function getWarnings(
   return warnings;
 }
 
+// Only what the platform data shows. Nothing here means SEAL verified the
+// supplier: that is the separate verification-in-China service.
 function getComplianceChecks(supplier: any): ComplianceCheck[] {
   return [
-    { item: "Verificación de proveedor completada", passed: !!supplier },
     {
-      item: "Capacidad de exportación confirmada",
-      passed:
-        supplier?.tags?.includes("Gold Supplier") ||
-        supplier?.tags?.includes("Trade Assurance") ||
-        false,
+      item: "Insignia en Alibaba (Gold o Verified Supplier)",
+      passed: !!(supplier?.goldSupplier || supplier?.verifiedSupplier === true),
     },
     {
-      item: "Garantía comercial disponible",
-      passed:
-        supplier?.tradeAssurance ||
-        supplier?.tags?.includes("Trade Assurance") ||
-        false,
+      item: "Auditoría de tercero publicada (Verified Supplier)",
+      passed: supplier?.verifiedSupplier === true,
     },
     {
-      item: "Proveedor verificado/evaluado",
-      passed:
-        supplier?.verified || supplier?.tags?.includes("Assessed") || false,
+      item: "Protección de pago (Trade Assurance)",
+      passed: supplier?.tradeAssurance === true,
     },
-    { item: "Certificación de producto revisada", passed: false },
-    {
-      item: "Auditoría de fábrica realizada",
-      passed: supplier?.tags?.includes("Audited") || false,
-    },
+    { item: "Certificación del producto revisada", passed: false },
+    { item: "Verificación del proveedor en China por SEAL (servicio adicional)", passed: false },
   ];
 }
 

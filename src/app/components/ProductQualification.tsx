@@ -28,6 +28,60 @@ const CATEGORY_KEYWORDS: Record<string, RegExp> = {
   machinery: /m[aá]quina|machine|maquinaria|machinery|equipo industrial|industrial equipment|motor|bomba|pump|compresor|compressor|generador|generator|torno|lathe|cnc|montacarga|forklift|excavadora|excavator|envasadora|empacadora|packing machine|horno industrial/i,
 };
 
+// Field limits (shown to the client next to each field)
+export const LIMITS = {
+  productMin: 3,
+  productMax: 1500,
+  quantityMax: 10_000_000,
+  budgetMax: 100_000_000,
+  volumeMax: 5_000,
+  weightMax: 5_000_000,
+};
+
+const DRAFT_KEY = "seal_qualify_draft";
+
+function loadDraft(): { formData?: Record<string, string>; step?: number } | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Returns an error message for the field, or "" when valid. */
+function fieldError(name: string, value: string): string {
+  const v = value.trim();
+  const n = Number(v);
+  switch (name) {
+    case "productType":
+      if (v.length < LIMITS.productMin) return `Describa el producto con al menos ${LIMITS.productMin} caracteres.`;
+      if (v.length > LIMITS.productMax) return `Máximo ${LIMITS.productMax.toLocaleString()} caracteres.`;
+      return "";
+    case "quantity":
+      if (!v) return "La cantidad es obligatoria.";
+      if (!Number.isInteger(n) || n < 1) return "Escriba una cantidad entera mayor a 0.";
+      if (n > LIMITS.quantityMax) return `Máximo ${LIMITS.quantityMax.toLocaleString()} unidades.`;
+      return "";
+    case "budget":
+      if (!v) return "";
+      if (!(n > 0)) return "El presupuesto debe ser mayor a 0.";
+      if (n > LIMITS.budgetMax) return `Máximo US$${LIMITS.budgetMax.toLocaleString()}.`;
+      return "";
+    case "volumeCbm":
+      if (!v) return "";
+      if (!(n > 0)) return "El volumen debe ser mayor a 0.";
+      if (n > LIMITS.volumeMax) return `Máximo ${LIMITS.volumeMax.toLocaleString()} m³.`;
+      return "";
+    case "weightKg":
+      if (!v) return "";
+      if (!(n > 0)) return "El peso debe ser mayor a 0.";
+      if (n > LIMITS.weightMax) return `Máximo ${LIMITS.weightMax.toLocaleString()} kg.`;
+      return "";
+  }
+  return "";
+}
+
 function inferCategory(description: string): string {
   for (const [category, regex] of Object.entries(CATEGORY_KEYWORDS)) {
     if (regex.test(description)) return category;
@@ -55,7 +109,11 @@ export function ProductQualification() {
 
   const userName = location.state?.name || storedData?.name || "";
   const userEmail = location.state?.email || storedData?.email || "";
-  const [step, setStep] = useState(1);
+  // A saved draft (same session) is restored so nothing typed is lost after an
+  // error or a reload. A new query coming from the start screen wins.
+  const draft = loadDraft();
+  const useDraft = !!draft?.formData && (!userQuery || draft.formData.productType === userQuery);
+  const [step, setStep] = useState(useDraft && draft?.step ? draft.step : 1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({
@@ -67,7 +125,38 @@ export function ProductQualification() {
     destination: "GT", // SEAL SmartTrade AI calculates imports into Guatemala only
     volumeCbm: "", // optional — used to quote ocean freight
     weightKg: "",  // optional
+    ...(useDraft ? draft!.formData : {}),
   });
+
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ formData, step }));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [formData, step]);
+
+  const errors = {
+    productType: fieldError("productType", formData.productType),
+    quantity: fieldError("quantity", formData.quantity),
+    budget: fieldError("budget", formData.budget),
+    volumeCbm: fieldError("volumeCbm", formData.volumeCbm),
+    weightKg: fieldError("weightKg", formData.weightKg),
+  };
+  const stepValid =
+    step === 1
+      ? !errors.productType
+      : step === 2
+        ? !errors.quantity && !errors.budget && !errors.volumeCbm && !errors.weightKg
+        : true;
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const showErr = (k: keyof typeof errors) =>
+    touched[k] && errors[k] ? (
+      <p className="text-xs text-red-600 mt-1">
+        <span>{errors[k]}</span>
+      </p>
+    ) : null;
+  const touch = (k: string) => setTouched((t0) => ({ ...t0, [k]: true }));
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [remainingSearches, setRemainingSearches] = useState<number>(3);
 
@@ -75,8 +164,6 @@ export function ProductQualification() {
     if (userEmail) {
       const remaining = getRemainingSearches(userEmail, userName);
       setRemainingSearches(remaining);
-    } else {
-      console.warn("⚠️ useEffect — no userEmail found");
     }
   }, [userEmail, userName]);
 
@@ -87,6 +174,12 @@ export function ProductQualification() {
     // ── CHECK LIMIT FIRST ────────────────────────────────
     if (userEmail && !canUserSearch(userEmail, userName)) {
       setShowLimitModal(true);
+      return;
+    }
+
+    if (Object.values(errors).some(Boolean)) {
+      setTouched({ productType: true, quantity: true, budget: true, volumeCbm: true, weightKg: true });
+      setError("Revise los datos marcados en rojo antes de buscar.");
       return;
     }
 
@@ -149,16 +242,11 @@ export function ProductQualification() {
       });
 
     } catch (err) {
-      console.error("API failed:", err);
+      console.error("Supplier search failed:", err);
+      // Stay here: the data stays in the form and the search is not counted
       setError(
-        "No se pudo conectar al servidor. Mostrando datos de demostración.",
+        "No pudimos completar la búsqueda en este momento. Sus datos quedaron guardados: intente de nuevo en unos minutos o escríbanos al WhatsApp +502 5996 4664.",
       );
-
-      // Failed searches (server down) are not counted against the user
-
-      navigate("/suppliers", {
-        state: { ...formData, productType: productCategory, productDescription },
-      });
     } finally {
       setIsLoading(false);
     }
@@ -255,16 +343,20 @@ export function ProductQualification() {
                   onChange={(e) =>
                     setFormData({ ...formData, productType: e.target.value })
                   }
+                  onBlur={() => touch("productType")}
                   required
                   rows={8}
-                  maxLength={1500}
+                  maxLength={LIMITS.productMax}
                   placeholder={t("qualification.productPlaceholder")}
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[180px] leading-relaxed"
                 />
-                <div className="flex justify-between text-xs text-slate-500">
-                  <span>{t("qualification.productHelp")}</span>
-                  <span>{formData.productType.length}/1500</span>
+                <div className="flex justify-between gap-3 text-xs text-slate-500">
+                  <span>{t("qualification.productHelp")} (mínimo {LIMITS.productMin} caracteres)</span>
+                  <span className="shrink-0">
+                    {formData.productType.length.toLocaleString()}/{LIMITS.productMax.toLocaleString()}
+                  </span>
                 </div>
+                {showErr("productType")}
               </div>
             )}
 
@@ -282,11 +374,18 @@ export function ProductQualification() {
                     onChange={(e) =>
                       setFormData({ ...formData, quantity: e.target.value })
                     }
+                    onBlur={() => touch("quantity")}
                     required
                     placeholder="1000"
                     min="1"
+                    max={LIMITS.quantityMax}
+                    step="1"
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  <p className="text-xs text-slate-500 mt-1">
+                    <span>Obligatoria · número entero de 1 a {LIMITS.quantityMax.toLocaleString()}</span>
+                  </p>
+                  {showErr("quantity")}
                 </div>
 
                 <div>
@@ -301,10 +400,16 @@ export function ProductQualification() {
                     onChange={(e) =>
                       setFormData({ ...formData, budget: e.target.value })
                     }
+                    onBlur={() => touch("budget")}
                     placeholder="50000"
                     min="1"
+                    max={LIMITS.budgetMax}
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  <p className="text-xs text-slate-500 mt-1">
+                    <span>Total de la compra en dólares, hasta US${LIMITS.budgetMax.toLocaleString()}</span>
+                  </p>
+                  {showErr("budget")}
                 </div>
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div>
@@ -320,9 +425,12 @@ export function ProductQualification() {
                       onChange={(e) =>
                         setFormData({ ...formData, volumeCbm: e.target.value })
                       }
+                      onBlur={() => touch("volumeCbm")}
+                      max={LIMITS.volumeMax}
                       placeholder="ej. 3.5"
                       className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                    {showErr("volumeCbm")}
                   </div>
                   <div>
                     <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
@@ -337,14 +445,19 @@ export function ProductQualification() {
                       onChange={(e) =>
                         setFormData({ ...formData, weightKg: e.target.value })
                       }
+                      onBlur={() => touch("weightKg")}
+                      max={LIMITS.weightMax}
                       placeholder="ej. 800"
                       className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                     />
+                    {showErr("weightKg")}
                   </div>
                 </div>
                 <p className="text-xs text-slate-500 -mt-2">
-                  Opcional, pero con el volumen o el peso le calculamos el flete.
-                  Si no lo sabe, déjelo en blanco y un ejecutivo de SEAL se lo cotiza.
+                  <span>
+                    Opcional, pero con el volumen o el peso le estimamos el flete.
+                    Si no lo sabe, déjelo en blanco y un ejecutivo de SEAL se lo cotiza.
+                  </span>
                 </p>
               </div>
             )}
@@ -385,13 +498,13 @@ export function ProductQualification() {
                       <span className="font-medium">
                         {t("qualification.quantity")}:
                       </span>{" "}
-                      {formData.quantity} unidades
+                      {Number(formData.quantity || 0).toLocaleString()} unidades
                     </p>
                     <p>
                       <span className="font-medium">
                         {t("qualification.budget")}:
                       </span>{" "}
-                      {formData.budget ? `$${formData.budget}` : "No indicado"}
+                      {formData.budget ? `US$${Number(formData.budget).toLocaleString()}` : "No indicado"}
                     </p>
                     <p>
                       <span className="font-medium">Volumen / peso:</span>{" "}
@@ -426,14 +539,23 @@ export function ProductQualification() {
               {step < 3 ? (
                 <button
                   type="button"
-                  onClick={() => setStep(step + 1)}
-                  disabled={
-                    (step === 1 && formData.productType.trim().length < 3) ||
-                    (step === 2 && !(parseInt(formData.quantity) > 0))
-                  }
-                  className="flex-1 px-6 py-3 rounded-lg bg-[#0B3C5D] text-white hover:bg-[#0a2f47] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                  onClick={() => {
+                    if (!stepValid) {
+                      setTouched((t0) => ({
+                        ...t0,
+                        ...(step === 1
+                          ? { productType: true }
+                          : { quantity: true, budget: true, volumeCbm: true, weightKg: true }),
+                      }));
+                      return;
+                    }
+                    setError("");
+                    setStep(step + 1);
+                  }}
+                  aria-disabled={!stepValid}
+                  className={`flex-1 px-6 py-3 rounded-lg bg-[#0B3C5D] text-white hover:bg-[#0a2f47] transition-colors flex items-center justify-center gap-2 ${stepValid ? "" : "opacity-60"}`}
                 >
-                  {t("qualification.next")}
+                  <span>{t("qualification.next")}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               ) : (
@@ -463,11 +585,11 @@ export function ProductQualification() {
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                         />
                       </svg>
-                      Buscando Proveedores...
+                      <span key="loading">Buscando proveedores…</span>
                     </>
                   ) : (
                     <>
-                      {t("qualification.findSuppliers")}
+                      <span key="idle">{t("qualification.findSuppliers")}</span>
                       <ArrowRight className="w-4 h-4" />
                     </>
                   )}
@@ -477,8 +599,8 @@ export function ProductQualification() {
 
             {/* Error message */}
             {error && (
-              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
-                ⚠️ {error}
+              <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800" role="alert">
+                <span>⚠️ {error}</span>
               </div>
             )}
           </form>

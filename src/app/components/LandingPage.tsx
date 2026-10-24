@@ -4,7 +4,13 @@ import { Search, Shield, Globe, TrendingUp, CheckCircle } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { getUserData } from "../../utils/searchLimit";
+import { getUserData, getSearchLimit } from "../../utils/searchLimit";
+
+const QUERY_MIN = 3;
+const QUERY_MAX = 1500; // same limit as the product description in the next step
+const NAME_MIN = 2;
+const NAME_MAX = 120;
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 
 
 export function LandingPage() {
@@ -14,11 +20,20 @@ export function LandingPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
   const navigate = useNavigate();
+
+  const queryTrim = query.trim();
+  const queryOk = queryTrim.length >= QUERY_MIN && queryTrim.length <= QUERY_MAX;
 
   const handleStartAnalysis = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email || !query) return;
+    const n = name.trim();
+    const m = email.trim();
+    if (!queryOk) return setFormError(`Describe lo que quieres importar (mínimo ${QUERY_MIN} caracteres).`);
+    if (n.length < NAME_MIN) return setFormError("Escribe tu nombre completo.");
+    if (!EMAIL_RE.test(m)) return setFormError("Escribe un correo completo, por ejemplo nombre@empresa.com.");
+    setFormError("");
     setSubmitting(true);
 
     try {
@@ -27,17 +42,16 @@ export function LandingPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name, email, query }),
+          body: JSON.stringify({ name: n, email: m, query: queryTrim }),
         },
       );
-      console.log("✅ Lead notification sent");
-    } catch (err) {
-      console.warn("⚠️ Could not send lead email (non-critical):", err);
+    } catch {
+      // Lead notification is not critical for the client's flow
     }
-      // Initialize user in localStorage
-    getUserData(email, name);
+    // Initialize user in localStorage
+    getUserData(m, n);
     setSubmitting(false);
-    navigate("/chat", { state: { query, name, email } });
+    navigate("/chat", { state: { query: queryTrim, name: n, email: m } });
   };
 
   return (
@@ -98,7 +112,13 @@ export function LandingPage() {
             {/* Input Section */}
             {!showForm ? (
               <div className="max-w-3xl mx-auto px-2 sm:px-0">
-                <div className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 p-3">
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (queryOk) setShowForm(true);
+                  }}
+                  className="bg-white/95 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/50 p-3"
+                >
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
                     <div className="flex items-center gap-2 flex-1 min-w-0">
                       <Search className="w-5 h-5 sm:w-6 sm:h-6 text-blue-600 ml-2 sm:ml-3 flex-shrink-0" />
@@ -106,21 +126,36 @@ export function LandingPage() {
                         type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
+                        maxLength={QUERY_MAX}
                         placeholder={t("hero.placeholder")}
                         className="flex-1 min-w-0 px-1 sm:px-2 py-3 sm:py-5 text-sm sm:text-base md:text-lg outline-none bg-transparent placeholder:text-slate-400"
                       />
                     </div>
                     <button
-                      onClick={() => setShowForm(true)}
-                      disabled={!query}
+                      type="submit"
+                      disabled={!queryOk}
                       className="w-full sm:w-auto px-4 sm:px-6 md:px-8 py-3 sm:py-4 rounded-xl bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white text-sm sm:text-base font-semibold hover:from-blue-700 hover:to-[#0a2f47] transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-xl whitespace-nowrap"
                     >
-                      {t("hero.cta")}
+                      <span>{t("hero.cta")}</span>
                     </button>
                   </div>
-                </div>
+                  {query.length > 0 && (
+                    <div className="flex justify-between gap-3 px-3 pt-2 text-xs text-slate-500">
+                      <span>
+                        {queryTrim.length < QUERY_MIN
+                          ? `Mínimo ${QUERY_MIN} caracteres`
+                          : "Puedes detallar más en el siguiente paso"}
+                      </span>
+                      <span className="shrink-0">
+                        {query.length.toLocaleString()}/{QUERY_MAX.toLocaleString()}
+                      </span>
+                    </div>
+                  )}
+                </form>
                 <p className="text-xs sm:text-sm text-blue-100 mt-3 sm:mt-4 drop-shadow px-2">
-                  {t("hero.noCreditCard")}
+                  <span>
+                    {t("hero.noCreditCard")} Incluye {getSearchLimit()} consultas gratis por correo.
+                  </span>
                 </p>
               </div>
             ) : (
@@ -142,6 +177,9 @@ export function LandingPage() {
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         required
+                        minLength={NAME_MIN}
+                        maxLength={NAME_MAX}
+                        autoComplete="name"
                         className="w-full px-4 py-3 sm:py-3.5 rounded-xl border-2 border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm sm:text-base"
                         placeholder={t("hero.namePlaceholder")}
                       />
@@ -157,16 +195,31 @@ export function LandingPage() {
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
+                        maxLength={254}
+                        autoComplete="email"
                         className="w-full px-4 py-3 sm:py-3.5 rounded-xl border-2 border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all text-sm sm:text-base"
                         placeholder={t("hero.emailPlaceholder")}
                       />
                     </div>
+                    <p className="text-xs text-slate-600 text-left leading-relaxed">
+                      <span>
+                        Usamos tu nombre y correo para enviarte el informe y para que un
+                        ejecutivo de SEAL le dé seguimiento a tu consulta. Tu correo también
+                        controla las {getSearchLimit()} consultas gratis. No lo compartimos con
+                        los proveedores.
+                      </span>
+                    </p>
+                    {formError && (
+                      <p className="text-sm text-red-600 text-left" role="alert">
+                        <span>{formError}</span>
+                      </p>
+                    )}
                     <button
                       type="submit"
                       disabled={submitting}
                       className="w-full px-6 py-3 sm:py-4 rounded-xl bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white font-semibold hover:from-blue-700 hover:to-[#0a2f47] transition-all shadow-lg hover:shadow-xl disabled:opacity-60 text-sm sm:text-base"
                     >
-                      {submitting ? t("hero.processing") : t("hero.continue")}
+                      <span>{submitting ? t("hero.processing") : t("hero.continue")}</span>
                     </button>
                     <button
                       type="button"
@@ -268,7 +321,9 @@ export function LandingPage() {
             <h2 className="text-5xl font-bold text-[#0B3C5D] mb-4">
               {t("howItWorks.title")}
             </h2>
-            <p className="text-xl text-slate-600">{t("howItWorks.subtitle")}</p>
+            {t("howItWorks.subtitle") && (
+              <p className="text-xl text-slate-600">{t("howItWorks.subtitle")}</p>
+            )}
           </div>
 
           <div className="grid md:grid-cols-4 gap-8">

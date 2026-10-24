@@ -31,6 +31,7 @@ import {
   useRates,
   formatQ,
   formatUSD,
+  ESTIMATE_NOTE,
   type CostResult,
 } from "../../utils/costCalculator";
 
@@ -66,7 +67,7 @@ function generateReportPDF(data: {
   doc.text("SEAL SmartTrade AI", 14, 16);
   doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
-  doc.text("Informe Completo de Análisis de Importación", 14, 26);
+  doc.text("Informe de Análisis de Importación · costos estimados", 14, 26);
   doc.text(`Generado: ${now}  |  ID: ${data.reportId}`, 14, 34);
 
   // Company info bar (NEW)
@@ -172,7 +173,8 @@ function generateReportPDF(data: {
   doc.setTextColor(100, 116, 139);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(data.costs.fxNote, 14, finalY2 + 26);
+  doc.text(data.costs.fxNote, 14, finalY2 + 22);
+  doc.text(ESTIMATE_NOTE, 14, finalY2 + 26);
   if (data.costs.freightPending) {
     doc.text(
       "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
@@ -617,6 +619,9 @@ export function FinalCTA() {
               </div>
               <div className="text-sm text-green-700">
                 {Q(costs.perUnit, 2)} {t("final.perUnit")}
+              </div>
+              <div className="text-xs text-green-800 mt-1">
+                <span>Estimación, no cotización</span>
               </div>
             </div>
 

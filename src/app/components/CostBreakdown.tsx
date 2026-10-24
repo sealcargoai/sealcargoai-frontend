@@ -39,6 +39,7 @@ import {
   useRates,
   formatQ,
   formatUSD,
+  ESTIMATE_NOTE,
   type CostResult,
 } from "../../utils/costCalculator";
 
@@ -72,7 +73,7 @@ function exportToPDF(
   doc.text("SEAL SmartTrade AI", 14, 16);
   doc.setFontSize(11);
   doc.setFont("helvetica", "normal");
-  doc.text("Análisis de Costos de Importación", 14, 26);
+  doc.text("Estimación de Costos de Importación (no es cotización)", 14, 26);
   doc.text(`Generado: ${now}`, 14, 34);
 
   // Company info bar (NEW)
@@ -162,7 +163,8 @@ function exportToPDF(
   doc.setTextColor(100, 116, 139);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(costs.fxNote, 14, finalY + 26);
+  doc.text(costs.fxNote, 14, finalY + 22);
+  doc.text(ESTIMATE_NOTE, 14, finalY + 26);
   if (costs.freightPending) {
     doc.text(
       "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
@@ -199,7 +201,7 @@ async function exportToExcel(
   priceNote = "",
 ) {
   await generateBeautifulExcel({
-    reportTitle: "Análisis de Costos de Importación",
+    reportTitle: "Estimación de Costos de Importación",
     supplierName,
     productType,
     destination,
@@ -433,8 +435,13 @@ export function CostBreakdown() {
                 </span>
               </div>
               <div className="text-blue-200 text-xs sm:text-sm mt-1">
-                Equivale a {formatUSD(costs.totalCost)} • tipo de cambio referencial Q
-                {costs.exchangeRate.toFixed(2)} por US$1
+                <span>
+                  Equivale a {formatUSD(costs.totalCost)} • tipo de cambio referencial Q
+                  {costs.exchangeRate.toFixed(2)} por US$1
+                </span>
+              </div>
+              <div className="mt-3 inline-block bg-white/15 border border-white/25 rounded-lg px-3 py-1.5 text-xs sm:text-sm text-white">
+                <span>{ESTIMATE_NOTE}</span>
               </div>
             </div>
             <div className="w-16 h-16 sm:w-24 sm:h-24 md:w-36 md:h-36 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl flex-shrink-0">
