@@ -404,28 +404,63 @@ export function CostBreakdown() {
             <h2 className="font-semibold text-[#0B3C5D] mb-6">
               {t("cost.costDistribution")}
             </h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={costData}
-                  cx="50%"
-                  cy="50%"
-                  labelLine={false}
-                  label={({ name, percent }) =>
-                    `${name}: ${(percent * 100).toFixed(0)}%`
-                  }
-                  outerRadius={100}
-                  dataKey="value"
-                >
-                  {costData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Pie>
-                <Tooltip
-                  formatter={(value: number) => `$${value.toLocaleString()}`}
-                />
-              </PieChart>
-            </ResponsiveContainer>
+            <div className="relative">
+              <ResponsiveContainer width="100%" height={220}>
+                <PieChart>
+                  <Pie
+                    data={costData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={62}
+                    outerRadius={95}
+                    paddingAngle={1}
+                    dataKey="value"
+                    stroke="#fff"
+                  >
+                    {costData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value: number, name: string) => [
+                      `$${Math.round(value).toLocaleString()}`,
+                      name,
+                    ]}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-xs text-slate-500">Total</span>
+                <span className="text-lg font-bold text-[#0B3C5D]">
+                  ${costs.totalCost.toLocaleString()}
+                </span>
+              </div>
+            </div>
+            <ul className="mt-4 space-y-2">
+              {costData.map((d) => {
+                const pct = costs.totalCost > 0 ? (d.value / costs.totalCost) * 100 : 0;
+                return (
+                  <li key={d.name} className="flex items-center gap-2 text-sm">
+                    <span
+                      className="w-3 h-3 rounded-sm shrink-0"
+                      style={{ backgroundColor: d.color }}
+                    />
+                    <span className="text-slate-700 flex-1 min-w-0 truncate">{d.name}</span>
+                    <span className="text-slate-500 tabular-nums w-12 text-right">
+                      {pct < 1 ? "<1" : Math.round(pct)}%
+                    </span>
+                    <span className="font-medium text-slate-800 tabular-nums w-20 text-right">
+                      ${Math.round(d.value).toLocaleString()}
+                    </span>
+                  </li>
+                );
+              })}
+            </ul>
+            {costs.freightPending && (
+              <p className="text-xs text-slate-500 mt-3">
+                El flete marítimo no está incluido: se cotiza con el volumen o peso de su carga.
+              </p>
+            )}
           </div>
 
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
