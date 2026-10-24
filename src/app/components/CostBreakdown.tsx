@@ -243,6 +243,7 @@ export function CostBreakdown() {
       .forEach(({ i }) => { if (left > 0) { base[i] += 1; left -= 1; } });
     moneyGroups.forEach((g, i) => Object.assign(g, { pct: raw[i], share: base[i] }));
   }
+  moneyGroups.sort((a, b) => b.amount - a.amount); // largest to smallest
 
   const LINE_STYLE: Record<string, { icon: typeof DollarSign; color: string }> = {
     product: { icon: DollarSign, color: "blue" },
