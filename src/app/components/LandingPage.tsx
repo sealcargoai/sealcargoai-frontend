@@ -152,6 +152,8 @@ export function LandingPage() {
                       </label>
                       <input
                         type="email"
+                        pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
+                        title="Correo completo, por ejemplo nombre@empresa.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required

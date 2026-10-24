@@ -86,6 +86,10 @@ function NoResults({
           destination,
         }),
       });
+      if (res.status === 400) {
+        setError("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.");
+        return;
+      }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSent(true);
     } catch {
@@ -163,6 +167,8 @@ function NoResults({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
+                  pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
+                  title="Correo completo, por ejemplo nombre@empresa.com"
                   placeholder="Correo"
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />

@@ -792,6 +792,8 @@ export function FinalCTA() {
               />
               <input
                 type="email"
+                pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
+                title="Correo completo, por ejemplo nombre@empresa.com"
                 required
                 placeholder={t("final.quoteEmail")}
                 value={quoteEmail}
@@ -862,6 +864,8 @@ export function FinalCTA() {
               />
               <input
                 type="email"
+                pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
+                title="Correo completo, por ejemplo nombre@empresa.com"
                 required
                 placeholder={t("final.emailYourEmail")}
                 value={emailRecipient}
