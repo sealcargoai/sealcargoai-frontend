@@ -1,9 +1,12 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es" translate="no">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- The app has its own ES/EN switch. Browser auto-translation rewrites the
+       DOM under React and crashes it (removeChild), so it is turned off. -->
+  <meta name="google" content="notranslate" />
   <title>Seal - SmartTrade AI</title>
   <style>
     html,
