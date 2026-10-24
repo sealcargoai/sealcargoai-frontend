@@ -79,6 +79,7 @@ export interface ExcelExportData {
   destination: string;
   quantity: number;
   price: number;
+  priceNote?: string; // e.g. "precio medio del rango US$10.00 – US$15.00"
   costs: {
     productCost: number;
     shipping: number;
@@ -229,7 +230,7 @@ export async function generateBeautifulExcel(
     ["Tipo de Producto:", data.productType],
     ["País de Destino:", "Guatemala"],
     ["Cantidad:", `${data.quantity.toLocaleString()} unidades`],
-    ["Precio Unitario:", `US$${Number(data.price).toFixed(2)} (Q${(Number(data.price) * (data.costs.exchangeRate || DEFAULT_FX)).toFixed(2)})`],
+    ["Precio Unitario:", `US$${Number(data.price).toFixed(2)} (Q${(Number(data.price) * (data.costs.exchangeRate || DEFAULT_FX)).toFixed(2)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
   ];
 
   orderRows.forEach((row, i) => {
