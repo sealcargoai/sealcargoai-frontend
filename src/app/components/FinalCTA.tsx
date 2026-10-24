@@ -359,6 +359,24 @@ export function FinalCTA() {
     }
   };
 
+  const downloadReportNow = () => {
+    try {
+      generateReportPDF({
+        supplierName,
+        quantity,
+        price,
+        destination,
+        productType,
+        riskScore: stateRiskScore,
+        costs,
+        reportId,
+        saveFile: true,
+      });
+    } catch {
+      /* ignore */
+    }
+  };
+
   // ── Action: Email Report ──────────────────────────────────────────────────
   const handleEmailReport = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -390,13 +408,30 @@ export function FinalCTA() {
           }),
         },
       );
+      if (res.status === 400) {
+        alert("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.");
+        return;
+      }
       if (!res.ok) throw new Error("Failed");
-      alert(t("final.emailSuccess"));
+      const result = await res.json().catch(() => ({}));
+      if (result.delivered === false) {
+        // Could not email the client directly — SEAL got the report and will forward it.
+        downloadReportNow();
+        alert(
+          `Su informe se descargó en este dispositivo. Además, un ejecutivo de SEAL se lo enviará a ${emailRecipient}.`,
+        );
+      } else {
+        alert(t("final.emailSuccess"));
+      }
       setShowEmailModal(false);
       setEmailRecipient("");
       setEmailRecipientName("");
     } catch (err) {
-      alert(t("final.emailError"));
+      // Never leave the user empty-handed: give them the PDF right away
+      downloadReportNow();
+      alert(
+        `No pudimos enviarlo por correo, pero su informe se descargó en este dispositivo. Si lo necesita, llámenos al ${SEAL_COMPANY.phone}.`,
+      );
     } finally {
       setSubmitting(false);
     }
