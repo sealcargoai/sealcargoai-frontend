@@ -216,7 +216,8 @@ export function CostBreakdown() {
   // ── Chart data ────────────────────────────────────────────────────────────
   const costData = costs.lines
     .filter((l) => l.amount > 0)
-    .map((l) => ({ name: l.label.replace("*", ""), value: l.amount, color: l.color }));
+    .map((l) => ({ name: l.label.replace("*", ""), value: l.amount, color: l.color }))
+    .sort((a, b) => b.value - a.value); // largest to smallest
 
   // "¿En qué se va su dinero?": the real calculator lines grouped in 4 blocks
   const sumKeys = (keys: string[]) =>
