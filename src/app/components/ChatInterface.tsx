@@ -20,12 +20,12 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "ai",
-      content: `${name ? `¡Hola ${name}!` : "¡Hola!"} Soy tu experto en abastecimiento y aduanas impulsado por IA. Déjame ayudarte con: "${query || "tu solicitud de importación"}". Primero, necesito entender mejor tus requisitos.`,
+      content: `${name ? `Hola, ${name}.` : "Hola."} Soy el asistente de orientación de SEAL. Puedo ayudarte a organizar la información de tu importación, explorar posibles proveedores y revisar algunos aspectos que conviene considerar.${query ? ` Tu consulta: "${query}".` : ""}`,
     },
     {
       role: "ai",
       content:
-        "Para encontrar los mejores proveedores y calcular costos precisos, necesito algunos detalles. Pasemos al formulario de calificación de producto donde puedes proporcionar información específica.",
+        "Para preparar una orientación más útil, necesito algunos datos sobre el producto, la cantidad y el destino.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -46,7 +46,7 @@ export function ChatInterface() {
         {
           role: "ai",
           content:
-            "¡Excelente pregunta! Basándome en tus necesidades, recomiendo avanzar con la calificación estructurada del producto para obtener los resultados más precisos. Haz clic en 'Continuar a Calificación' abajo.",
+            "Gracias. Por ahora no respondo preguntas abiertas en este chat. Para orientarte, continúa con el formulario: ahí ordenamos tus datos y preparamos las referencias y estimaciones. Si prefieres hablar con una persona, escribe al WhatsApp de SEAL +502 5996 4664.",
         },
       ]);
     }, 1000);
@@ -128,12 +128,12 @@ export function ChatInterface() {
                 {msg.role === "ai" && (
                   <div className="flex items-center gap-2 mb-2">
                     <div className="w-6 h-6 rounded-full bg-blue-100 flex items-center justify-center">
-                      <span className="text-xs font-bold text-[#0B3C5D]">
-                        AI
+                      <span className="text-[9px] font-bold text-[#0B3C5D]">
+                        SEAL
                       </span>
                     </div>
                     <span className="text-xs font-semibold text-slate-500">
-                      SEAL Assistant
+                      Asistente de SEAL
                     </span>
                   </div>
                 )}

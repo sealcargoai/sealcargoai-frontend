@@ -41,6 +41,9 @@ export const LIMITS = {
 };
 
 const DRAFT_KEY = "seal_qualify_draft";
+// The backend gives up at ~75 s; the browser waits a little longer, then offers a way out
+const SEARCH_TIMEOUT_MS = 95_000;
+const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 function loadDraft(): { formData?: Record<string, string>; step?: number } | null {
   try {
@@ -160,6 +163,44 @@ export function ProductQualification() {
     ) : null;
   const touch = (k: string) => setTouched((t0) => ({ ...t0, [k]: true }));
   const [showLimitModal, setShowLimitModal] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [helpSent, setHelpSent] = useState<"" | "sending" | "sent" | "error">("");
+
+  // Seconds counter while searching (shown to the client)
+  useEffect(() => {
+    if (!isLoading) return;
+    setElapsed(0);
+    const id = setInterval(() => setElapsed((s0) => s0 + 1), 1000);
+    return () => clearInterval(id);
+  }, [isLoading]);
+
+  // Ask SEAL to review the case when the search can't be completed
+  const requestSealReview = async () => {
+    setHelpSent("sending");
+    try {
+      const res = await fetch(`${API}/api/email/quote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          requestType: "Búsqueda asistida (la consulta no se completó)",
+          name: userName,
+          email: userEmail,
+          productDescription: formData.productType.trim(),
+          quantity: formData.quantity,
+          budget: formData.budget,
+          destination: "Guatemala",
+          message: [
+            formData.volumeCbm && `Volumen: ${formData.volumeCbm} m³`,
+            formData.weightKg && `Peso: ${formData.weightKg} kg`,
+          ].filter(Boolean).join(" · "),
+        }),
+      });
+      setHelpSent(res.ok ? "sent" : "error");
+    } catch {
+      setHelpSent("error");
+    }
+  };
   const [remainingSearches, setRemainingSearches] = useState<number>(3);
 
   useEffect(() => {
@@ -190,12 +231,18 @@ export function ProductQualification() {
 
     setIsLoading(true);
     setError("");
+    setSearchFailed(false);
+    setHelpSent("");
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
 
     try {
       const response = await fetch(
-        `${import.meta.env.VITE_API_URL || "http://localhost:3001"}/api/suppliers/search`,
+        `${API}/api/suppliers/search`,
         {
           method: "POST",
+          signal: controller.signal,
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...formData,
@@ -246,10 +293,12 @@ export function ProductQualification() {
     } catch (err) {
       console.error("Supplier search failed:", err);
       // Stay here: the data stays in the form and the search is not counted
+      setSearchFailed(true);
       setError(
-        "No pudimos completar la búsqueda en este momento. Sus datos quedaron guardados: intente de nuevo en unos minutos o escríbanos al WhatsApp +502 5996 4664.",
+        "No pudimos completar la consulta en este momento. Puedes intentarlo nuevamente o pedir al equipo de SEAL que revise tu caso.",
       );
     } finally {
+      clearTimeout(timer);
       setIsLoading(false);
     }
   };
@@ -482,6 +531,12 @@ export function ProductQualification() {
                   >
                     <option value="GT">Guatemala</option>
                   </select>
+                  <p className="text-xs text-slate-500 mt-1">
+                    <span>
+                      SmartTrade AI está enfocado en importaciones hacia Guatemala: la estimación usa
+                      los impuestos y gastos de Guatemala.
+                    </span>
+                  </p>
                 </div>
 
                 {/* Review Summary */}
@@ -587,7 +642,7 @@ export function ProductQualification() {
                           d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
                         />
                       </svg>
-                      <span key="loading">Buscando proveedores…</span>
+                      <span key="loading">Consultando referencias para tu producto…</span>
                     </>
                   ) : (
                     <>
@@ -599,10 +654,52 @@ export function ProductQualification() {
               )}
             </div>
 
+            {/* Progress while searching */}
+            {isLoading && (
+              <p className="text-xs text-slate-500 text-center" aria-live="polite">
+                <span>
+                  {elapsed < 15
+                    ? "Revisando plataformas de proveedores…"
+                    : `Esto puede tardar hasta un minuto (${elapsed} s). Tus datos ya quedaron guardados.`}
+                </span>
+              </p>
+            )}
+
             {/* Error message */}
             {error && (
               <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800" role="alert">
                 <span>⚠️ {error}</span>
+                {searchFailed && (
+                  <div className="mt-3 flex flex-col sm:flex-row gap-2">
+                    <button
+                      type="submit"
+                      className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47]"
+                    >
+                      <span>Intentar nuevamente</span>
+                    </button>
+                    {helpSent === "sent" ? (
+                      <span className="px-2 py-2 text-sm text-green-700">
+                        ✅ Recibimos tu caso. Un ejecutivo de SEAL te contactará.
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={requestSealReview}
+                        disabled={helpSent === "sending" || !userEmail}
+                        className="px-4 py-2 rounded-lg border-2 border-[#0B3C5D] text-[#0B3C5D] text-sm font-semibold hover:bg-blue-50 disabled:opacity-60"
+                      >
+                        <span>
+                          {helpSent === "sending" ? "Enviando…" : "Pedir a SEAL que revise mi caso"}
+                        </span>
+                      </button>
+                    )}
+                    {helpSent === "error" && (
+                      <span className="px-2 py-2 text-sm text-red-600">
+                        No se pudo enviar. Escríbenos al WhatsApp +502 5996 4664.
+                      </span>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </form>
