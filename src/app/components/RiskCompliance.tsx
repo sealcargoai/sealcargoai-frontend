@@ -118,15 +118,6 @@ export function getReviewTopics(productType: string, supplier: any): ReviewTopic
         source: T("Proveedor", "Supplier"),
       },
       {
-        title: T("Posible suspensión de impuestos (Decreto 29-89)", "Possible tax suspension (Decree 29-89)"),
-        why: T(
-          "Si su empresa está calificada como exportadora bajo el Decreto 29-89, la maquinaria podría importarse con suspensión de DAI e IVA.",
-          "If your company is qualified as an exporter under Decree 29-89, the machinery could be imported with DAI and IVA suspended.",
-        ),
-        action: T("Consultar con SEAL si su empresa califica.", "Ask SEAL whether your company qualifies."),
-        source: "SEAL · MINECO",
-      },
-      {
         title: T("Si la máquina es para alimentos", "If the machine is for food"),
         why: T(
           "Las partes en contacto con alimentos deben ser de material apto (por ejemplo acero inoxidable de grado alimenticio).",

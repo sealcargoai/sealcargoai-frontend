@@ -25,6 +25,7 @@ import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
 import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
 import { Lx } from "../../utils/lang";
+import { requestedCapacity, matchCapacity, orderByCapacity, capacityLabel, type Capacity } from "../../utils/capacity";
 import {
   supplierPriceInfo,
   SupplierDisclaimer,
@@ -449,6 +450,51 @@ function NoResults({
 // ─── Types ────────────────────────────────────────────────────────────────────
 // Order options for the results list. "seal" keeps the backend order
 // (trust level first, then lowest price inside each level).
+const CAP_TONE: Record<string, string> = {
+  green: "bg-green-50 border-green-200 text-green-800",
+  blue: "bg-blue-50 border-blue-200 text-blue-800",
+  amber: "bg-amber-50 border-amber-200 text-amber-800",
+  slate: "bg-slate-50 border-slate-200 text-slate-700",
+};
+
+function CapacityTag({ req, productName }: { req: Capacity | null; productName?: string }) {
+  const m = matchCapacity(req, productName);
+  if (!req || !m) return null;
+  const l = capacityLabel(req, m);
+  return (
+    <div className={`inline-block border rounded-lg px-2.5 py-1 mb-3 text-xs ${CAP_TONE[l.tone]}`}>
+      <span className="font-semibold">{l.text}</span>
+      <span className="opacity-80"> · {l.sub}</span>
+    </div>
+  );
+}
+
+function CapacitySummary({ req, list }: { req: Capacity | null; list: { productName?: string }[] }) {
+  if (!req || !list.length) return null;
+  const count = { meets: 0, higher: 0, lower: 0, unknown: 0 } as Record<string, number>;
+  list.forEach((s) => count[matchCapacity(req, s.productName)!.status]++);
+  const parts = [
+    count.meets && Lx(`${count.meets} indica${count.meets > 1 ? "n" : ""} la capacidad pedida`, `${count.meets} state${count.meets > 1 ? "" : "s"} the requested capacity`),
+    count.higher && Lx(`${count.higher} de mayor capacidad`, `${count.higher} higher capacity`),
+    count.lower && Lx(`${count.lower} de menor capacidad`, `${count.lower} lower capacity`),
+    count.unknown && Lx(`${count.unknown} sin capacidad clara en la publicación`, `${count.unknown} without a clear capacity in the listing`),
+  ].filter(Boolean);
+  return (
+    <div className="bg-white rounded-lg border border-slate-200 p-4 text-sm text-slate-700">
+      <p>
+        <span className="font-semibold text-[#0B3C5D]">{Lx(`Capacidad pedida: ${req.text}.`, `Requested capacity: ${req.text}.`)}</span>{" "}
+        {parts.join(" · ")}.
+      </p>
+      <p className="text-xs text-slate-500 mt-1">
+        {count.meets
+          ? Lx("Primero aparecen las que indican esa capacidad; las demás son alternativas. ", "Options stating that capacity come first; the rest are alternatives. ")
+          : Lx("Ninguna publicación indica exactamente esa capacidad; las opciones son alternativas. ", "No listing states exactly that capacity; the options are alternatives. ")}
+        {Lx("La capacidad se lee del título publicado: confírmala con el proveedor.", "Capacity is read from the listing title: confirm it with the supplier.")}
+      </p>
+    </div>
+  );
+}
+
 function sortSuppliers<T extends { price: number; rating: number | null; moq: number; trustScore?: number; aiScore: number }>(
   list: T[],
   by: string,
@@ -466,6 +512,7 @@ function sortSuppliers<T extends { price: number; rating: number | null; moq: nu
 interface Supplier {
   id: number;
   name: string;
+  productName?: string;
   rating: number | null;
   reviews: number;
   moq: number;
@@ -526,7 +573,8 @@ export function SupplierResults() {
   const apiData = location.state?.suppliers;
 
   // Only real results — no demo data
-  const displaySuppliers: Supplier[] = apiData?.topSuppliers ?? [];
+  const reqCap = requestedCapacity(String(location.state?.productDescription ?? ""));
+  const displaySuppliers: Supplier[] = orderByCapacity(apiData?.topSuppliers ?? [], reqCap);
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
@@ -803,6 +851,8 @@ export function SupplierResults() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Left: Supplier Cards ──────────────────────────────────────── */}
           <div className="lg:col-span-2 space-y-4 min-w-0">
+            <CapacitySummary req={reqCap} list={displaySuppliers} />
+
             {/* Sort Bar */}
             <div className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4">
               <Filter className="w-5 h-5 text-slate-400" />
@@ -864,6 +914,14 @@ export function SupplierResults() {
                             <CheckCircle className="w-5 h-5 text-green-500" aria-label="Verified Supplier" />
                           )}
                         </div>
+
+                        {supplier.productName && (
+                          <p className="text-sm text-slate-700 mb-2 line-clamp-2 first-letter:uppercase">
+                            <span className="text-slate-500">{Lx("Producto publicado:", "Listed product:")}</span>{" "}
+                            {supplier.productName}
+                          </p>
+                        )}
+                        <CapacityTag req={reqCap} productName={supplier.productName} />
 
                         {/* Índice de Confianza SEAL */}
                         <div className="mb-3">

@@ -267,8 +267,15 @@ export function ProductQualification() {
 
       const suppliers = await response.json();
 
-      // ── RECORD SEARCH AFTER SUCCESS ──────────────────
-      if (userEmail) {
+      // ── RECORD SEARCH ONLY WHEN IT SHOWED OPTIONS ────
+      // A search that found nothing useful (no related products, blocked,
+      // every option filtered out) or came from cache does not use a free search.
+      const counted =
+        !suppliers?.fromCache &&
+        !suppliers?.blocked &&
+        !suppliers?.noRelevantMatches &&
+        (suppliers?.topSuppliers?.length ?? 0) > 0;
+      if (userEmail && counted) {
         recordSearch(
           userEmail,
           userName,
@@ -673,8 +680,8 @@ export function ProductQualification() {
                   {elapsed < 15
                     ? L("Revisando plataformas de proveedores…", "Checking supplier platforms…")
                     : L(
-                        `Esto puede tardar hasta un minuto (${elapsed} s). Tus datos ya quedaron guardados.`,
-                        `This can take up to a minute (${elapsed} s). Your data is already saved.`,
+                        `Esto puede tardar hasta un minuto y medio (${elapsed} s). Tus datos ya quedaron guardados.`,
+                        `This can take up to a minute and a half (${elapsed} s). Your data is already saved.`,
                       )}
                 </span>
               </p>
