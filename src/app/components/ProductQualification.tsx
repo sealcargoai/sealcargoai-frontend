@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
 import {
   Package,
-  Ruler,
   DollarSign,
   MapPin,
   ArrowLeft,
@@ -17,6 +16,22 @@ import {
   getRemainingSearches,
   getSearchLimit,
 } from "../../utils/searchLimit";
+
+// The product is now free text. Downstream screens (costs, risk) still use a
+// category key, so we infer one from the description.
+const CATEGORY_KEYWORDS: Record<string, RegExp> = {
+  electronics: /electr[oó]nic|electronic|celular|tel[eé]fono|phone|laptop|computador|tablet|cargador|charger|bater[ií]a|battery|led|cable|aud[ií]fono|headphone|bocina|speaker|c[aá]mara|camera|monitor|televisor|\btv\b|chip|circuit/i,
+  textiles: /textil|tela|fabric|ropa|clothing|camis|shirt|pantal[oó]n|pants|vestido|dress|algod[oó]n|cotton|poli[eé]ster|polyester|uniforme|uniform|toalla|towel|zapato|shoe|calzado|bota|boot|gorra|cap/i,
+  furniture: /mueble|furniture|silla|chair|mesa|table|escritorio|desk|sof[aá]|sill[oó]n|cama|\bbed\b|colch[oó]n|mattress|gabinete|cabinet|estanter|shelf|closet|ropero/i,
+  machinery: /m[aá]quina|machine|maquinaria|machinery|equipo industrial|industrial equipment|motor|bomba|pump|compresor|compressor|generador|generator|torno|lathe|cnc|montacarga|forklift|excavadora|excavator|envasadora|empacadora|packing machine|horno industrial/i,
+};
+
+function inferCategory(description: string): string {
+  for (const [category, regex] of Object.entries(CATEGORY_KEYWORDS)) {
+    if (regex.test(description)) return category;
+  }
+  return "other";
+}
 
 export function ProductQualification() {
   const navigate = useNavigate();
@@ -42,7 +57,8 @@ export function ProductQualification() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({
-    productType: "",
+    // Free-text product description (prefilled with the chat query)
+    productType: userQuery,
     material: "",
     quantity: "",
     budget: "",
@@ -70,6 +86,9 @@ export function ProductQualification() {
       return;
     }
 
+    const productDescription = formData.productType.trim();
+    const productCategory = inferCategory(productDescription);
+
     setIsLoading(true);
     setError("");
 
@@ -81,7 +100,9 @@ export function ProductQualification() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...formData,
-            userQuery,
+            productType: productCategory,
+            material: "",
+            userQuery: productDescription,
             userEmail,
           }),
         },
@@ -103,8 +124,8 @@ export function ProductQualification() {
         recordSearch(
           userEmail,
           userName,
-          formData.productType,
-          userQuery || formData.productType
+          productCategory,
+          productDescription
         );
         const localRemaining = getRemainingSearches(userEmail, userName);
         const serverRemaining =
@@ -117,6 +138,8 @@ export function ProductQualification() {
       navigate("/suppliers", {
         state: {
           ...formData,
+          productType: productCategory,
+          productDescription,
           suppliers,
         },
       });
@@ -129,7 +152,9 @@ export function ProductQualification() {
 
       // Failed searches (server down) are not counted against the user
 
-      navigate("/suppliers", { state: formData });
+      navigate("/suppliers", {
+        state: { ...formData, productType: productCategory, productDescription },
+      });
     } finally {
       setIsLoading(false);
     }
@@ -210,56 +235,31 @@ export function ProductQualification() {
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Step 1 */}
+            {/* Step 1 — free-text product description */}
             {step === 1 && (
-              <div className="space-y-6 animate-fade-in">
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
-                    <Package className="w-4 h-4" />
-                    {t("qualification.productType")}
-                  </label>
-                  <select
-                    value={formData.productType}
-                    onChange={(e) =>
-                      setFormData({ ...formData, productType: e.target.value })
-                    }
-                    required
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">
-                      {t("qualification.selectCategory")}
-                    </option>
-                    <option value="furniture">
-                      {t("qualification.furniture")}
-                    </option>
-                    <option value="electronics">
-                      {t("qualification.electronics")}
-                    </option>
-                    <option value="textiles">
-                      {t("qualification.textiles")}
-                    </option>
-                    <option value="machinery">
-                      {t("qualification.machinery")}
-                    </option>
-                    <option value="other">{t("qualification.other")}</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
-                    <Ruler className="w-4 h-4" />
-                    {t("qualification.material")}
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.material}
-                    onChange={(e) =>
-                      setFormData({ ...formData, material: e.target.value })
-                    }
-                    required
-                    placeholder={t("qualification.materialPlaceholder")}
-                    className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
+              <div className="space-y-3 animate-fade-in">
+                <label
+                  htmlFor="productType"
+                  className="flex items-center gap-2 text-sm font-medium text-slate-700"
+                >
+                  <Package className="w-4 h-4" />
+                  {t("qualification.productType")}
+                </label>
+                <textarea
+                  id="productType"
+                  value={formData.productType}
+                  onChange={(e) =>
+                    setFormData({ ...formData, productType: e.target.value })
+                  }
+                  required
+                  rows={8}
+                  maxLength={1500}
+                  placeholder={t("qualification.productPlaceholder")}
+                  className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[180px] leading-relaxed"
+                />
+                <div className="flex justify-between text-xs text-slate-500">
+                  <span>{t("qualification.productHelp")}</span>
+                  <span>{formData.productType.length}/1500</span>
                 </div>
               </div>
             )}
@@ -338,17 +338,11 @@ export function ProductQualification() {
                     {t("qualification.review")}
                   </h3>
                   <div className="space-y-1 text-sm text-slate-600">
-                    <p>
+                    <p className="whitespace-pre-line break-words">
                       <span className="font-medium">
                         {t("qualification.product")}
                       </span>{" "}
                       {formData.productType}
-                    </p>
-                    <p>
-                      <span className="font-medium">
-                        {t("qualification.material")}:
-                      </span>{" "}
-                      {formData.material}
                     </p>
                     <p>
                       <span className="font-medium">
@@ -385,7 +379,8 @@ export function ProductQualification() {
                 <button
                   type="button"
                   onClick={() => setStep(step + 1)}
-                  className="flex-1 px-6 py-3 rounded-lg bg-[#0B3C5D] text-white hover:bg-[#0a2f47] transition-colors flex items-center justify-center gap-2"
+                  disabled={step === 1 && formData.productType.trim().length < 3}
+                  className="flex-1 px-6 py-3 rounded-lg bg-[#0B3C5D] text-white hover:bg-[#0a2f47] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t("qualification.next")}
                   <ArrowRight className="w-4 h-4" />
