@@ -13,12 +13,7 @@ import {
   Pie,
   Cell,
   ResponsiveContainer,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
   Tooltip,
-  Legend,
 } from "recharts";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -223,12 +218,26 @@ export function CostBreakdown() {
     .filter((l) => l.amount > 0)
     .map((l) => ({ name: l.label.replace("*", ""), value: l.amount, color: l.color }));
 
-  const comparisonData = [
-    { supplier: supplierName.split(" ")[0], total: costs.totalCost },
-    { supplier: "Avg Market", total: Math.round(costs.totalCost * 1.14) },
-    { supplier: "Budget Alt", total: Math.round(costs.totalCost * 0.92) },
-    { supplier: "Premium Alt", total: Math.round(costs.totalCost * 1.2) },
+  // "¿En qué se va su dinero?": the real calculator lines grouped in 4 blocks
+  const sumKeys = (keys: string[]) =>
+    costs.lines.filter((l) => keys.includes(l.key)).reduce((a, l) => a + l.amount, 0);
+  const moneyGroups = [
+    { key: "product", name: "Producto (FOB)", desc: "Lo que le paga al proveedor", amount: sumKeys(["product"]), color: "#0B3C5D" },
+    { key: "logistics", name: "Traerlo a Guatemala", desc: "Flete, seguro y gastos en destino", amount: sumKeys(["freight", "insurance", "local"]), color: "#3B82F6" },
+    { key: "taxes", name: "Impuestos SAT", desc: "DAI e IVA de importación", amount: sumKeys(["duties", "vat"]), color: "#60A5FA" },
+    { key: "seal", name: "Servicio de aduana SEAL", desc: "Honorarios del agente aduanero", amount: sumKeys(["customs"]), color: "#8B5CF6" },
   ];
+  // Whole "of each US$100" shares that add up to exactly 100 (largest remainder)
+  {
+    const raw = moneyGroups.map((g) => (costs.totalCost > 0 ? (g.amount / costs.totalCost) * 100 : 0));
+    const base = raw.map(Math.floor);
+    let left = costs.totalCost > 0 ? 100 - base.reduce((x, y) => x + y, 0) : 0;
+    raw
+      .map((r, i) => ({ i, rem: r - base[i] }))
+      .sort((x, y) => y.rem - x.rem)
+      .forEach(({ i }) => { if (left > 0) { base[i] += 1; left -= 1; } });
+    moneyGroups.forEach((g, i) => Object.assign(g, { pct: raw[i], share: base[i] }));
+  }
 
   const LINE_STYLE: Record<string, { icon: typeof DollarSign; color: string }> = {
     product: { icon: DollarSign, color: "blue" },
@@ -420,25 +429,54 @@ export function CostBreakdown() {
           </div>
 
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
-            <h2 className="font-semibold text-[#0B3C5D] mb-6">
-              {t("cost.supplierComparison")}
+            <h2 className="font-semibold text-[#0B3C5D] mb-1">
+              ¿En qué se va su dinero?
             </h2>
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={comparisonData}>
-                <XAxis dataKey="supplier" tick={{ fontSize: 11 }} />
-                <YAxis />
-                <Tooltip
-                  formatter={(value: number) => `$${value.toLocaleString()}`}
-                />
-                <Legend />
-                <Bar
-                  dataKey="total"
-                  fill="#0B3C5D"
-                  name="Total Landed Cost"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ResponsiveContainer>
+            <p className="text-sm text-slate-500 mb-5">
+              De cada US$100 que invierte en esta importación
+            </p>
+            <div className="space-y-5">
+              {moneyGroups.map((g) => {
+                const { pct, share } = g as typeof g & { pct: number; share: number };
+                const pendingFreight = g.key === "logistics" && costs.freightPending;
+                return (
+                  <div key={g.key}>
+                    <div className="flex items-baseline justify-between gap-3 mb-1.5">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-slate-800">{g.name}</p>
+                        <p className="text-xs text-slate-500">
+                          {g.desc}
+                          {pendingFreight ? " (flete por cotizar)" : ""}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className="text-sm font-semibold text-slate-800">
+                          US${share}
+                        </p>
+                        <p className="text-xs text-slate-500">
+                          ${g.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="h-3 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full rounded-full"
+                        style={{ width: `${Math.max(pct, g.amount > 0 ? 1 : 0)}%`, backgroundColor: g.color }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-6 pt-4 border-t border-slate-200 flex items-baseline justify-between">
+              <p className="text-sm text-slate-600">
+                Por cada unidad, además del precio de fábrica
+                {costs.freightPending ? " (sin flete)" : ""}
+              </p>
+              <p className="text-base font-bold text-[#0B3C5D]">
+                +${Math.max(costs.perUnit - price, 0).toFixed(2)}
+              </p>
+            </div>
           </div>
         </div>
 
