@@ -225,19 +225,17 @@ export function calculateCosts(
     },
     {
       key: "customs",
-      label: "Honorarios de aduana*",
+      label: "Honorarios de aduana",
       detail: "Agente aduanero SEAL",
       amount: customsFees,
       color: "#8B5CF6",
-      noVat: true,
     },
     {
       key: "local",
-      label: "Gastos en destino*",
+      label: "Gastos en destino",
       detail: "Manejo y gastos locales, revisión, almacenaje, etc.",
       amount: localCharges,
       color: "#A78BFA",
-      noVat: true,
     },
   ];
 
@@ -260,7 +258,7 @@ export function calculateCosts(
     vatRate: rates.vatRate,
     insuranceRate: rates.insuranceRate,
     lines,
-    noVatNote: "* Costos internacionales sin IVA",
+    noVatNote: "", // no VAT footnote: the tool is only an estimate
     exchangeRate: rates.exchangeRate,
     fxNote: `Montos en quetzales con tipo de cambio referencial de Q${rates.exchangeRate.toFixed(2)} por US$1. El monto final depende del tipo de cambio del día.`,
   };
