@@ -1,4 +1,6 @@
 import ExcelJS from "exceljs";
+import { Lx, getLang, unitsWord } from "./lang";
+import { estimateNote, scenarioVariables } from "./costCalculator";
 
 // ─── SEAL Company Info ────────────────────────────────────────────────────────
 export const SEAL_COMPANY = {
@@ -64,7 +66,7 @@ export function drawCompanyFooter(doc: any) {
   doc.setTextColor(150, 150, 150);
   doc.setFontSize(6);
   doc.text(
-    "Este análisis es una estimación. Los costos reales pueden variar.",
+    Lx("Este análisis es una estimación. Los costos reales pueden variar.", "This analysis is an estimate. Actual costs may vary."),
     pageWidth / 2,
     pageHeight - 1.5,
     { align: "center" },
@@ -110,7 +112,7 @@ export async function generateBeautifulExcel(
   wb.lastModifiedBy = SEAL_COMPANY.name;
   wb.created = new Date();
 
-  const ws = wb.addWorksheet("Análisis de Costos", {
+  const ws = wb.addWorksheet(Lx("Escenario de costos", "Cost scenario"), {
     properties: { defaultColWidth: 18 },
     pageSetup: { paperSize: 9, orientation: "portrait" },
   });
@@ -186,7 +188,7 @@ export async function generateBeautifulExcel(
 
   ws.mergeCells("A6:E6");
   const dateCell = ws.getCell("A6");
-  dateCell.value = `Generado: ${new Date().toLocaleDateString("es-ES", {
+  dateCell.value = `${Lx("Generado", "Generated")}: ${new Date().toLocaleDateString(getLang() === "en" ? "en-US" : "es-GT", {
     year: "numeric",
     month: "long",
     day: "numeric",
@@ -206,7 +208,7 @@ export async function generateBeautifulExcel(
   // ═══ ORDER DETAILS (rows 8-13) ═══════════════════════════════════════════
   ws.mergeCells("A8:E8");
   const detailsHeader = ws.getCell("A8");
-  detailsHeader.value = "DETALLES DEL PEDIDO";
+  detailsHeader.value = Lx("DATOS DE LA CONSULTA", "REQUEST DETAILS");
   detailsHeader.font = {
     name: "Arial",
     size: 11,
@@ -226,11 +228,11 @@ export async function generateBeautifulExcel(
   ws.getRow(8).height = 22;
 
   const orderRows = [
-    ["Proveedor:", data.supplierName],
-    ["Tipo de Producto:", data.productType],
-    ["País de Destino:", "Guatemala"],
-    ["Cantidad:", `${data.quantity.toLocaleString()} unidades`],
-    ["Precio Unitario:", `US$${Number(data.price).toFixed(2)} (Q${(Number(data.price) * (data.costs.exchangeRate || DEFAULT_FX)).toFixed(2)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
+    [Lx("Proveedor considerado:", "Supplier considered:"), data.supplierName],
+    [Lx("Producto:", "Product:"), data.productType],
+    [Lx("País de destino:", "Destination country:"), "Guatemala"],
+    [Lx("Cantidad:", "Quantity:"), `${data.quantity.toLocaleString()} ${unitsWord(data.quantity)}`],
+    [Lx("Precio unitario:", "Unit price:"), `US$${Number(data.price).toFixed(2)} (Q${(Number(data.price) * (data.costs.exchangeRate || DEFAULT_FX)).toFixed(2)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
   ];
 
   orderRows.forEach((row, i) => {
@@ -277,11 +279,11 @@ export async function generateBeautifulExcel(
   // ═══ COST BREAKDOWN TABLE ═══════════════════════════════════════════════
   // Header row 15 — NOW 5 COLUMNS
   const headers = [
-    "CONCEPTO",
-    "DETALLE",
-    "TASA APLICADA",
-    "MONTO (Q)",
-    "% DEL TOTAL",
+    Lx("CONCEPTO", "ITEM"),
+    Lx("DETALLE", "DETAIL"),
+    Lx("TASA APLICADA", "RATE APPLIED"),
+    Lx("MONTO (Q)", "AMOUNT (Q)"),
+    Lx("% DEL TOTAL", "% OF TOTAL"),
   ];
   headers.forEach((header, i) => {
     const cell = ws.getRow(15).getCell(i + 1);
@@ -316,7 +318,7 @@ export async function generateBeautifulExcel(
   const dataRows = (data.costs.lines || []).map((l) => ({
     concept: l.label,
     detail:
-      l.key === "freight" && data.costs.freightPending ? "Por cotizar" : l.detail,
+      l.key === "freight" && data.costs.freightPending ? Lx("Por cotizar", "To be quoted") : l.detail,
     appliedRate:
       RATE_BY_KEY[l.key] !== undefined
         ? `${((RATE_BY_KEY[l.key] as number) * 100).toFixed(0)}%`
@@ -369,7 +371,7 @@ export async function generateBeautifulExcel(
     };
     appliedRateCell.alignment = { vertical: "middle", horizontal: "center" };
 
-    amountCell.value = row.pending ? "Por cotizar" : Math.round(row.amount);
+    amountCell.value = row.pending ? Lx("Por cotizar", "To be quoted") : Math.round(row.amount);
     amountCell.numFmt = '"Q"#,##0';
     amountCell.font = {
       name: "Arial",
@@ -436,8 +438,8 @@ export async function generateBeautifulExcel(
   const totalAmountCell = ws.getRow(totalRowNum).getCell(4);
   const totalPctCell = ws.getRow(totalRowNum).getCell(5);
 
-  totalConceptCell.value = "COSTO TOTAL EN GUATEMALA";
-  totalDetailCell.value = `${data.quantity.toLocaleString()} unidades`;
+  totalConceptCell.value = Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA");
+  totalDetailCell.value = `${data.quantity.toLocaleString()} ${unitsWord(data.quantity)}`;
   totalRateCell.value = "—";
   totalAmountCell.value = Math.round(data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX));
   totalAmountCell.numFmt = '"Q"#,##0';
@@ -482,7 +484,7 @@ export async function generateBeautifulExcel(
   const perUnitValue = ws.getCell(`D${perUnitRowNum}`);
   const perUnitEmpty = ws.getCell(`E${perUnitRowNum}`);
 
-  perUnitLabel.value = "COSTO POR UNIDAD";
+  perUnitLabel.value = Lx("COSTO ESTIMADO POR UNIDAD", "ESTIMATED COST PER UNIT");
   perUnitValue.value = Math.round(data.costs.perUnit * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100;
   perUnitValue.numFmt = '"Q"#,##0.00';
 
@@ -518,7 +520,7 @@ export async function generateBeautifulExcel(
   ws.mergeCells(`A${f1}:E${f1}`);
   const footerCell = ws.getCell(`A${f1}`);
   footerCell.value =
-    `Estimación referencial, no es una cotización: un ejecutivo de SEAL le confirma el costo antes del embarque.${data.costs.noVatNote ? "  " + data.costs.noVatNote + "." : ""}${data.costs.fxNote ? "  " + data.costs.fxNote : ""}  Aviso: SEAL no garantiza a los proveedores ni los resultados de esta búsqueda; SmartTrade AI es una herramienta para organizar y comparar proveedores. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.`;
+    `${estimateNote()}${data.costs.fxNote ? "  " + data.costs.fxNote : ""}  ${Lx("Variables que pueden cambiar este escenario", "Variables that can change this scenario")}: ${scenarioVariables(data.costs as any, { priceIsMidpoint: !!data.priceNote }).join(" ")}  ${Lx("Aviso: SEAL no garantiza a los proveedores ni los resultados de esta búsqueda; SmartTrade AI es una herramienta para organizar y comparar proveedores. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.", "Notice: SEAL does not guarantee the suppliers or the results of this search; SmartTrade AI is a tool to organize and compare suppliers. To buy more safely, the specific supplier verification service in China is required.")}`;
   footerCell.font = {
     name: "Arial",
     size: 9,
@@ -526,7 +528,7 @@ export async function generateBeautifulExcel(
     color: { argb: "FF64748B" },
   };
   footerCell.alignment = { vertical: "middle", horizontal: "center", wrapText: true };
-  ws.getRow(f1).height = 64;
+  ws.getRow(f1).height = 120;
 
   ws.mergeCells(`A${f2}:E${f2}`);
   const footerCell2 = ws.getCell(`A${f2}`);

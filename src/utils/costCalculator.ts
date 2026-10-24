@@ -2,6 +2,7 @@
 // Single source of truth for the costs, PDF and Excel screens.
 // Rates come from the backend (/api/rates → Google Sheet) with these defaults.
 import { useEffect, useState } from "react";
+import { Lx, unitsWord } from "./lang";
 
 export interface Rates {
   container40: number;      // USD per 40' container, origin → Guatemala
@@ -44,8 +45,30 @@ export const DEFAULT_RATES: Rates = {
 };
 
 // Shown wherever a cost appears: this tool estimates, SEAL quotes
-export const ESTIMATE_NOTE =
-  "Estimación referencial, no es una cotización. Un ejecutivo de SEAL le confirma el costo antes del embarque.";
+export function estimateNote(): string {
+  return Lx(
+    "Estimación referencial, no es una cotización. Un ejecutivo de SEAL le confirma el costo antes del embarque.",
+    "Reference estimate, not a quote. A SEAL executive confirms the cost before shipment.",
+  );
+}
+
+/** What can move this preliminary scenario (shown on screen, PDF and Excel). */
+export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
+  return [
+    costs.freightPending
+      ? Lx("Flete: no está incluido; se cotiza con el volumen y el peso reales.", "Freight: not included; quoted with the actual volume and weight.")
+      : Lx("Flete: tarifa real de la naviera o consolidador y volumen/peso confirmados.", "Freight: actual carrier or consolidator rate and confirmed volume/weight."),
+    Lx(
+      `DAI: depende de la partida arancelaria; se usó ${Math.round(costs.dutyRate * 100)}% como referencia.`,
+      `DAI duty: depends on the tariff heading; ${Math.round(costs.dutyRate * 100)}% was used as reference.`,
+    ),
+    opts.priceIsMidpoint
+      ? Lx("Precio: se usó el precio medio del rango publicado; el precio negociado puede ser otro.", "Price: the midpoint of the published range was used; the negotiated price may differ.")
+      : Lx("Precio: el precio final lo confirma la proforma del proveedor.", "Price: the final price is confirmed by the supplier's proforma."),
+    Lx("Tipo de cambio del día de pago y de la DUCA.", "Exchange rate on the payment and DUCA dates."),
+    Lx("Gastos en destino: almacenaje, revisión física y días en puerto.", "Destination charges: storage, physical inspection and days at port."),
+  ];
+}
 
 // Rates and costs are kept in USD; everything shown to the client is in quetzales
 export function formatQ(usdAmount: number, exchangeRate: number, decimals = 0): string {
@@ -134,7 +157,7 @@ export function calculateFreight(
   // W/M: the greater of m³ and metric tons (1,000 kg = 1 m³)
   const chargeable = Math.max(volumeCbm || 0, (weightKg || 0) / 1000);
   if (!chargeable) {
-    return { amount: 0, mode: null, detail: "Por cotizar — indique volumen o peso", chargeableCbm: 0 };
+    return { amount: 0, mode: null, detail: Lx("Por cotizar — indique volumen o peso", "To be quoted — enter volume or weight"), chargeableCbm: 0 };
   }
 
   if (chargeable <= rates.lclMaxCbm) {
@@ -143,7 +166,7 @@ export function calculateFreight(
     return {
       amount: Math.round(perCbm * cbm),
       mode: "LCL",
-      detail: `Carga consolidada • ${cbm.toFixed(2)} m³ × ${formatQ(perCbm, rates.exchangeRate)}/m³ • ${rates.transitDays} días`,
+      detail: `${Lx("Carga consolidada", "Consolidated cargo")} • ${cbm.toFixed(2)} m³ × ${formatQ(perCbm, rates.exchangeRate)}/m³ • ${rates.transitDays} ${Lx("días", "days")}`,
       chargeableCbm: cbm,
     };
   }
@@ -153,7 +176,7 @@ export function calculateFreight(
     return {
       amount: rates.container20,
       mode: "FCL",
-      detail: `1 contenedor de 20' (${chargeable.toFixed(1)} m³) • ${rates.transitDays} días`,
+      detail: `${Lx("1 contenedor de 20'", "1 × 20' container")} (${chargeable.toFixed(1)} m³) • ${rates.transitDays} ${Lx("días", "days")}`,
       chargeableCbm: chargeable,
     };
   }
@@ -161,7 +184,7 @@ export function calculateFreight(
   return {
     amount: n40 * rates.container40,
     mode: "FCL",
-    detail: `${n40} contenedor${n40 > 1 ? "es" : ""} de 40' (${chargeable.toFixed(1)} m³) • ${rates.transitDays} días`,
+    detail: `${Lx(`${n40} contenedor${n40 > 1 ? "es" : ""} de 40'`, `${n40} × 40' container${n40 > 1 ? "s" : ""}`)} (${chargeable.toFixed(1)} m³) • ${rates.transitDays} ${Lx("días", "days")}`,
     chargeableCbm: chargeable,
   };
 }
@@ -194,50 +217,50 @@ export function calculateCosts(
   const lines: CostLine[] = [
     {
       key: "product",
-      label: "Costo de producto (FOB)",
-      detail: `${quantity.toLocaleString("en-US")} unidades × ${formatUSD(Number(params.price), 2)} (${formatQ(Number(params.price), rates.exchangeRate, 2)} c/u)`,
+      label: Lx("Costo de producto (FOB)", "Product cost (FOB)"),
+      detail: `${quantity.toLocaleString("en-US")} ${unitsWord(quantity)} × ${formatUSD(Number(params.price), 2)} (${formatQ(Number(params.price), rates.exchangeRate, 2)} ${Lx("c/u", "each")})`,
       amount: productCost,
       color: "#0B3C5D",
     },
     {
       key: "freight",
-      label: freight.mode === "FCL" ? "Flete marítimo (contenedor)" : "Flete marítimo",
+      label: freight.mode === "FCL" ? Lx("Flete marítimo (contenedor)", "Ocean freight (container)") : Lx("Flete marítimo", "Ocean freight"),
       detail: freight.detail,
       amount: shipping,
       color: "#3B82F6",
     },
     {
       key: "insurance",
-      label: "Seguro de carga",
-      detail: `${pct(rates.insuranceRate)} del valor FOB • mínimo ${formatQ(rates.insuranceMin, rates.exchangeRate)}`,
+      label: Lx("Seguro de carga", "Cargo insurance"),
+      detail: `${pct(rates.insuranceRate)} ${Lx("del valor FOB • mínimo", "of FOB value • minimum")} ${formatQ(rates.insuranceMin, rates.exchangeRate)}`,
       amount: insurance,
       color: "#BFDBFE",
     },
     {
       key: "duties",
-      label: "DAI (arancel)",
-      detail: `${pct(rates.dutyRate)} sobre valor CIF ${formatQ(cif, rates.exchangeRate)}`,
+      label: Lx("DAI (arancel)", "DAI (import duty)"),
+      detail: `${pct(rates.dutyRate)} ${Lx("sobre valor CIF", "on CIF value")} ${formatQ(cif, rates.exchangeRate)}`,
       amount: importDuties,
       color: "#60A5FA",
     },
     {
       key: "vat",
-      label: "IVA",
-      detail: `${pct(rates.vatRate)} sobre CIF + DAI`,
+      label: Lx("IVA", "IVA (VAT)"),
+      detail: `${pct(rates.vatRate)} ${Lx("sobre CIF + DAI", "on CIF + DAI")}`,
       amount: taxes,
       color: "#93C5FD",
     },
     {
       key: "customs",
-      label: "Honorarios de aduana",
-      detail: "Agente aduanero SEAL",
+      label: Lx("Honorarios de aduana", "Customs brokerage fee"),
+      detail: Lx("Agente aduanero SEAL", "SEAL customs broker"),
       amount: customsFees,
       color: "#8B5CF6",
     },
     {
       key: "local",
-      label: "Gastos en destino",
-      detail: "Manejo y gastos locales, revisión, almacenaje, etc.",
+      label: Lx("Gastos en destino", "Destination charges"),
+      detail: Lx("Manejo y gastos locales, revisión, almacenaje, etc.", "Handling and local charges, inspection, storage, etc."),
       amount: localCharges,
       color: "#A78BFA",
     },
@@ -264,6 +287,9 @@ export function calculateCosts(
     lines,
     noVatNote: "", // no VAT footnote: the tool is only an estimate
     exchangeRate: rates.exchangeRate,
-    fxNote: `Montos en quetzales con tipo de cambio referencial de Q${rates.exchangeRate.toFixed(2)} por US$1. El monto final depende del tipo de cambio del día.`,
+    fxNote: Lx(
+      `Montos en quetzales con tipo de cambio referencial de Q${rates.exchangeRate.toFixed(2)} por US$1. El monto final depende del tipo de cambio del día.`,
+      `Amounts in quetzales at a reference exchange rate of Q${rates.exchangeRate.toFixed(2)} per US$1. The final amount depends on the exchange rate of the day.`,
+    ),
   };
 }
