@@ -533,28 +533,94 @@ export function CostBreakdown() {
                   </span>
                 </li>
               )}
+              {/* Taxes share */}
+              <li className="flex items-start gap-2">
+                <span className="text-green-500 mt-1">•</span>
+                <span>
+                  DAI e IVA suman{" "}
+                  <b>${(costs.importDuties + costs.taxes).toLocaleString()}</b>, el{" "}
+                  <b>
+                    {(((costs.importDuties + costs.taxes) / costs.totalCost) * 100).toFixed(0)}%
+                  </b>{" "}
+                  del costo total.
+                </span>
+              </li>
+              {/* Freight tip — only when it is useful */}
+              {(() => {
+                const cbm = costs.chargeableCbm;
+                if (costs.freightMode === "LCL" && cbm >= rates.lclMaxCbm * 0.75) {
+                  return (
+                    <li className="flex items-start gap-2">
+                      <span className="text-green-500 mt-1">•</span>
+                      <span>
+                        Con {cbm.toFixed(1)} m³ está cerca de llenar un contenedor. A
+                        partir de {rates.lclMaxCbm} m³ le cotizamos contenedor
+                        completo.
+                      </span>
+                    </li>
+                  );
+                }
+                if (costs.freightMode === "FCL") {
+                  const n = Math.ceil(cbm / rates.container40Cbm);
+                  const free = n * rates.container40Cbm - cbm;
+                  if (free >= 10) {
+                    return (
+                      <li className="flex items-start gap-2">
+                        <span className="text-green-500 mt-1">•</span>
+                        <span>
+                          Su carga ocupa {cbm.toFixed(0)} de{" "}
+                          {n * rates.container40Cbm} m³. Puede aprovechar los{" "}
+                          {free.toFixed(0)} m³ que le quedan libres en el
+                          contenedor.
+                        </span>
+                      </li>
+                    );
+                  }
+                }
+                return null;
+              })()}
             </ul>
           </div>
 
           <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
             <h3 className="font-semibold text-blue-900 mb-3 flex items-center gap-2">
               <AlertCircle className="w-5 h-5" />
-              {t("cost.considerationsTitle")}
+              Próximos pasos con SEAL
             </h3>
             <ul className="space-y-2 text-sm text-blue-800">
               <li className="flex items-start gap-2">
                 <span className="text-blue-500 mt-1">•</span>
-                <span>{t("cost.consideration1")}</span>
+                <span>
+                  Tránsito marítimo estimado: <b>{rates.transitDays} días</b>.
+                </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-500 mt-1">•</span>
-                <span>{t("cost.consideration2")}</span>
+                <span>
+                  Este cálculo usa un DAI del {(rates.dutyRate * 100).toFixed(0)}% (el
+                  más alto). Si nos confirma la partida arancelaria, el costo puede
+                  bajar.
+                </span>
               </li>
               <li className="flex items-start gap-2">
                 <span className="text-blue-500 mt-1">•</span>
-                <span>{t("cost.consideration3")}</span>
+                <span>
+                  Un ejecutivo de SEAL le confirma este costo de nacionalización antes
+                  del embarque.
+                </span>
               </li>
             </ul>
+            <a
+              href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                `Hola SEAL, quiero confirmar el costo de importación de ${quantity.toLocaleString()} unidades (total estimado US$${costs.totalCost.toLocaleString()}).`,
+              )}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47] transition-colors"
+            >
+              Hablar con un ejecutivo
+              <ArrowRight className="w-4 h-4" />
+            </a>
           </div>
         </div>
 
