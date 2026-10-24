@@ -12,6 +12,7 @@ import {
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
+import { NoSupplierNotice, hasUsableSupplier } from "./SelectedSupplier";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface Warning {
@@ -264,7 +265,7 @@ function getComplianceChecks(supplier: any): ComplianceCheck[] {
   ];
 }
 
-function calculateRiskScore(
+export function calculateRiskScore(
   supplier: any,
   productType: string,
   destination: string,
@@ -295,9 +296,9 @@ export function RiskCompliance() {
   const destination = location.state?.destination ?? "GT";
   const productType = location.state?.productType ?? "furniture";
   const quantity = location.state?.quantity ?? "1000";
-  const budget = location.state?.budget ?? "50000";
-  const supplierName = supplier?.name ?? "Proveedor Seleccionado";
-  const isLiveData = !!supplier;
+  const budget = location.state?.budget ?? "";
+  const supplierName = supplier?.name ?? "";
+  const isLiveData = hasUsableSupplier(supplier);
 
   // ── Calculate dynamic risk ────────────────────────────────────────────────
   const riskScore = calculateRiskScore(supplier, productType, destination);
@@ -321,6 +322,8 @@ export function RiskCompliance() {
       : riskScore < 70
         ? "text-yellow-100"
         : "text-red-100";
+
+  if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!supplier?.name} />;
 
   // ── Dynamic content ───────────────────────────────────────────────────────
   const documents = getDocuments(destination);

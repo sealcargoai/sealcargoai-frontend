@@ -549,6 +549,13 @@ export function SupplierResults() {
         volumeCbm: location.state?.volumeCbm,
         weightKg: location.state?.weightKg,
         productDescription: location.state?.productDescription,
+        // Real counts from this search (shown in the final report)
+        suppliersData: {
+          totalAnalyzed: apiData?.totalAnalyzed,
+          qualifiedCount: apiData?.qualifiedCount,
+          filteredCount: apiData?.filteredCount ?? apiData?.filteredOut?.length,
+          shownCount: displaySuppliers.length,
+        },
       },
     });
   };

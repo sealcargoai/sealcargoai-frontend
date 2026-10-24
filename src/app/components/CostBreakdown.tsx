@@ -357,6 +357,7 @@ export function CostBreakdown() {
                     volumeCbm: location.state?.volumeCbm,
                     weightKg: location.state?.weightKg,
                     productDescription: location.state?.productDescription,
+                    suppliersData: location.state?.suppliersData,
                   },
                 })
               }

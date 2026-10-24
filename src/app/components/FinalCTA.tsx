@@ -19,6 +19,7 @@ import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { NoSupplierNotice, hasUsableSupplier } from "./SelectedSupplier";
+import { calculateRiskScore } from "./RiskCompliance";
 import {
   SEAL_COMPANY,
   drawCompanyInfoBox,
@@ -80,7 +81,7 @@ function generateReportPDF(data: {
   doc.text("RESUMEN EJECUTIVO", 18, yAfterCompany + 16);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
-  doc.text(`Mejor Proveedor:  ${data.supplierName}`, 18, yAfterCompany + 24);
+  doc.text(`Proveedor considerado:  ${data.supplierName}`, 18, yAfterCompany + 24);
   doc.text(
     `Producto: ${data.productType}  |  Destino: Guatemala`,
     18,
@@ -223,10 +224,17 @@ export function FinalCTA() {
   // ── Read state ────────────────────────────────────────────────────────────
   const stateSupplier = location.state?.supplier ?? null;
   const stateQuantity = location.state?.quantity ?? "1000";
-  const stateBudget = location.state?.budget ?? "50000";
+  const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
   const stateProductType = location.state?.productType ?? "furniture";
-  const stateRiskScore = location.state?.riskScore ?? 32;
+  // Same score the risk screen computes from the real supplier data
+  const stateRiskScore: number =
+    location.state?.riskScore ??
+    calculateRiskScore(
+      location.state?.supplier,
+      String(location.state?.productType ?? ""),
+      String(location.state?.destination ?? "GT"),
+    );
   const stateSuppliersData = location.state?.suppliersData ?? null;
 
   const quantity = parseInt(String(stateQuantity)) || 1000;
@@ -246,12 +254,17 @@ export function FinalCTA() {
   const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})`;
 
   // ── Dynamic stats ─────────────────────────────────────────────────────────
-  const leadStats = {
-    totalAnalyzed: stateSuppliersData?.totalCount ?? 15,
-    filtered: stateSuppliersData?.filteredOutCount ?? 5,
-    qualified: stateSuppliersData?.qualifiedCount ?? 9,
-    topPicks: 3,
-  };
+  // Real counts from the supplier search; null = not available (block is hidden)
+  const num = (v: unknown) => (typeof v === "number" && v >= 0 ? v : null);
+  const leadStats =
+    num(stateSuppliersData?.totalAnalyzed) !== null && num(stateSuppliersData?.qualifiedCount) !== null
+      ? {
+          totalAnalyzed: stateSuppliersData.totalAnalyzed as number,
+          filtered: num(stateSuppliersData?.filteredCount),
+          qualified: stateSuppliersData.qualifiedCount as number,
+          shown: num(stateSuppliersData?.shownCount),
+        }
+      : null;
 
   // ── Risk display ──────────────────────────────────────────────────────────
   const riskLevel =
@@ -288,15 +301,16 @@ export function FinalCTA() {
   const reportId = `SEAL-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
 
   const reportSections = [
-    { name: t("final.section1"), pages: 2 },
+    { name: t("final.section1") },
     {
-      name: `${t("final.section2Prefix")} (${leadStats.qualified} ${t("final.section2Suffix")})`,
-      pages: 8,
+      name: leadStats
+        ? `${t("final.section2Prefix")} (${leadStats.qualified} ${t("final.section2Suffix")})`
+        : t("final.section2Prefix"),
     },
-    { name: t("final.section3"), pages: 4 },
-    { name: t("final.section4"), pages: 6 },
-    { name: t("final.section5"), pages: 3 },
-    { name: t("final.section6"), pages: 2 },
+    { name: t("final.section3") },
+    { name: t("final.section4") },
+    { name: t("final.section5") },
+    { name: t("final.section6") },
   ];
 
   // ── Action: Download Full Report ──────────────────────────────────────────
@@ -486,25 +500,24 @@ export function FinalCTA() {
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
             <CheckCircle className="w-12 h-12 text-green-600" />
           </div>
-          <p className="text-xs mt-2">
-            {t("final.analyzed")} {leadStats.totalAnalyzed}{" "}
-            {t("final.suppliers")} {leadStats.qualified}{" "}
-            {t("final.qualifiedLeads")}
-          </p>
+          {leadStats && (
+            <p className="text-xs mt-2">
+              {t("final.analyzed")} {leadStats.totalAnalyzed}{" "}
+              {t("final.suppliers")} {leadStats.qualified}{" "}
+              {t("final.qualifiedLeads")}
+            </p>
+          )}
           <p className="text-xs mt-2">
             {isLiveData ? (
               <span className="text-green-600 font-medium">
                 ✅ {t("final.basedOnReal")} {supplierName}
               </span>
-            ) : (
-              <span className="text-yellow-600 font-medium">
-                ⚠️ {t("final.demoData")}
-              </span>
-            )}
+            ) : null}
           </p>
         </div>
 
-        {/* Dynamic Stats */}
+        {/* Dynamic Stats — only real counts from the search */}
+        {leadStats && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
             <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
@@ -518,7 +531,7 @@ export function FinalCTA() {
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
             <Target className="w-8 h-8 text-red-600 mx-auto mb-2" />
             <div className="text-3xl font-bold text-red-600 mb-1">
-              {leadStats.filtered}
+              {leadStats.filtered ?? "N/D"}
             </div>
             <div className="text-sm text-slate-600">
               {t("final.filteredOut")}
@@ -534,11 +547,12 @@ export function FinalCTA() {
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
             <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
             <div className="text-3xl font-bold text-purple-600 mb-1">
-              {leadStats.topPicks}
+              {leadStats.shown ?? "N/D"}
             </div>
             <div className="text-sm text-slate-600">{t("final.topPicks")}</div>
           </div>
         </div>
+        )}
 
         {/* Report Preview */}
         <div className="bg-white rounded-2xl shadow-xl border border-slate-200 p-8 mb-8">
@@ -619,9 +633,6 @@ export function FinalCTA() {
                       {section.name}
                     </span>
                   </div>
-                  <span className="text-sm text-slate-600">
-                    {section.pages} {t("final.pages")}
-                  </span>
                 </div>
               ))}
             </div>
