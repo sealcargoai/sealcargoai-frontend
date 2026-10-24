@@ -7,11 +7,13 @@ import { CostBreakdown } from "./components/CostBreakdown";
 import { RiskCompliance } from "./components/RiskCompliance";
 import { FinalCTA } from "./components/FinalCTA";
 import { MainLayout } from "./components/MainLayout";
+import { AppError } from "./components/AppError";
 
 export const router = createBrowserRouter([
   {
     path: "/",
     Component: MainLayout,
+    errorElement: <AppError />,
     children: [
       { index: true, Component: LandingPage },
       { path: "chat", Component: ChatInterface },
