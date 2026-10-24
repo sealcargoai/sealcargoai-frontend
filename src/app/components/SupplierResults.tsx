@@ -47,19 +47,11 @@ const PLATFORMS = [
         .split(/\s+/)
         .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
         .join("_")}.html`,
-    needsCopy: false,
   },
   {
     name: "Global Sources",
     url: (kw: string) =>
       `https://www.globalsources.com/searchList/products?keyWord=${encodeURIComponent(kw.trim())}`,
-    needsCopy: false,
-  },
-  {
-    name: "Feria de Cantón",
-    // Canton Fair 365 doesn't accept the keyword in the link: the user pastes it
-    url: () => "https://365.cantonfair.org.cn/en-US/search",
-    needsCopy: true,
   },
 ];
 
@@ -77,7 +69,6 @@ function MorePlatforms({
   destination: string;
 }) {
   const stored = getStoredUser();
-  const [copied, setCopied] = useState(false);
   const [open, setOpen] = useState(false);
   const [supplierName, setSupplierName] = useState("");
   const [supplierUrl, setSupplierUrl] = useState("");
@@ -90,16 +81,6 @@ function MorePlatforms({
 
   const kw = (keyword || productDescription || "").trim();
   if (!kw) return null;
-
-  const copyKeyword = async () => {
-    try {
-      await navigator.clipboard.writeText(kw);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
-    } catch {
-      /* clipboard not available */
-    }
-  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,7 +136,6 @@ function MorePlatforms({
             href={p.url(kw)}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={() => p.needsCopy && copyKeyword()}
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-slate-200 hover:border-blue-400 hover:bg-blue-50 text-sm font-medium text-slate-700 transition-colors"
           >
             <ExternalLink className="w-4 h-4" />
@@ -163,13 +143,6 @@ function MorePlatforms({
           </a>
         ))}
       </div>
-      <p className="text-xs text-slate-500 mt-2">
-        En la Feria de Cantón pegue la búsqueda en el buscador
-        {copied ? " (ya la copiamos ✅)" : ""}.{" "}
-        <button type="button" onClick={copyKeyword} className="text-xs font-medium text-blue-600 hover:underline">
-          Copiar "{kw}"
-        </button>
-      </p>
 
       <div className="mt-5 pt-5 border-t border-slate-200">
         {sent ? (
