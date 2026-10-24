@@ -199,12 +199,13 @@ export function CostBreakdown() {
   // ── Read state ────────────────────────────────────────────────────────────
   const stateSupplier = location.state?.supplier ?? null;
   const stateQuantity = location.state?.quantity ?? "1000";
-  const stateBudget = location.state?.budget ?? "50000";
+  const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "US";
   const stateProductType = location.state?.productType ?? "furniture";
 
   const quantity = parseInt(String(stateQuantity)) || 1000;
-  const budget = parseFloat(String(stateBudget)) || 50000;
+  // 0 = the client didn't give a budget (never invent one)
+  const budget = parseFloat(String(stateBudget)) || 0;
   const destination = String(stateDestination);
   const productType = String(stateProductType);
 
@@ -490,27 +491,48 @@ export function CostBreakdown() {
           <div className="bg-green-50 border border-green-200 rounded-xl p-6">
             <h3 className="font-semibold text-green-900 mb-3 flex items-center gap-2">
               <TrendingUp className="w-5 h-5" />
-              {t("cost.savingsTitle")}
+              Resumen de su importación
             </h3>
             <ul className="space-y-2 text-sm text-green-800">
-              <li className="flex items-start gap-2">
-                <span className="text-green-500 mt-1">•</span>
-                <span>{t("cost.saving1")}</span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-green-500 mt-1">•</span>
-                <span>
-                  {t("cost.unitPrice")} ${costs.perUnit} {t("cost.is")}{" "}
-                  {costs.perUnit < budget / quantity
-                    ? t("cost.lower")
-                    : t("cost.higher")}{" "}
-                  {t("cost.than")} ${(budget / quantity).toFixed(2)}
-                </span>
-              </li>
-              <li className="flex items-start gap-2">
-                <span className="text-green-500 mt-1">•</span>
-                <span>{t("cost.saving3")}</span>
-              </li>
+              {budget > 0 ? (
+                (() => {
+                  const budgetPerUnit = budget / quantity;
+                  const diff = Math.abs(budgetPerUnit - costs.perUnit);
+                  const fits = costs.perUnit <= budgetPerUnit;
+                  return (
+                    <li className="flex items-start gap-2">
+                      <span className="text-green-500 mt-1">•</span>
+                      <span>
+                        Cada unidad le sale en{" "}
+                        <b>${costs.perUnit.toFixed(2)}</b> puesta en Guatemala,
+                        con todo incluido. Su presupuesto es de{" "}
+                        <b>${budgetPerUnit.toFixed(2)}</b> por unidad
+                        {fits ? (
+                          <>
+                            : <b>le alcanza</b> y le sobran ${diff.toFixed(2)} por
+                            unidad (${Math.round(diff * quantity).toLocaleString()} en
+                            total).
+                          </>
+                        ) : (
+                          <>
+                            : <b>no le alcanza</b>, le faltan ${diff.toFixed(2)} por
+                            unidad (${Math.round(diff * quantity).toLocaleString()} en
+                            total).
+                          </>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })()
+              ) : (
+                <li className="flex items-start gap-2">
+                  <span className="text-green-500 mt-1">•</span>
+                  <span>
+                    Cada unidad le sale en <b>${costs.perUnit.toFixed(2)}</b>{" "}
+                    puesta en Guatemala, con todo incluido.
+                  </span>
+                </li>
+              )}
             </ul>
           </div>
 

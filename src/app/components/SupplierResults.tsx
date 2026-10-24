@@ -296,7 +296,7 @@ export function SupplierResults() {
 
   // ── Navigation state for cost breakdown ───────────────────────────────────
   const navQuantity = location.state?.quantity ?? "1000";
-  const navBudget = location.state?.budget ?? "50000";
+  const navBudget = location.state?.budget ?? "";
   const navDestination = location.state?.destination ?? "US";
   const navProductType = location.state?.productType ?? "furniture";
 

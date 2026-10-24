@@ -292,7 +292,8 @@ export function ProductQualification() {
                 <div>
                   <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
                     <DollarSign className="w-4 h-4" />
-                    {t("qualification.budget")}
+                    {t("qualification.budget")}{" "}
+                    <span className="text-slate-400 font-normal">(opcional)</span>
                   </label>
                   <input
                     type="number"
@@ -300,7 +301,6 @@ export function ProductQualification() {
                     onChange={(e) =>
                       setFormData({ ...formData, budget: e.target.value })
                     }
-                    required
                     placeholder="50000"
                     min="1"
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -398,7 +398,7 @@ export function ProductQualification() {
                       <span className="font-medium">
                         {t("qualification.budget")}:
                       </span>{" "}
-                      ${formData.budget}
+                      {formData.budget ? `$${formData.budget}` : "No indicado"}
                     </p>
                     <p>
                       <span className="font-medium">Volumen / peso:</span>{" "}
@@ -434,7 +434,10 @@ export function ProductQualification() {
                 <button
                   type="button"
                   onClick={() => setStep(step + 1)}
-                  disabled={step === 1 && formData.productType.trim().length < 3}
+                  disabled={
+                    (step === 1 && formData.productType.trim().length < 3) ||
+                    (step === 2 && !(parseInt(formData.quantity) > 0))
+                  }
                   className="flex-1 px-6 py-3 rounded-lg bg-[#0B3C5D] text-white hover:bg-[#0a2f47] transition-colors flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {t("qualification.next")}
