@@ -64,7 +64,7 @@ export function ProductQualification() {
     material: "",
     quantity: "",
     budget: "",
-    destination: "",
+    destination: "GT", // SEAL SmartTrade AI calculates imports into Guatemala only
     volumeCbm: "", // optional — used to quote ocean freight
     weightKg: "",  // optional
   });
@@ -365,14 +365,7 @@ export function ProductQualification() {
                     required
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
-                    <option value="">
-                      {t("qualification.selectDestination")}
-                    </option>
-                    <option value="US">Estados Unidos</option>
                     <option value="GT">Guatemala</option>
-                    <option value="MX">México</option>
-                    <option value="CA">Canadá</option>
-                    <option value="other">Otro</option>
                   </select>
                 </div>
 

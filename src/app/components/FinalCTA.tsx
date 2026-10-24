@@ -27,6 +27,8 @@ import {
 import {
   calculateCosts,
   useRates,
+  formatQ,
+  formatUSD,
   type CostResult,
 } from "../../utils/costCalculator";
 
@@ -79,12 +81,12 @@ function generateReportPDF(data: {
   doc.setFont("helvetica", "normal");
   doc.text(`Mejor Proveedor:  ${data.supplierName}`, 18, yAfterCompany + 24);
   doc.text(
-    `Producto: ${data.productType}  |  Destino: ${data.destination}`,
+    `Producto: ${data.productType}  |  Destino: Guatemala`,
     18,
     yAfterCompany + 30,
   );
   doc.text(
-    `Cantidad: ${data.quantity.toLocaleString()} uds  |  Precio: $${Number(data.price).toFixed(2)}/u`,
+    `Cantidad: ${data.quantity.toLocaleString()} uds  |  Precio: ${formatUSD(Number(data.price), 2)}/u (${formatQ(Number(data.price), data.costs.exchangeRate, 2)})`,
     18,
     yAfterCompany + 36,
   );
@@ -96,17 +98,20 @@ function generateReportPDF(data: {
 
   autoTable(doc, {
     startY: yAfterCompany + 54,
-    head: [["Concepto", "Detalle", "Monto (USD)"]],
-    body: data.costs.lines.map((l) => [
-      l.label,
-      l.detail,
-      `$${l.amount.toLocaleString()}`,
-    ]),
+    head: [["Concepto", "Detalle", "Monto (Q)"]],
+    body: data.costs.lines.map((l) => {
+      const pending = l.key === "freight" && data.costs.freightPending;
+      return [
+        l.label,
+        pending ? "Por cotizar" : l.detail,
+        pending ? "Por cotizar" : formatQ(l.amount, data.costs.exchangeRate),
+      ];
+    }),
     foot: [
       [
-        "COSTO TOTAL LANDED",
+        "COSTO TOTAL EN GUATEMALA",
         `${data.quantity.toLocaleString()} unidades`,
-        `$${data.costs.totalCost.toLocaleString()}`,
+        formatQ(data.costs.totalCost, data.costs.exchangeRate),
       ],
     ],
     headStyles: { fillColor: [11, 60, 93], textColor: 255 },
@@ -155,7 +160,7 @@ function generateReportPDF(data: {
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.text(
-    `Costo por Unidad: $${data.costs.perUnit}  |  Total: $${data.costs.totalCost.toLocaleString()}`,
+    `Costo por Unidad: ${formatQ(data.costs.perUnit, data.costs.exchangeRate, 2)}  |  Total: ${formatQ(data.costs.totalCost, data.costs.exchangeRate)} (${formatUSD(data.costs.totalCost)})`,
     pageWidth / 2,
     finalY2 + 11,
     { align: "center" },
@@ -166,11 +171,12 @@ function generateReportPDF(data: {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.text(data.costs.noVatNote, 14, finalY2 + 26);
+  doc.text(data.costs.fxNote, 14, finalY2 + 31);
   if (data.costs.freightPending) {
     doc.text(
       "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
       14,
-      finalY2 + 31,
+      finalY2 + 36,
     );
   }
 
@@ -218,7 +224,7 @@ export function FinalCTA() {
   const stateSupplier = location.state?.supplier ?? null;
   const stateQuantity = location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "50000";
-  const stateDestination = location.state?.destination ?? "US";
+  const stateDestination = location.state?.destination ?? "GT";
   const stateProductType = location.state?.productType ?? "furniture";
   const stateRiskScore = location.state?.riskScore ?? 32;
   const stateSuppliersData = location.state?.suppliersData ?? null;
@@ -235,6 +241,8 @@ export function FinalCTA() {
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg }, rates);
+  const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
+  const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})`;
 
   // ── Dynamic stats ─────────────────────────────────────────────────────────
   const leadStats = {
@@ -338,6 +346,7 @@ export function FinalCTA() {
             message: quoteMessage,
             supplierName,
             totalCost: costs.totalCost,
+            totalCostText,
             productType,
             quantity,
             destination,
@@ -405,6 +414,7 @@ export function FinalCTA() {
             pdfBase64,
             supplierName,
             totalCost: costs.totalCost,
+            totalCostText,
           }),
         },
       );
@@ -569,10 +579,10 @@ export function FinalCTA() {
                 {t("final.totalCost")}
               </div>
               <div className="font-bold text-xl text-[#0B3C5D] mb-1">
-                ${costs.totalCost.toLocaleString()}
+                {Q(costs.totalCost)}
               </div>
               <div className="text-sm text-green-700">
-                ${costs.perUnit} {t("final.perUnit")}
+                {Q(costs.perUnit, 2)} {t("final.perUnit")}
               </div>
             </div>
 
@@ -770,8 +780,8 @@ export function FinalCTA() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-5 text-sm">
               <p className="font-semibold text-[#0B3C5D]">{supplierName}</p>
               <p className="text-slate-600 mt-1">
-                {quantity.toLocaleString()} {t("final.quoteUnits")} $
-                {costs.totalCost.toLocaleString()}
+                {quantity.toLocaleString()} {t("final.quoteUnits")}{" "}
+                {Q(costs.totalCost)}
               </p>
             </div>
 

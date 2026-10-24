@@ -292,7 +292,7 @@ export function RiskCompliance() {
 
   // ── Read navigation state ─────────────────────────────────────────────────
   const supplier = location.state?.supplier ?? null;
-  const destination = location.state?.destination ?? "US";
+  const destination = location.state?.destination ?? "GT";
   const productType = location.state?.productType ?? "furniture";
   const quantity = location.state?.quantity ?? "1000";
   const budget = location.state?.budget ?? "50000";

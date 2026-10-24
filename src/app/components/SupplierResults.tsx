@@ -488,7 +488,7 @@ export function SupplierResults() {
   // ── Navigation state for cost breakdown ───────────────────────────────────
   const navQuantity = location.state?.quantity ?? "1000";
   const navBudget = location.state?.budget ?? "";
-  const navDestination = location.state?.destination ?? "US";
+  const navDestination = location.state?.destination ?? "GT";
   const navProductType = location.state?.productType ?? "furniture";
 
   const rates = useRates();

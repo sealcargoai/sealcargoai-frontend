@@ -29,6 +29,8 @@ import {
 import {
   calculateCosts,
   useRates,
+  formatQ,
+  formatUSD,
   type CostResult,
 } from "../../utils/costCalculator";
 
@@ -78,7 +80,7 @@ function exportToPDF(
   doc.setFontSize(9);
   doc.text(`Proveedor: ${supplierName}`, 18, yAfterCompany + 24);
   doc.text(
-    `Producto: ${productType}  |  Destino: ${destination}`,
+    `Producto: ${productType}  |  Destino: Guatemala`,
     18,
     yAfterCompany + 30,
   );
@@ -88,7 +90,7 @@ function exportToPDF(
     yAfterCompany + 24,
   );
   doc.text(
-    `Precio unitario: $${Number(price).toFixed(2)}`,
+    `Precio unitario: ${formatUSD(Number(price), 2)} (${formatQ(Number(price), costs.exchangeRate, 2)})`,
     100,
     yAfterCompany + 30,
   );
@@ -102,18 +104,18 @@ function exportToPDF(
   // Cost table
   autoTable(doc, {
     startY: yAfterCompany + 53,
-    head: [["Concepto", "Detalle", "Monto (USD)", "% del Total"]],
+    head: [["Concepto", "Detalle", "Monto (Q)", "% del Total"]],
     body: costs.lines.map((l) => [
       l.label,
-      l.detail,
-      `$${l.amount.toLocaleString()}`,
+      l.key === "freight" && costs.freightPending ? "Por cotizar" : l.detail,
+      l.key === "freight" && costs.freightPending ? "Por cotizar" : formatQ(l.amount, costs.exchangeRate),
       `${((l.amount / costs.totalCost) * 100).toFixed(1)}%`,
     ]),
     foot: [
       [
-        "COSTO TOTAL LANDED",
+        "COSTO TOTAL EN GUATEMALA",
         `${quantity.toLocaleString()} unidades`,
-        `$${costs.totalCost.toLocaleString()}`,
+        formatQ(costs.totalCost, costs.exchangeRate),
         "100%",
       ],
     ],
@@ -136,7 +138,7 @@ function exportToPDF(
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.text(
-    `Costo por Unidad: $${costs.perUnit}  |  Total: $${costs.totalCost.toLocaleString()}`,
+    `Costo por Unidad: ${formatQ(costs.perUnit, costs.exchangeRate, 2)}  |  Total: ${formatQ(costs.totalCost, costs.exchangeRate)} (${formatUSD(costs.totalCost)})`,
     pageWidth / 2,
     finalY + 11,
     { align: "center" },
@@ -147,11 +149,12 @@ function exportToPDF(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.text(costs.noVatNote, 14, finalY + 26);
+  doc.text(costs.fxNote, 14, finalY + 31);
   if (costs.freightPending) {
     doc.text(
       "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
       14,
-      finalY + 31,
+      finalY + 36,
     );
   }
 
@@ -195,7 +198,7 @@ export function CostBreakdown() {
   const stateSupplier = location.state?.supplier ?? null;
   const stateQuantity = location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "";
-  const stateDestination = location.state?.destination ?? "US";
+  const stateDestination = location.state?.destination ?? "GT";
   const stateProductType = location.state?.productType ?? "furniture";
 
   const quantity = parseInt(String(stateQuantity)) || 1000;
@@ -212,6 +215,7 @@ export function CostBreakdown() {
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg }, rates);
+  const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
 
   // ── Chart data ────────────────────────────────────────────────────────────
   const costData = costs.lines
@@ -366,8 +370,8 @@ export function CostBreakdown() {
             {isLiveData ? (
               <span className="text-green-600">
                 ✅ {t("cost.dynamicCalc")} — {quantity.toLocaleString()}{" "}
-                {t("cost.units")} × ${Number(price).toFixed(2)} →{" "}
-                {t("cost.destination")} {destination}
+                {t("cost.units")} × {formatUSD(Number(price), 2)} ({Q(Number(price), 2)}) →{" "}
+                {t("cost.destination")} Guatemala
               </span>
             ) : (
               <span className="text-yellow-600">⚠️ {t("cost.demoCalc")}</span>
@@ -384,13 +388,17 @@ export function CostBreakdown() {
                 {t("cost.totalLandedCost")}
               </div>
               <div className="text-3xl sm:text-5xl md:text-6xl font-bold drop-shadow-lg mb-2 sm:mb-3 break-all">
-                ${costs.totalCost.toLocaleString()}
+                {Q(costs.totalCost)}
               </div>
               <div className="text-blue-100 text-xs sm:text-base md:text-lg">
                 {quantity.toLocaleString()} {t("cost.units")} •{" "}
                 <span className="font-bold text-white">
-                  ${costs.perUnit} {t("cost.perUnitLabel")}
+                  {Q(costs.perUnit, 2)} {t("cost.perUnitLabel")}
                 </span>
+              </div>
+              <div className="text-blue-200 text-xs sm:text-sm mt-1">
+                Equivale a {formatUSD(costs.totalCost)} • tipo de cambio referencial Q
+                {costs.exchangeRate.toFixed(2)} por US$1
               </div>
             </div>
             <div className="w-16 h-16 sm:w-24 sm:h-24 md:w-36 md:h-36 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-2xl flex-shrink-0">
@@ -400,8 +408,8 @@ export function CostBreakdown() {
         </div>
 
         {/* Charts */}
-        <div className="grid lg:grid-cols-2 gap-8 mb-8">
-          <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-8 mb-8">
+          <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-4 sm:p-6 min-w-0">
             <h2 className="font-semibold text-[#0B3C5D] mb-6">
               {t("cost.costDistribution")}
             </h2>
@@ -424,7 +432,7 @@ export function CostBreakdown() {
                   </Pie>
                   <Tooltip
                     formatter={(value: number, name: string) => [
-                      `$${Math.round(value).toLocaleString()}`,
+                      Q(value),
                       name,
                     ]}
                   />
@@ -433,7 +441,7 @@ export function CostBreakdown() {
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                 <span className="text-xs text-slate-500">Total</span>
                 <span className="text-lg font-bold text-[#0B3C5D]">
-                  ${costs.totalCost.toLocaleString()}
+                  {Q(costs.totalCost)}
                 </span>
               </div>
             </div>
@@ -450,8 +458,8 @@ export function CostBreakdown() {
                     <span className="text-slate-500 tabular-nums w-12 text-right">
                       {pct < 1 ? "<1" : Math.round(pct)}%
                     </span>
-                    <span className="font-medium text-slate-800 tabular-nums w-20 text-right">
-                      ${Math.round(d.value).toLocaleString()}
+                    <span className="font-medium text-slate-800 tabular-nums w-24 text-right">
+                      {Q(d.value)}
                     </span>
                   </li>
                 );
@@ -464,12 +472,12 @@ export function CostBreakdown() {
             )}
           </div>
 
-          <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6">
+          <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-4 sm:p-6 min-w-0">
             <h2 className="font-semibold text-[#0B3C5D] mb-1">
               ¿En qué se va su dinero?
             </h2>
             <p className="text-sm text-slate-500 mb-5">
-              De cada US$100 que invierte en esta importación
+              Porcentaje del costo total
             </p>
             <div className="space-y-5">
               {moneyGroups.map((g) => {
@@ -487,10 +495,10 @@ export function CostBreakdown() {
                       </div>
                       <div className="text-right shrink-0">
                         <p className="text-sm font-semibold text-slate-800">
-                          US${share}
+                          {share}%
                         </p>
                         <p className="text-xs text-slate-500">
-                          ${g.amount.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                          {Q(g.amount)}
                         </p>
                       </div>
                     </div>
@@ -510,7 +518,7 @@ export function CostBreakdown() {
                 {costs.freightPending ? " (sin flete)" : ""}
               </p>
               <p className="text-base font-bold text-[#0B3C5D]">
-                +${Math.max(costs.perUnit - price, 0).toFixed(2)}
+                +{Q(Math.max(costs.perUnit - price, 0), 2)}
               </p>
             </div>
           </div>
@@ -542,7 +550,7 @@ export function CostBreakdown() {
               </div>
               <div className="text-right sm:text-right ml-13 sm:ml-0 flex-shrink-0">
                 <div className="text-xl sm:text-2xl font-bold text-[#0B3C5D]">
-                  {item.pending ? "Por cotizar" : `$${item.amount.toLocaleString()}`}
+                  {item.pending ? "Por cotizar" : Q(item.amount)}
                 </div>
                 <div className="text-xs sm:text-sm text-slate-600">
                   {item.displayPercent}
@@ -551,6 +559,7 @@ export function CostBreakdown() {
             </div>
           ))}
           <p className="text-xs text-slate-500 px-1">{costs.noVatNote}</p>
+          <p className="text-xs text-slate-500 px-1">{costs.fxNote}</p>
           {costs.freightPending && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
               ⚠️ El total no incluye flete porque no indicó volumen ni peso. Un
@@ -578,19 +587,19 @@ export function CostBreakdown() {
                       <span className="text-green-500 mt-1">•</span>
                       <span>
                         Cada unidad le sale en{" "}
-                        <b>${costs.perUnit.toFixed(2)}</b> puesta en Guatemala,
+                        <b>{Q(costs.perUnit, 2)}</b> puesta en Guatemala,
                         con todo incluido. Su presupuesto es de{" "}
-                        <b>${budgetPerUnit.toFixed(2)}</b> por unidad
+                        <b>{Q(budgetPerUnit, 2)}</b> por unidad
                         {fits ? (
                           <>
-                            : <b>le alcanza</b> y le sobran ${diff.toFixed(2)} por
-                            unidad (${Math.round(diff * quantity).toLocaleString()} en
+                            : <b>le alcanza</b> y le sobran {Q(diff, 2)} por
+                            unidad ({Q(diff * quantity)} en
                             total).
                           </>
                         ) : (
                           <>
-                            : <b>no le alcanza</b>, le faltan ${diff.toFixed(2)} por
-                            unidad (${Math.round(diff * quantity).toLocaleString()} en
+                            : <b>no le alcanza</b>, le faltan {Q(diff, 2)} por
+                            unidad ({Q(diff * quantity)} en
                             total).
                           </>
                         )}
@@ -602,7 +611,7 @@ export function CostBreakdown() {
                 <li className="flex items-start gap-2">
                   <span className="text-green-500 mt-1">•</span>
                   <span>
-                    Cada unidad le sale en <b>${costs.perUnit.toFixed(2)}</b>{" "}
+                    Cada unidad le sale en <b>{Q(costs.perUnit, 2)}</b>{" "}
                     puesta en Guatemala, con todo incluido.
                   </span>
                 </li>
@@ -612,7 +621,7 @@ export function CostBreakdown() {
                 <span className="text-green-500 mt-1">•</span>
                 <span>
                   DAI e IVA suman{" "}
-                  <b>${(costs.importDuties + costs.taxes).toLocaleString()}</b>, el{" "}
+                  <b>{Q(costs.importDuties + costs.taxes)}</b>, el{" "}
                   <b>
                     {(((costs.importDuties + costs.taxes) / costs.totalCost) * 100).toFixed(0)}%
                   </b>{" "}
@@ -686,7 +695,7 @@ export function CostBreakdown() {
             </ul>
             <a
               href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
-                `Hola SEAL, quiero confirmar el costo de importación de ${quantity.toLocaleString()} unidades (total estimado US$${costs.totalCost.toLocaleString()}).`,
+                `Hola SEAL, quiero confirmar el costo de importación de ${quantity.toLocaleString()} unidades (total estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}).`,
               )}`}
               target="_blank"
               rel="noopener noreferrer"
