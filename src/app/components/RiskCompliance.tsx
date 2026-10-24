@@ -338,6 +338,9 @@ export function RiskCompliance() {
         budget,
         riskScore,
         suppliersData: location.state?.suppliersData,
+        volumeCbm: location.state?.volumeCbm,
+        weightKg: location.state?.weightKg,
+        productDescription: location.state?.productDescription,
       },
     });
   };

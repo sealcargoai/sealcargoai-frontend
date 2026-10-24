@@ -23,6 +23,7 @@ import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
+import { calculateCosts, useRates } from "../../utils/costCalculator";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
@@ -299,6 +300,8 @@ export function SupplierResults() {
   const navDestination = location.state?.destination ?? "US";
   const navProductType = location.state?.productType ?? "furniture";
 
+  const rates = useRates();
+
   // ── State ─────────────────────────────────────────────────────────────────
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier>(
     displaySuppliers[0] as Supplier,
@@ -351,6 +354,9 @@ export function SupplierResults() {
         budget: navBudget,
         destination: navDestination,
         productType: navProductType,
+        volumeCbm: location.state?.volumeCbm,
+        weightKg: location.state?.weightKg,
+        productDescription: location.state?.productDescription,
       },
     });
   };
@@ -872,39 +878,47 @@ export function SupplierResults() {
                   {t("suppliers.selectedSupplier")}
                 </h3>
                 <div className="text-sm text-slate-600 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span>{t("suppliers.baseCost")}</span>
-                    <span className="font-medium">
-                      $
-                      {(
-                        selectedSupplier.price * parseInt(navQuantity || "1000")
-                      ).toLocaleString()}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>{t("suppliers.estShipping")}</span>
-                    <span className="font-medium">~$4,000</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span>{t("suppliers.estDuties")}</span>
-                    <span className="font-medium">~6%</span>
-                  </div>
-                  <div className="flex items-center justify-between pt-2 border-t border-slate-200 font-semibold text-[#0B3C5D]">
-                    <span>{t("suppliers.totalEstimate")}</span>
-                    <span>
-                      $
-                      {(
-                        selectedSupplier.price *
-                          parseInt(navQuantity || "1000") +
-                        4000 +
-                        Math.round(
-                          selectedSupplier.price *
-                            parseInt(navQuantity || "1000") *
-                            0.06,
-                        )
-                      ).toLocaleString()}
-                    </span>
-                  </div>
+                  {(() => {
+                    const est = calculateCosts(
+                      {
+                        price: selectedSupplier.price || 0,
+                        quantity: parseInt(navQuantity || "1000") || 1000,
+                        volumeCbm: parseFloat(location.state?.volumeCbm) || 0,
+                        weightKg: parseFloat(location.state?.weightKg) || 0,
+                      },
+                      rates,
+                    );
+                    return (
+                      <>
+                        <div className="flex items-center justify-between">
+                          <span>{t("suppliers.baseCost")}</span>
+                          <span className="font-medium">${est.productCost.toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>{t("suppliers.estShipping")}</span>
+                          <span className="font-medium">
+                            {est.freightPending ? "Por cotizar" : `$${est.shipping.toLocaleString()}`}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Impuestos (DAI + IVA)</span>
+                          <span className="font-medium">
+                            ${(est.importDuties + est.taxes).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span>Seguro, aduana y destino</span>
+                          <span className="font-medium">
+                            ${(est.insurance + est.customsFees + est.localCharges).toLocaleString()}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between pt-2 border-t border-slate-200 font-semibold text-[#0B3C5D]">
+                          <span>{t("suppliers.totalEstimate")}</span>
+                          <span>${est.totalCost.toLocaleString()}</span>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               </div>
 

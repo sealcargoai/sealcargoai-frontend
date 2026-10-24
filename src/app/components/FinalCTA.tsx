@@ -24,49 +24,14 @@ import {
   drawCompanyFooter,
   generateBeautifulExcel,
 } from "../../utils/reportExports";
+import {
+  calculateCosts,
+  useRates,
+  type CostResult,
+} from "../../utils/costCalculator";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const DUTY_RATES: Record<string, number> = {
-  furniture: 0.15,
-  electronics: 0.15,
-  textiles: 0.15,
-  machinery: 0.15,
-  other: 0.15,
-};
-const SHIPPING_COSTS: Record<string, number> = {
-  US: 4200,
-  GT: 3800,
-  MX: 3500,
-  CA: 4800,
-  other: 5000,
-};
-const VAT_RATE = 0.12;
-const INSURANCE_RATE = 0.01;
-
-function calculateCosts(
-  price: number,
-  quantity: number,
-  destination: string,
-  productType: string,
-) {
-  const productCost = Math.round(price * quantity);
-  const shipping = SHIPPING_COSTS[destination] || 4200;
-  const dutyRate = DUTY_RATES[productType] || 0.15;
-  const importDuties = Math.round(productCost * dutyRate);
-  const taxes = Math.round((productCost + importDuties) * VAT_RATE);
-  const insurance = Math.round(productCost * INSURANCE_RATE);
-  const totalCost = productCost + shipping + importDuties + taxes + insurance;
-  return {
-    productCost,
-    shipping,
-    importDuties,
-    taxes,
-    insurance,
-    totalCost,
-    perUnit: parseFloat((totalCost / quantity).toFixed(2)),
-    dutyRate,
-  };
-}
+// Cost logic lives in utils/costCalculator (shared with costs page and Excel)
+type Costs = CostResult;
 
 // ─── PDF Generation (with company info) ──────────────────────────────────────
 function generateReportPDF(data: {
@@ -76,7 +41,7 @@ function generateReportPDF(data: {
   destination: string;
   productType: string;
   riskScore: number;
-  costs: ReturnType<typeof calculateCosts>;
+  costs: Costs;
   reportId: string;
   saveFile?: boolean;
 }): string {
@@ -132,33 +97,11 @@ function generateReportPDF(data: {
   autoTable(doc, {
     startY: yAfterCompany + 54,
     head: [["Concepto", "Detalle", "Monto (USD)"]],
-    body: [
-      [
-        "Costo de Producto",
-        `${data.quantity.toLocaleString()} × $${Number(data.price).toFixed(2)}`,
-        `$${data.costs.productCost.toLocaleString()}`,
-      ],
-      [
-        "Flete Marítimo",
-        `Envío a ${data.destination}`,
-        `$${data.costs.shipping.toLocaleString()}`,
-      ],
-      [
-        "Aranceles de Importación",
-        `${(data.costs.dutyRate * 100).toFixed(0)}% para ${data.productType}`,
-        `$${data.costs.importDuties.toLocaleString()}`,
-      ],
-      [
-        "IVA & Impuestos",
-        `IVA ${(VAT_RATE * 100).toFixed(0)}%`,
-        `$${data.costs.taxes.toLocaleString()}`,
-      ],
-      [
-        "Seguro de Carga",
-        `${(INSURANCE_RATE * 100).toFixed(0)}% del valor`,
-        `$${data.costs.insurance.toLocaleString()}`,
-      ],
-    ],
+    body: data.costs.lines.map((l) => [
+      l.label,
+      l.detail,
+      `$${l.amount.toLocaleString()}`,
+    ]),
     foot: [
       [
         "COSTO TOTAL LANDED",
@@ -218,6 +161,19 @@ function generateReportPDF(data: {
     { align: "center" },
   );
 
+  // Footnotes
+  doc.setTextColor(100, 116, 139);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(data.costs.noVatNote, 14, finalY2 + 26);
+  if (data.costs.freightPending) {
+    doc.text(
+      "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
+      14,
+      finalY2 + 31,
+    );
+  }
+
   // Company footer (NEW)
   drawCompanyFooter(doc);
 
@@ -237,7 +193,7 @@ async function exportToExcel(data: {
   price: number;
   destination: string;
   productType: string;
-  costs: ReturnType<typeof calculateCosts>;
+  costs: Costs;
 }) {
   await generateBeautifulExcel({
     reportTitle: "Informe Completo de Análisis",
@@ -247,8 +203,8 @@ async function exportToExcel(data: {
     quantity: data.quantity,
     price: data.price,
     costs: data.costs,
-    vatRate: VAT_RATE,
-    insuranceRate: INSURANCE_RATE,
+    vatRate: data.costs.vatRate,
+    insuranceRate: data.costs.insuranceRate,
   });
 }
 
@@ -275,7 +231,10 @@ export function FinalCTA() {
   const supplierName = stateSupplier?.name || "Proveedor Seleccionado";
   const isLiveData = !!stateSupplier;
 
-  const costs = calculateCosts(price, quantity, destination, productType);
+  const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
+  const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
+  const rates = useRates();
+  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg }, rates);
 
   // ── Dynamic stats ─────────────────────────────────────────────────────────
   const leadStats = {

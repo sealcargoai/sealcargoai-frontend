@@ -4,6 +4,8 @@ import {
   Package,
   DollarSign,
   MapPin,
+  Box,
+  Weight,
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
@@ -63,6 +65,8 @@ export function ProductQualification() {
     quantity: "",
     budget: "",
     destination: "",
+    volumeCbm: "", // optional — used to quote ocean freight
+    weightKg: "",  // optional
   });
   const [showLimitModal, setShowLimitModal] = useState(false);
   const [remainingSearches, setRemainingSearches] = useState<number>(3);
@@ -302,6 +306,46 @@ export function ProductQualification() {
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
+                      <Box className="w-4 h-4" />
+                      Volumen aproximado (m³)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      value={formData.volumeCbm}
+                      onChange={(e) =>
+                        setFormData({ ...formData, volumeCbm: e.target.value })
+                      }
+                      placeholder="ej. 3.5"
+                      className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="flex items-center gap-2 text-sm font-medium text-slate-700 mb-3">
+                      <Weight className="w-4 h-4" />
+                      Peso aproximado (kg)
+                    </label>
+                    <input
+                      type="number"
+                      step="1"
+                      min="0"
+                      value={formData.weightKg}
+                      onChange={(e) =>
+                        setFormData({ ...formData, weightKg: e.target.value })
+                      }
+                      placeholder="ej. 800"
+                      className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-500 -mt-2">
+                  Opcional, pero con el volumen o el peso le calculamos el flete.
+                  Si no lo sabe, déjelo en blanco y un ejecutivo de SEAL se lo cotiza.
+                </p>
               </div>
             )}
 
@@ -355,6 +399,17 @@ export function ProductQualification() {
                         {t("qualification.budget")}:
                       </span>{" "}
                       ${formData.budget}
+                    </p>
+                    <p>
+                      <span className="font-medium">Volumen / peso:</span>{" "}
+                      {formData.volumeCbm || formData.weightKg
+                        ? [
+                            formData.volumeCbm && `${formData.volumeCbm} m³`,
+                            formData.weightKg && `${formData.weightKg} kg`,
+                          ]
+                            .filter(Boolean)
+                            .join(" • ")
+                        : "Por cotizar"}
                     </p>
                   </div>
                 </div>

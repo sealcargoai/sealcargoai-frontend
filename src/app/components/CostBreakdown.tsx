@@ -31,54 +31,18 @@ import {
   drawCompanyFooter,
   generateBeautifulExcel,
 } from "../../utils/reportExports";
+import {
+  calculateCosts,
+  useRates,
+  type CostResult,
+} from "../../utils/costCalculator";
 
-// ─── Constants ────────────────────────────────────────────────────────────────
-const DUTY_RATES: Record<string, number> = {
-  furniture: 0.15,
-  electronics: 0.15,
-  textiles: 0.15,
-  machinery: 0.15,
-  other: 0.15,
-};
-const SHIPPING_COSTS: Record<string, number> = {
-  US: 4200,
-  GT: 3800,
-  MX: 3500,
-  CA: 4800,
-  other: 5000,
-};
-const VAT_RATE = 0.12;
-const INSURANCE_RATE = 0.01;
-
-// ─── Calculate all costs ──────────────────────────────────────────────────────
-function calculateCosts(
-  price: number,
-  quantity: number,
-  destination: string,
-  productType: string,
-) {
-  const productCost = Math.round(price * quantity);
-  const shipping = SHIPPING_COSTS[destination] || 4200;
-  const dutyRate = DUTY_RATES[productType] || 0.15;
-  const importDuties = Math.round(productCost * dutyRate);
-  const taxes = Math.round((productCost + importDuties) * VAT_RATE);
-  const insurance = Math.round(productCost * INSURANCE_RATE);
-  const totalCost = productCost + shipping + importDuties + taxes + insurance;
-  return {
-    productCost,
-    shipping,
-    importDuties,
-    taxes,
-    insurance,
-    totalCost,
-    perUnit: parseFloat((totalCost / quantity).toFixed(2)),
-    dutyRate,
-  };
-}
+// Cost logic lives in utils/costCalculator (shared with report, PDF and Excel)
+type Costs = CostResult;
 
 // ─── PDF Export (with company info) ───────────────────────────────────────────
 function exportToPDF(
-  costs: ReturnType<typeof calculateCosts>,
+  costs: Costs,
   supplierName: string,
   quantity: number,
   price: number,
@@ -144,38 +108,12 @@ function exportToPDF(
   autoTable(doc, {
     startY: yAfterCompany + 53,
     head: [["Concepto", "Detalle", "Monto (USD)", "% del Total"]],
-    body: [
-      [
-        "Costo de Producto",
-        `${quantity.toLocaleString()} unidades × $${Number(price).toFixed(2)}`,
-        `$${costs.productCost.toLocaleString()}`,
-        `${((costs.productCost / costs.totalCost) * 100).toFixed(1)}%`,
-      ],
-      [
-        "Flete Marítimo",
-        `Envío a ${destination} (~25 días)`,
-        `$${costs.shipping.toLocaleString()}`,
-        `${((costs.shipping / costs.totalCost) * 100).toFixed(1)}%`,
-      ],
-      [
-        "Aranceles de Importación",
-        `Tasa ${(costs.dutyRate * 100).toFixed(0)}% para ${productType}`,
-        `$${costs.importDuties.toLocaleString()}`,
-        `${((costs.importDuties / costs.totalCost) * 100).toFixed(1)}%`,
-      ],
-      [
-        "IVA & Impuestos",
-        `IVA ${(VAT_RATE * 100).toFixed(0)}% sobre producto + aranceles`,
-        `$${costs.taxes.toLocaleString()}`,
-        `${((costs.taxes / costs.totalCost) * 100).toFixed(1)}%`,
-      ],
-      [
-        "Seguro de Carga",
-        `Cobertura completa (${(INSURANCE_RATE * 100).toFixed(0)}% del valor)`,
-        `$${costs.insurance.toLocaleString()}`,
-        `${((costs.insurance / costs.totalCost) * 100).toFixed(1)}%`,
-      ],
-    ],
+    body: costs.lines.map((l) => [
+      l.label,
+      l.detail,
+      `$${l.amount.toLocaleString()}`,
+      `${((l.amount / costs.totalCost) * 100).toFixed(1)}%`,
+    ]),
     foot: [
       [
         "COSTO TOTAL LANDED",
@@ -209,6 +147,19 @@ function exportToPDF(
     { align: "center" },
   );
 
+  // Footnotes
+  doc.setTextColor(100, 116, 139);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(8);
+  doc.text(costs.noVatNote, 14, finalY + 26);
+  if (costs.freightPending) {
+    doc.text(
+      "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
+      14,
+      finalY + 31,
+    );
+  }
+
   // Company footer (NEW)
   drawCompanyFooter(doc);
 
@@ -219,7 +170,7 @@ function exportToPDF(
 
 // ─── Excel Export (NEW: Beautiful XLSX) ───────────────────────────────────────
 async function exportToExcel(
-  costs: ReturnType<typeof calculateCosts>,
+  costs: Costs,
   supplierName: string,
   quantity: number,
   price: number,
@@ -234,8 +185,8 @@ async function exportToExcel(
     quantity,
     price,
     costs,
-    vatRate: VAT_RATE,
-    insuranceRate: INSURANCE_RATE,
+    vatRate: costs.vatRate,
+    insuranceRate: costs.insuranceRate,
   });
 }
 
@@ -261,16 +212,15 @@ export function CostBreakdown() {
   const supplierName = stateSupplier?.name || "Selected Supplier";
   const isLiveData = !!stateSupplier;
 
-  const costs = calculateCosts(price, quantity, destination, productType);
+  const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
+  const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
+  const rates = useRates();
+  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg }, rates);
 
   // ── Chart data ────────────────────────────────────────────────────────────
-  const costData = [
-    { name: "Product Cost", value: costs.productCost, color: "#0B3C5D" },
-    { name: "Shipping", value: costs.shipping, color: "#3B82F6" },
-    { name: "Import Duties", value: costs.importDuties, color: "#60A5FA" },
-    { name: "Taxes", value: costs.taxes, color: "#93C5FD" },
-    { name: "Insurance", value: costs.insurance, color: "#BFDBFE" },
-  ];
+  const costData = costs.lines
+    .filter((l) => l.amount > 0)
+    .map((l) => ({ name: l.label.replace("*", ""), value: l.amount, color: l.color }));
 
   const comparisonData = [
     { supplier: supplierName.split(" ")[0], total: costs.totalCost },
@@ -279,48 +229,25 @@ export function CostBreakdown() {
     { supplier: "Premium Alt", total: Math.round(costs.totalCost * 1.2) },
   ];
 
-  const breakdownRows = [
-    {
-      icon: DollarSign,
-      labelKey: "cost.productCost",
-      amount: costs.productCost,
-      details: `${quantity.toLocaleString()} ${t("cost.units")} × $${Number(price).toFixed(2)} ${t("cost.perUnitLabel")}`,
-      color: "blue",
-      displayPercent: `${((costs.productCost / costs.totalCost) * 100).toFixed(1)}%`,
-    },
-    {
-      icon: Ship,
-      labelKey: "cost.oceanFreight",
-      amount: costs.shipping,
-      details: `Envío estimado a ${destination} • ~25 días de tránsito`,
-      color: "cyan",
-      displayPercent: `${((costs.shipping / costs.totalCost) * 100).toFixed(1)}%`,
-    },
-    {
-      icon: FileText,
-      labelKey: "cost.importDuties",
-      amount: costs.importDuties,
-      details: `Tasa arancelaria ${(costs.dutyRate * 100).toFixed(0)}% para ${productType}`,
-      color: "purple",
-      displayPercent: `${(costs.dutyRate * 100).toFixed(0)}%`, // ✅ shows duty rate (e.g., 15%)
-    },
-    {
-      icon: TrendingUp,
-      labelKey: "cost.vatTaxes",
-      amount: costs.taxes,
-      details: `IVA ${(VAT_RATE * 100).toFixed(0)}% sobre producto + aranceles`,
-      color: "green",
-      displayPercent: "12%", // ✅ FIXED at 12% — what the CEO wants
-    },
-    {
-      icon: AlertCircle,
-      labelKey: "cost.insurance",
-      amount: costs.insurance,
-      details: `Seguro de carga • Cobertura completa • ${(INSURANCE_RATE * 100).toFixed(0)}% del valor`,
-      color: "orange",
-      displayPercent: "1%", // ✅ FIXED at 1% — what the CEO wants
-    },
-  ];
+  const LINE_STYLE: Record<string, { icon: typeof DollarSign; color: string }> = {
+    product: { icon: DollarSign, color: "blue" },
+    freight: { icon: Ship, color: "cyan" },
+    insurance: { icon: AlertCircle, color: "orange" },
+    duties: { icon: FileText, color: "purple" },
+    vat: { icon: TrendingUp, color: "green" },
+    customs: { icon: FileText, color: "indigo" },
+    local: { icon: Ship, color: "slate" },
+  };
+
+  const breakdownRows = costs.lines.map((l) => ({
+    icon: LINE_STYLE[l.key]?.icon ?? DollarSign,
+    label: l.label,
+    amount: l.amount,
+    details: l.detail,
+    color: LINE_STYLE[l.key]?.color ?? "blue",
+    displayPercent: `${((l.amount / costs.totalCost) * 100).toFixed(1)}%`,
+    pending: l.key === "freight" && costs.freightPending,
+  }));
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
@@ -393,6 +320,9 @@ export function CostBreakdown() {
                     budget: stateBudget,
                     destination: stateDestination,
                     productType: stateProductType,
+                    volumeCbm: location.state?.volumeCbm,
+                    weightKg: location.state?.weightKg,
+                    productDescription: location.state?.productDescription,
                   },
                 })
               }
@@ -528,7 +458,7 @@ export function CostBreakdown() {
                 </div>
                 <div className="min-w-0">
                   <div className="font-medium text-[#0B3C5D] text-sm sm:text-base">
-                    {t(item.labelKey)}
+                    {item.label}
                   </div>
                   <div className="text-xs sm:text-sm text-slate-600">
                     {item.details}
@@ -537,7 +467,7 @@ export function CostBreakdown() {
               </div>
               <div className="text-right sm:text-right ml-13 sm:ml-0 flex-shrink-0">
                 <div className="text-xl sm:text-2xl font-bold text-[#0B3C5D]">
-                  ${item.amount.toLocaleString()}
+                  {item.pending ? "Por cotizar" : `$${item.amount.toLocaleString()}`}
                 </div>
                 <div className="text-xs sm:text-sm text-slate-600">
                   {item.displayPercent}
@@ -545,6 +475,14 @@ export function CostBreakdown() {
               </div>
             </div>
           ))}
+          <p className="text-xs text-slate-500 px-1">{costs.noVatNote}</p>
+          {costs.freightPending && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+              ⚠️ El total no incluye flete porque no indicó volumen ni peso. Un
+              ejecutivo de SEAL le cotiza el flete exacto, o puede volver a la
+              calificación y agregar el volumen (m³) o peso (kg).
+            </div>
+          )}
         </div>
 
         {/* Insights */}
