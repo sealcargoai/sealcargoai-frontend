@@ -546,5 +546,6 @@ export async function generateBeautifulExcel(
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
-  URL.revokeObjectURL(url);
+  // Revoking immediately cancels the download on iPhone/Safari — wait a bit
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
