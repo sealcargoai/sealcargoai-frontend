@@ -170,13 +170,12 @@ function generateReportPDF(data: {
   doc.setTextColor(100, 116, 139);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(data.costs.noVatNote, 14, finalY2 + 26);
-  doc.text(data.costs.fxNote, 14, finalY2 + 31);
+  doc.text(data.costs.fxNote, 14, finalY2 + 26);
   if (data.costs.freightPending) {
     doc.text(
       "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
       14,
-      finalY2 + 36,
+      finalY2 + 31,
     );
   }
 

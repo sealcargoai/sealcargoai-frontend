@@ -148,13 +148,12 @@ function exportToPDF(
   doc.setTextColor(100, 116, 139);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(costs.noVatNote, 14, finalY + 26);
-  doc.text(costs.fxNote, 14, finalY + 31);
+  doc.text(costs.fxNote, 14, finalY + 26);
   if (costs.freightPending) {
     doc.text(
       "Flete por cotizar: el total no incluye flete. Un ejecutivo de SEAL le enviará la tarifa.",
       14,
-      finalY + 36,
+      finalY + 31,
     );
   }
 
@@ -559,7 +558,6 @@ export function CostBreakdown() {
               </div>
             </div>
           ))}
-          <p className="text-xs text-slate-500 px-1">{costs.noVatNote}</p>
           <p className="text-xs text-slate-500 px-1">{costs.fxNote}</p>
           {costs.freightPending && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
