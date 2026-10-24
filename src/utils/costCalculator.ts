@@ -15,8 +15,10 @@ export interface Rates {
   vatRate: number;          // IVA (on CIF + DAI)
   insuranceRate: number;    // on FOB
   insuranceMin: number;     // minimum insurance premium
-  customsFees: number;      // SEAL customs brokerage fee
-  localCharges: number;     // destination charges
+  customsFees: number;      // SEAL customs brokerage fee (USD, legacy — used only if the GTQ value is 0)
+  localCharges: number;     // destination charges (USD, legacy — used only if the GTQ value is 0)
+  customsFeesGTQ: number;   // SEAL customs brokerage fee, fixed in quetzales
+  localChargesGTQ: number;  // destination charges (handling, inspection, storage…), fixed in quetzales
   transitDays: string;      // shown to the user
   exchangeRate: number;     // reference GTQ per 1 USD (costs are shown in quetzales)
 }
@@ -35,6 +37,8 @@ export const DEFAULT_RATES: Rates = {
   insuranceMin: 250,
   customsFees: 200,
   localCharges: 450,
+  customsFeesGTQ: 1200,
+  localChargesGTQ: 9500, // Q4,500 + Q5,000
   transitDays: "30-45",
   exchangeRate: 7.9,
 };
@@ -176,8 +180,9 @@ export function calculateCosts(
   const importDuties = Math.round(cif * rates.dutyRate);
   const taxes = Math.round((cif + importDuties) * rates.vatRate);
 
-  const customsFees = Math.round(rates.customsFees);
-  const localCharges = Math.round(rates.localCharges);
+  // Fixed quetzal fees are kept exact (not rounded in USD) so they show as Q1,200 / Q9,500
+  const customsFees = rates.customsFeesGTQ > 0 ? rates.customsFeesGTQ / rates.exchangeRate : Math.round(rates.customsFees);
+  const localCharges = rates.localChargesGTQ > 0 ? rates.localChargesGTQ / rates.exchangeRate : Math.round(rates.localCharges);
 
   const totalCost = productCost + shipping + insurance + importDuties + taxes + customsFees + localCharges;
 
@@ -229,7 +234,7 @@ export function calculateCosts(
     {
       key: "local",
       label: "Gastos en destino*",
-      detail: "Manejo y gastos locales en destino",
+      detail: "Manejo y gastos locales, revisión, almacenaje, etc.",
       amount: localCharges,
       color: "#A78BFA",
       noVat: true,
@@ -250,7 +255,7 @@ export function calculateCosts(
     customsFees,
     localCharges,
     totalCost,
-    perUnit: parseFloat((totalCost / quantity).toFixed(2)),
+    perUnit: totalCost / quantity, // unrounded: shown in quetzales with 2 decimals
     dutyRate: rates.dutyRate,
     vatRate: rates.vatRate,
     insuranceRate: rates.insuranceRate,
