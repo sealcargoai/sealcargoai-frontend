@@ -214,7 +214,7 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Package className="w-4 h-4 text-slate-400" />
-              {Lx("Pedido mínimo:", "Minimum order:")} {supplier.moq ? `${supplier.moq.toLocaleString()} ${Lx("uds.", "units")}` : Lx("N/D", "N/A")}
+              {Lx("Pedido mínimo:", "Minimum order:")} {supplier.moq ? (/^\s*[\d.,]+\s*$/.test(String(supplier.moq)) ? `${supplier.moq.toLocaleString()} ${Lx("uds.", "units")}` : String(supplier.moq)) : Lx("N/D", "N/A")}
             </span>
             {supplier.storeRating ? (
               <span className="inline-flex items-center gap-1.5">
