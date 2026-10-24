@@ -69,7 +69,6 @@ export function getUserData(email: string, name: string): UserSearchData {
 
 export function canUserSearch(email: string, name: string): boolean {
   const data = getUserData(email, name);
-  console.log(`🔐 canUserSearch: email=${email}, count=${data.searchCount}, limit=${SEARCH_LIMIT}`);
   return data.searchCount < SEARCH_LIMIT;
 }
 
@@ -99,8 +98,6 @@ export function recordSearch(
   }
 
   saveData(data);
-  
-  console.log(`✅ recordSearch: email=${email}, newCount=${data.searchCount}`);
 }
 
 export function getSearchLimit(): number {

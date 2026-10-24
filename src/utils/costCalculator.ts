@@ -43,6 +43,10 @@ export const DEFAULT_RATES: Rates = {
   exchangeRate: 7.9,
 };
 
+// Shown wherever a cost appears: this tool estimates, SEAL quotes
+export const ESTIMATE_NOTE =
+  "Estimación referencial, no es una cotización. Un ejecutivo de SEAL le confirma el costo antes del embarque.";
+
 // Rates and costs are kept in USD; everything shown to the client is in quetzales
 export function formatQ(usdAmount: number, exchangeRate: number, decimals = 0): string {
   return `Q${(usdAmount * exchangeRate).toLocaleString("en-US", {

@@ -518,7 +518,7 @@ export async function generateBeautifulExcel(
   ws.mergeCells(`A${f1}:E${f1}`);
   const footerCell = ws.getCell(`A${f1}`);
   footerCell.value =
-    `Este análisis es una estimación. Los costos reales pueden variar.${data.costs.noVatNote ? "  " + data.costs.noVatNote + "." : ""}${data.costs.fxNote ? "  " + data.costs.fxNote : ""}  Aviso: SEAL no garantiza a los proveedores ni los resultados de esta búsqueda; SmartTrade AI es una herramienta para organizar y comparar proveedores. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.`;
+    `Estimación referencial, no es una cotización: un ejecutivo de SEAL le confirma el costo antes del embarque.${data.costs.noVatNote ? "  " + data.costs.noVatNote + "." : ""}${data.costs.fxNote ? "  " + data.costs.fxNote : ""}  Aviso: SEAL no garantiza a los proveedores ni los resultados de esta búsqueda; SmartTrade AI es una herramienta para organizar y comparar proveedores. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.`;
   footerCell.font = {
     name: "Arial",
     size: 9,
