@@ -59,6 +59,8 @@ export function parseSpecs(text: string): Spec[] {
   const s = ` ${String(text || "").toLowerCase()} `
     // words for 1 and 2 heads ("single head", "un cabezal", "double head")
     .replace(/\b(?:single|one|un|una)\s*-?\s*(heads?|cabezal(?:es)?|cabezas?)\b/g, "1 $1")
+    // "2tph", "500kgph" = per hour
+    .replace(/(\d)\s*(t|kg)ph\b/g, "$1 $2/h")
     .replace(/\b(?:double|two|dos)\s*-?\s*(heads?|cabezal(?:es)?|cabezas?)\b/g, "2 $1");
   const out: Spec[] = [];
   const used: [number, number][] = [];
@@ -112,6 +114,7 @@ export interface SpecItem {
   status: SpecStatus;
   found: string;
   closeness: number; // 1 = exact; lower = further away
+  incomparable?: boolean; // the listing gives the same kind of figure with or without "per hour"
 }
 export interface SpecMatch {
   items: SpecItem[];
@@ -120,8 +123,14 @@ export interface SpecMatch {
 }
 
 function matchOne(req: Spec, title: string): SpecItem {
-  const all = parseSpecs(title).filter((c) => c.family === req.family && (req.rate ? true : !c.rate));
-  if (!all.length) return { req, status: "unknown", found: "", closeness: 0 };
+  const family = parseSpecs(title).filter((c) => c.family === req.family);
+  // Per hour and per batch can't be compared: "30 t" is not "more than 100 kg/h"
+  const all = family.filter((c) => c.rate === req.rate);
+  if (!all.length) {
+    const other = family.filter((c) => c.rate !== req.rate);
+    const found = other.map((c) => c.text).filter((v, i, a) => a.indexOf(v) === i).join(", ");
+    return { req, status: "unknown", found, closeness: 0, incomparable: other.length > 0 };
+  }
   const target = req.max;
   const [lo, hi] = isCount(req.family) ? [1, 1] : [0.9, 1.1];
   const found = all.map((c) => c.text).filter((v, i, a) => a.indexOf(v) === i).join(", ");
@@ -185,6 +194,17 @@ export function specLabel(i: SpecItem) {
         sub: Lx(`Pediste ${req.text}`, `You asked for ${req.text}`),
       };
     default:
+      if (i.incomparable) {
+        return {
+          tone: "slate" as const,
+          text: req.rate
+            ? Lx(`Capacidad no comparable: ${i.found} sin «por hora»`, `Capacity not comparable: ${i.found} without "per hour"`)
+            : Lx(`Capacidad no comparable: ${i.found}`, `Capacity not comparable: ${i.found}`),
+          sub: req.rate
+            ? Lx(`Pediste ${req.text}: confirma con el proveedor la producción por hora`, `You asked for ${req.text}: confirm the hourly output with the supplier`)
+            : Lx(`Pediste ${req.text}: confirma con el proveedor la capacidad por carga`, `You asked for ${req.text}: confirm the batch capacity with the supplier`),
+        };
+      }
       return {
         tone: "slate" as const,
         text: i.found

@@ -6,69 +6,125 @@ import { Lx } from "./lang";
 // Materials (wood, plastic, cotton…) are not uses: "lápices de madera" says what it is made of
 type Group = "food" | "feed" | "paint" | "pharma" | "mineral";
 
-// Spanish and English words for each use (lowercase, matched as word starts)
-const GROUPS: Record<Group, string[]> = {
-  food: [
-    "maíz", "maiz", "corn", "maize", "especia", "spice", "chile", "chili", "pimienta", "pepper", "grano", "grain",
-    "harina", "flour", "trigo", "wheat", "arroz", "rice", "café", "cafe", "coffee", "cacao", "cocoa", "azúcar",
-    "azucar", "sugar", "sal ", "salt", "aliment", "food", "frijol", "bean", "soya", "soy", "nuez", "nut", "almendra",
-    "almond", "maní", "peanut", "semilla", "seed", "hierba", "herb", "té ", "tea ", "masa", "tortilla", "panader",
-    "bakery", "carne", "meat", "fruta", "fruit", "verdura", "vegetable",
-  ],
-  feed: ["pienso", "forraje", "concentrado animal", "animal feed", "livestock", "poultry", "aves", "ganado", "fodder"],
-  paint: [
-    "pintura", "paint", "tinta", "ink", "pigment", "barniz", "varnish", "laca", "lacquer", "coating", "recubrimiento",
-    "esmalte", "enamel", "resina", "resin", "adhesiv", "glue", "pegamento", "químic", "chemical",
-  ],
-  pharma: ["farmac", "pharma", "medicin", "medicina", "cosmétic", "cosmetic", "laboratorio", "laboratory", "lab "],
-  mineral: [
-    "roca", "rock", "mineral", "minería", "mining", "cemento", "cement", "carbón",
-    "coal", "cal ", "arena", "sand", "vidrio", "glass", "cerámic", "ceramic",
-  ],
-};
+// Each use concept: label in Spanish and English, the group it belongs to and
+// its words in both languages (lowercase, matched as word starts). Concepts let
+// the client rule out "carne" while still asking for "maíz" (both food).
+interface Concept { g: Group; es: string; en: string; w: string[] }
+const C = (g: Group, es: string, en: string, w: string[]): Concept => ({ g, es, en, w });
+const CONCEPTS: Concept[] = [
+  C("food", "maíz", "corn", ["maíz", "maiz", "corn", "maize", "elote"]),
+  C("food", "especias", "spices", ["especia", "spice", "chile", "chili", "pimienta", "pepper", "condiment"]),
+  C("food", "granos", "grains", ["grano", "grain", "cereal"]),
+  C("food", "harina", "flour", ["harina", "flour", "trigo", "wheat"]),
+  C("food", "arroz", "rice", ["arroz", "rice"]),
+  C("food", "café", "coffee", ["café", "cafe", "coffee"]),
+  C("food", "cacao", "cocoa", ["cacao", "cocoa", "chocolate"]),
+  C("food", "azúcar", "sugar", ["azúcar", "azucar", "sugar"]),
+  C("food", "sal", "salt", ["sal ", "salt"]),
+  C("food", "frijol y soya", "beans and soy", ["frijol", "bean", "soya", "soy"]),
+  C("food", "nueces y semillas", "nuts and seeds", ["nuez", "nueces", "nut", "almendra", "almond", "maní", "mani ", "peanut", "semilla", "seed"]),
+  C("food", "hierbas y té", "herbs and tea", ["hierba", "herb", "té ", "tea "]),
+  C("food", "masa y panadería", "dough and bakery", ["masa", "tortilla", "panader", "bakery", "dough"]),
+  C("food", "carne", "meat", ["carne", "meat", "embutido", "sausage", "hueso", "bone"]),
+  C("food", "frutas y verduras", "fruit and vegetables", ["fruta", "fruit", "verdura", "vegetable", "hortaliza"]),
+  C("food", "alimentos", "food", ["aliment", "food", "comida"]),
+  C("feed", "alimento para animales", "animal feed", ["pienso", "forraje", "concentrado animal", "animal feed", "livestock", "poultry", "aves", "ganado", "fodder"]),
+  C("paint", "pintura", "paint", ["pintura", "paint"]),
+  C("paint", "tinta", "ink", ["tinta", "ink"]),
+  C("paint", "pigmentos", "pigments", ["pigment"]),
+  C("paint", "barniz y recubrimientos", "varnish and coatings", ["barniz", "varnish", "laca", "lacquer", "coating", "recubrimiento", "esmalte", "enamel"]),
+  C("paint", "resinas y adhesivos", "resins and adhesives", ["resina", "resin", "adhesiv", "glue", "pegamento"]),
+  C("paint", "químicos", "chemicals", ["químic", "quimic", "chemical"]),
+  C("pharma", "farmacéutico", "pharma", ["farmac", "pharma", "medicin"]),
+  C("pharma", "cosméticos", "cosmetics", ["cosmétic", "cosmetic"]),
+  C("pharma", "laboratorio", "laboratory", ["laboratorio", "laboratory", "lab "]),
+  C("mineral", "minerales", "minerals", ["roca", "rock", "mineral", "minería", "mineria", "mining", "arena", "sand", "carbón", "carbon ", "coal"]),
+  C("mineral", "cemento y cal", "cement and lime", ["cemento", "cement", "cal "]),
+  C("mineral", "vidrio y cerámica", "glass and ceramics", ["vidrio", "glass", "cerámic", "ceramic"]),
+];
 
-const LABEL_ES: Record<Group, string> = {
-  food: "alimentos (granos, especias…)", feed: "alimento para animales", paint: "pintura, tinta o químicos",
-  pharma: "farmacéutico o cosmético", mineral: "minerales o cemento",
-};
-const LABEL_EN: Record<Group, string> = {
-  food: "food (grains, spices…)", feed: "animal feed", paint: "paint, ink or chemicals",
-  pharma: "pharma or cosmetics", mineral: "minerals or cement",
-};
-
-function usesIn(text?: string): Set<Group> {
+function conceptsIn(text?: string): Set<Concept> {
   const t = ` ${String(text || "").toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/g, " ")} `;
-  const found = new Set<Group>();
-  (Object.keys(GROUPS) as Group[]).forEach((g) => {
-    if (GROUPS[g].some((w) => t.includes(` ${w}`))) found.add(g);
-  });
-  return found;
+  return new Set(CONCEPTS.filter((c) => c.w.some((w) => t.includes(` ${w}`))));
+}
+const groupsOf = (cs: Set<Concept>) => new Set([...cs].map((c) => c.g));
+
+// What the client rules out: "no para carne ni pintura", "excepto pintura",
+// "not for paint or ink". The excluded part runs until the end of the clause
+// (punctuation, "sino", "pero", "solo", "but", "only") or a new "para"/"for".
+const NEG_START =
+  /\b(?:que\s+no\s+sea(?:\s+para)?|no\s+(?:es\s+|sea\s+|sirve\s+|lo\s+quiero\s+|apt[oa]s?\s+)?(?:para|de)\b|no(?=\s)|ni(?:\s+para)?|excepto(?:\s+para)?|salvo(?:\s+para)?|menos\s+para|excluyendo|not(?:\s+(?:for|suitable\s+for|used\s+for|meant\s+for))?|nor(?:\s+for)?|except(?:\s+for)?|other\s+than|excluding)\b/g;
+const NEG_END = /[.,;:!?()]|\b(?:sino|pero|solo|sólo|solamente|únicamente|unicamente|but|only|para|for)\b/;
+
+/** Splits a description into what the client wants and what they rule out. */
+export function splitExclusions(description?: string): { wanted: string; excluded: string } {
+  const t = String(description || "").toLowerCase();
+  let wanted = "";
+  let excluded = "";
+  let pos = 0;
+  NEG_START.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  while ((m = NEG_START.exec(t))) {
+    if (m.index < pos) continue;
+    wanted += t.slice(pos, m.index) + " ";
+    const rest = t.slice(m.index + m[0].length);
+    const end = rest.search(NEG_END);
+    const scope = end === -1 ? rest : rest.slice(0, end);
+    excluded += scope + " ";
+    pos = m.index + m[0].length + scope.length;
+    NEG_START.lastIndex = pos;
+  }
+  wanted += t.slice(pos);
+  return { wanted, excluded };
+}
+
+/** The description without the uses the client rules out (for topics like food). */
+export function wantedText(description?: string): string {
+  return splitExclusions(description).wanted;
 }
 
 export type UseStatus = "match" | "other" | "unknown";
 
 export interface UseMatch {
   status: UseStatus;
-  asked: string; // uses the client asked for
+  asked: string; // uses the client asked for ("" when they only ruled some out)
   listed: string; // uses the listing mentions
+  excluded: string; // uses the client ruled out ("carne, pintura")
+  hitsExcluded: string; // uses the listing mentions that the client ruled out ("" if none)
 }
 
-/** null when the client did not say what the product is for. */
+/** null when the client did not say what the product is (or is not) for. */
 export function matchUse(description: string, productTitle?: string): UseMatch | null {
-  const asked = usesIn(description);
-  if (!asked.size) return null;
-  const listed = usesIn(productTitle);
-  const label = (s: Set<Group>) => [...s].map((g) => Lx(LABEL_ES[g], LABEL_EN[g])).join(", ");
-  const shared = [...listed].some((g) => asked.has(g));
-  const status: UseStatus = shared ? "match" : listed.size ? "other" : "unknown";
-  return { status, asked: label(asked), listed: label(listed) };
+  const parts = splitExclusions(description);
+  const askedC = conceptsIn(parts.wanted);
+  const excludedC = new Set([...conceptsIn(parts.excluded)].filter((c) => !askedC.has(c)));
+  const asked = groupsOf(askedC);
+  if (!asked.size && !excludedC.size) return null;
+  const listedC = conceptsIn(productTitle);
+  const listed = groupsOf(listedC);
+  const hit = [...listedC].filter((c) => excludedC.has(c));
+  // The listing names a use asked for (the concept itself, or its group when
+  // that group was not partly ruled out)
+  const excludedGroups = groupsOf(excludedC);
+  const shared = [...listedC].some(
+    (c) => askedC.has(c) || (asked.has(c.g) && !excludedC.has(c) && !(excludedGroups.has(c.g) && hit.length)),
+  );
+  const status: UseStatus = shared ? "match" : hit.length ? "other" : listed.size && asked.size ? "other" : "unknown";
+  const conceptLabel = (cs: Concept[]) => cs.map((c) => Lx(c.es, c.en)).join(", ");
+  return {
+    status,
+    asked: conceptLabel([...askedC]),
+    listed: conceptLabel(hit.length ? hit : [...listedC]),
+    excluded: conceptLabel([...excludedC]),
+    hitsExcluded: conceptLabel(hit),
+  };
 }
 
 const RANK: Record<UseStatus, number> = { match: 0, unknown: 1, other: 2 };
 
-/** Stable re-order: listings for the requested use first, those for another use last. */
+/** Stable re-order: listings for the requested use first, those for another (or excluded) use last. */
 export function orderByUse<T extends { productName?: string }>(list: T[], description: string): T[] {
-  if (!usesIn(description).size) return list;
+  if (!matchUse(description, "")) return list;
   return list
     .map((s, i) => ({ s, i, r: RANK[matchUse(description, s.productName)!.status] }))
     .sort((a, b) => a.r - b.r || a.i - b.i)
