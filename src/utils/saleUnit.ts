@@ -33,10 +33,13 @@ export function packSizeFromTitle(title?: string): number {
   const t = String(title || "").toLowerCase();
   const rules: RegExp[] = [
     /(\d{1,4})\s*(?:pcs|pc|pieces?|piezas?|pzs|unidades|units?)\s*(?:\/|per|por|in\s+(?:a|one|1))\s*(?:set|box|pack|bag|caja|paquete|bolsa)/,
-    /(?:set|box|pack|bag|caja|paquete|bolsa)\s*(?:of|de|con|with)\s*(\d{1,4})\b/,
-    /(\d{1,4})\s*-?\s*(?:pcs|pieces|piezas|pzs)\s+(?:\w+\s+){0,3}(?:set|box|pack|kit)\b/,
+    /(\d{1,4})\s*\/\s*(?:set|box|pack|bag|caja|paquete|bolsa)\b/,
+    /(?:set|box|pack|bag|caja|paquete|bolsa|kit)\s*(?:of|de|con|with)\s*(\d{1,4})\b/,
+    /(\d{1,4})\s*-?\s*(?:pcs|pc|pieces?|piezas?|pzs)\s+(?:[\w-]+\s+){0,4}(?:set|box|pack|kit|caja|paquete|estuche)\b/,
+    /(?:set|box|pack|kit|caja|paquete|estuche)\b(?:\s+[\w-]+){0,3}\s+(\d{1,4})\s*-?\s*(?:pcs|pc|pieces?|piezas?|pzs)\b/,
     /(\d{1,4})\s*-?\s*(?:pack|pk|count|ct)\b/,
     /(\d{1,4})\s*(?:colou?rs?|colores)\b(?=.*\b(?:set|box|pack|caja|kit)\b)/,
+    /\b(?:set|box|pack|caja|kit|estuche)\b.*?\b(\d{1,4})\s*(?:colou?rs?|colores)\b/,
   ];
   for (const re of rules) {
     const m = t.match(re);
@@ -69,4 +72,24 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
   if (!unit && packSize > 1) unit = unitFromTitle(s?.productName) || "set";
   const multi = (!!unit && unit !== "piece") || (packSize > 1 && unit !== "piece");
   return { unit, packSize: unit === "piece" ? 0 : packSize, multi };
+}
+
+/**
+ * What the client's own quantity refers to, from their description:
+ * "500 lápices" / "500 piezas" → "piece"; "500 paquetes" / "500 cajas" → "pack".
+ * A negated mention ("no 500 paquetes") does not count. "" when it's unclear.
+ */
+export function quantityIntent(description?: string): "piece" | "pack" | "" {
+  const t = ` ${String(description || "").toLowerCase()} `;
+  const PACK = "(?:paquetes?|sets?|juegos?|cajas?|docenas?|estuches?|packs?|boxes|box|dozens?|cartons?|cartones?|kits?)";
+  const MEASURE = "(?:kg|kgs|kilos?|g|gramos?|t|ton|toneladas?|l|lts?|litros?|ml|m|metros?|cm|mm|m2|m3|w|kw|v|hp|hz|agujas?|needles?|cabezal(?:es)?|heads?|%)";
+  const num = "\\d[\\d.,]*";
+  const packHit = [...t.matchAll(new RegExp(`(\\bno\\s+)?${num}\\s*${PACK}\\b`, "g"))].filter((m) => !m[1]).length > 0;
+  // a number followed by a word that is not packaging nor a measure: "500 lápices", "500 piezas"
+  const pieceHit = [...t.matchAll(new RegExp(`(\\bno\\s+)?${num}\\s+([a-záéíóúüñ]{3,})`, "g"))].some(
+    (m) => !m[1] && !new RegExp(`^${PACK}$`).test(m[2]) && !new RegExp(`^${MEASURE}$`).test(m[2]),
+  );
+  if (pieceHit && !packHit) return "piece";
+  if (packHit && !pieceHit) return "pack";
+  return "";
 }

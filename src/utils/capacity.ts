@@ -65,7 +65,7 @@ export function parseSpecs(text: string): Spec[] {
   const free = (at: number) => !used.some(([a, b]) => at >= a && at < b);
   const unitOk = (u: string, end: number) => {
     // single letters (t, l) only count when not followed by another letter
-    if (u === "t" || u === "l") return !/[a-z]/.test(s[end] || " ");
+    if (u === "t" || u === "l") return !/[a-záéíóúüñ]/.test(s[end] || " ");
     return true;
   };
   const push = (vals: number[], u: string, rate: boolean) => {
