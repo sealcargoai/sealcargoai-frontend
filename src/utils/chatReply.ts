@@ -58,9 +58,75 @@ export function productMention(text: string): string | null {
 }
 const clean = (s: string) => s.replace(/^(?:un|una|unos|unas|los|las|el|la|a|an|the)\s+/i, "").replace(/[.!]+$/, "").trim();
 
+// ── Simple pack arithmetic ("¿cuántos sets de 12 cubren 500 lápices?") ──────
+const PACK_W = "(sets?|cajas?|paquetes?|estuches?|juegos?|docenas?|bolsas?|packs?|boxes|box|bags?|kits?|pares|pairs?)";
+const toNum = (x: string) => {
+  const t = x.toLowerCase().replace(/\s+/g, "");
+  const m = t.match(/^(\d+(?:[.,]\d+)?)(mil|thousand)?$/);
+  if (!m) return NaN;
+  const base = /^\d{1,3}([.,]\d{3})+$/.test(m[1]) ? Number(m[1].replace(/[.,]/g, "")) : Number(m[1].replace(",", "."));
+  return m[2] ? base * 1000 : base;
+};
+const NUM = "(\\d+(?:[.,]\\d+)*(?:\\s*(?:mil|thousand))?)";
+
+export interface PackMath { packs: number; perPack: number; total: number; wanted: number; extra: number; packWord: string; item: string; mode: "packs" | "total" }
+
+/** Reads "how many packs of N for M items" or "how many items in K packs of N". */
+export function packMath(text: string): PackMath | null {
+  const t = ` ${String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ")} `;
+  if (!/cu[aá]nt|how\s+many|how\s+much|alcanza|cubre|sobra|faltan|need|enough|left\s+over/.test(t)) return null;
+  // pack size: "sets de 12", "cajas de 100", "boxes of 50", "docenas" (12)
+  const size = t.match(new RegExp(`${PACK_W}\\s+(?:de|of|con|with|x)\\s+${NUM}(?:\\s+([a-záéíóúüñ]+))?`));
+  let perPack = size ? toNum(size[2]) : NaN;
+  let packWord = size ? size[1] : "";
+  if (!size && /docenas?|dozens?/.test(t)) { perPack = 12; packWord = /dozen/.test(t) ? "dozens" : "docenas"; }
+  if (!(perPack > 1) || perPack > 1e6) return null;
+  const rest = size ? t.replace(size[0], " ") : t;
+  // "42 sets de 12 → cuántos lápices": the number is right before the pack word
+  const packsGiven = size ? t.slice(0, t.indexOf(size[0])).match(new RegExp(`${NUM}\\s*$`)) : null;
+  if (packsGiven) {
+    const packs = toNum(packsGiven[1]);
+    if (!(packs > 0) || packs > 1e7) return null;
+    const asked = t.match(/cu[aá]nt[oa]s\s+([a-záéíóúüñ]{3,})|how\s+many\s+([a-z]{3,})/);
+    const item = (asked && (asked[1] || asked[2]) && !/^(?:son|hay|are|is)$/.test(asked[1] || asked[2]) ? asked[1] || asked[2] : "") || (size && size[3]) || "";
+    return { packs, perPack, total: packs * perPack, wanted: 0, extra: 0, packWord, item, mode: "total" };
+  }
+  const want = rest.match(new RegExp(`${NUM}\\s+([a-záéíóúüñ]{3,})?`));
+  const wanted = want ? toNum(want[1]) : NaN;
+  if (!(wanted > 0) || wanted > 1e8) return null;
+  const packs = Math.ceil(wanted / perPack);
+  const item = (want && want[2] && !/^(?:sets?|cajas?|piezas?|unidades)$/.test(want[2]) ? want[2] : "") || (size && size[3]) || "";
+  return { packs, perPack, total: packs * perPack, wanted, extra: packs * perPack - wanted, packWord, item, mode: "packs" };
+}
+
+function packMathReply(m: PackMath): string {
+  const items = m.item || Lx("piezas", "pieces");
+  const pw = (n: number) => {
+    const w = m.packWord;
+    if (n !== 1) return /s$/.test(w) ? w : w === "box" ? "boxes" : w === "caja" ? "cajas" : `${w}s`;
+    return w.replace(/(es|s)$/, (x) => (w === "boxes" ? "" : x === "es" && /(?:ches|xes)$/.test(w) ? "" : "")).replace(/^boxe$/, "box") || w;
+  };
+  const f = (n: number) => n.toLocaleString("en-US");
+  if (m.mode === "total")
+    return Lx(
+      `${f(m.packs)} ${pw(m.packs)} de ${f(m.perPack)} son ${f(m.total)} ${items}. Es un cálculo con el contenido que indicaste; confirma con el proveedor cuántas piezas trae realmente cada ${pw(1)}.`,
+      `${f(m.packs)} ${pw(m.packs)} of ${f(m.perPack)} make ${f(m.total)} ${items}. This uses the content you gave; confirm with the supplier how many pieces each ${pw(1)} really holds.`,
+    );
+  return m.extra === 0
+    ? Lx(
+        `Necesitarías ${f(m.packs)} ${pw(m.packs)}: exactamente ${f(m.total)} ${items}, suponiendo ${f(m.perPack)} por ${pw(1)}. Confirma con el proveedor el contenido real y su pedido mínimo.`,
+        `You'd need ${f(m.packs)} ${pw(m.packs)}: exactly ${f(m.total)} ${items}, assuming ${f(m.perPack)} per ${pw(1)}. Confirm the real content and minimum order with the supplier.`,
+      )
+    : Lx(
+        `Necesitarías ${f(m.packs)} ${pw(m.packs)}: ${f(m.total)} ${items}, con ${f(m.extra)} ${m.extra === 1 ? "adicional" : "adicionales"}, suponiendo ${f(m.perPack)} por ${pw(1)}. Con ${f(m.packs - 1)} ${pw(m.packs - 1)} tendrías ${f((m.packs - 1) * m.perPack)} y te faltarían ${f(m.wanted - (m.packs - 1) * m.perPack)}. Confirma con el proveedor el contenido real y su pedido mínimo.`,
+        `You'd need ${f(m.packs)} ${pw(m.packs)}: ${f(m.total)} ${items}, with ${f(m.extra)} extra, assuming ${f(m.perPack)} per ${pw(1)}. With ${f(m.packs - 1)} ${pw(m.packs - 1)} you'd have ${f((m.packs - 1) * m.perPack)}, ${f(m.wanted - (m.packs - 1) * m.perPack)} short. Confirm the real content and minimum order with the supplier.`,
+      );
+}
+
 export function replyKinds(text: string): string[] {
   const t = text.toLowerCase();
   const kinds: string[] = [];
+  if (packMath(text)) return ["math"];
   if (/certificad|certificaci|certificate|certification|\bce\b|\bfda\b|\biso\b|\bul\b|\brohs\b|\bsgs\b|grado alimenticio|food[- ]grade|apto para alimentos|suitable for food/.test(t)) kinds.push("certificate");
   if (/proveedor|supplier|seller|vendedor|f[aá]brica|factory|confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit/.test(t)) kinds.push("supplier");
   // "Guarantee" goes to customs authorization only when the question is about the import itself
@@ -68,7 +134,8 @@ export function replyKinds(text: string): string[] {
   const guaranteeWord = /garantiz|garant[ií]a de que|asegur|sin problema|guarantee/.test(t);
   if (customsCtx || (guaranteeWord && !kinds.includes("certificate"))) kinds.push("guarantee");
   if (/\bdai\b|arancel|partida|impuesto|\biva\b|tributo|tariff|duty|duties|\btax/.test(t)) kinds.push("dai");
-  if (/precio|costo|cu[aá]nto|cotiz|price|cost|quote|how much/.test(t)) kinds.push("cost");
+  if (/cu[aá]nto\s+(?:tiempo|tarda|demora)|cu[aá]ntos\s+d[ií]as|tiempo\s+de\s+(?:tr[aá]nsito|env[ií]o|llegada)|tarda\s+en\s+llegar|how\s+long|transit\s+time|lead\s+time/.test(t)) kinds.push("transit");
+  else if (/precio|costo|cu[aá]nto|cotiz|price|cost|quote|how much/.test(t)) kinds.push("cost");
   return kinds;
 }
 
@@ -141,6 +208,11 @@ const FIXED: Record<string, () => string> = {
       "No puedo dar el impuesto exacto sin la ficha técnica: el DAI depende de la partida arancelaria, y la partida se define con lo que dice esa ficha (qué es el producto, material, uso). En la estimación usamos 15% de DAI como referencia y el IVA de 12% sobre CIF + DAI. Siguiente paso: completa el formulario para ver el escenario y, para la partida exacta, comparte la ficha técnica con un agente aduanero de SEAL (WhatsApp +502 5996 4664).",
       "I can't give the exact tax without the technical sheet: the DAI depends on the tariff heading, and the heading is set from that sheet (what the product is, material, use). The estimate uses 15% DAI as reference and 12% IVA on CIF + DAI. Next step: complete the form to see the scenario and, for the exact heading, share the technical sheet with a SEAL customs broker (WhatsApp +502 5996 4664).",
     ),
+  transit: () =>
+    Lx(
+      "Como referencia, el tránsito marítimo desde China a Guatemala suele ser de 30 a 45 días, más el tiempo de producción del proveedor y el despacho. El plazo real lo confirman el proveedor (producción) y la cotización de flete de SEAL según la ruta y la fecha de embarque.",
+      "As a reference, ocean transit from China to Guatemala is usually 30 to 45 days, plus the supplier's production time and customs clearance. The real lead time is confirmed by the supplier (production) and SEAL's freight quote for the route and sailing date.",
+    ),
   cost: () =>
     Lx(
       "Puedo prepararte una estimación preliminar con los datos del formulario (producto, cantidad y, si lo tienes, volumen o peso). Un costo confirmado solo lo da una cotización de SEAL. Siguiente paso: continúa con el formulario.",
@@ -198,7 +270,8 @@ export function buildReply(r: ReplySpec): string {
   }
   if (!kinds.length && !r.newProduct) kinds = ["general"];
   kinds.forEach((k, i) => {
-    let t = k === "certificate" ? certificateReply(q, ctx) : (FIXED[k] ?? FIXED.general)();
+    let t =
+      k === "certificate" ? certificateReply(q, ctx) : k === "math" ? packMathReply(packMath(q)!) : (FIXED[k] ?? FIXED.general)();
     if (i === 0 && !parts.length) t = t.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't");
     parts.push(t);
   });
