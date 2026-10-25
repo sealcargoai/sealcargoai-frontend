@@ -58,7 +58,11 @@ const NEG_END = /[.,;:!?()]|\b(?:sino|pero|solo|sólo|solamente|únicamente|unic
 
 /** Splits a description into what the client wants and what they rule out. */
 export function splitExclusions(description?: string): { wanted: string; excluded: string } {
-  const t = String(description || "").toLowerCase();
+  const raw = String(description || "");
+  const lower = raw.toLowerCase();
+  // match on lowercase, keep the client's own casing when the lengths line up
+  const t = lower;
+  const src = lower.length === raw.length ? raw : lower;
   let wanted = "";
   let excluded = "";
   let pos = 0;
@@ -66,15 +70,17 @@ export function splitExclusions(description?: string): { wanted: string; exclude
   let m: RegExpExecArray | null;
   while ((m = NEG_START.exec(t))) {
     if (m.index < pos) continue;
-    wanted += t.slice(pos, m.index) + " ";
-    const rest = t.slice(m.index + m[0].length);
+    wanted += src.slice(pos, m.index) + " ";
+    const from = m.index + m[0].length;
+    const rest = t.slice(from);
     const end = rest.search(NEG_END);
-    const scope = end === -1 ? rest : rest.slice(0, end);
-    excluded += scope + " ";
-    pos = m.index + m[0].length + scope.length;
+    const len = end === -1 ? rest.length : end;
+    excluded += src.slice(from, from + len) + " ";
+    pos = from + len;
     NEG_START.lastIndex = pos;
   }
-  wanted += t.slice(pos);
+  if (pos === 0) return { wanted: raw, excluded: "" };
+  wanted += src.slice(pos);
   return { wanted, excluded };
 }
 
