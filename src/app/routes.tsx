@@ -7,7 +7,7 @@ import { CostBreakdown } from "./components/CostBreakdown";
 import { RiskCompliance } from "./components/RiskCompliance";
 import { FinalCTA } from "./components/FinalCTA";
 import { MainLayout } from "./components/MainLayout";
-import { AppError } from "./components/AppError";
+import { AppError, NotFound } from "./components/AppError";
 
 export const router = createBrowserRouter([
   {
@@ -22,6 +22,7 @@ export const router = createBrowserRouter([
       { path: "costs", Component: CostBreakdown },
       { path: "risk", Component: RiskCompliance },
       { path: "report", Component: FinalCTA },
+      { path: "*", Component: NotFound },
     ],
   },
 ]);
