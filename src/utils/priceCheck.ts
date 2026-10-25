@@ -68,8 +68,8 @@ export function priceIssue(
     const m = peerMedian;
     if (price < m * 0.2) {
       return Lx(
-        `Está muy por debajo de las demás opciones de esta búsqueda (precio típico cercano a ${formatUSD(m, 0)}).`,
-        `It is far below the other options in this search (typical price around ${formatUSD(m, 0)}).`,
+        `Está muy por debajo de las demás opciones de esta búsqueda (precio típico cercano a ${formatUSD(m, m < 10 ? 2 : 0)}).`,
+        `It is far below the other options in this search (typical price around ${formatUSD(m, m < 10 ? 2 : 0)}).`,
       );
     }
   }
