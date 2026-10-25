@@ -19,7 +19,7 @@ import {
 } from "recharts";
 import { buildCostPdf } from "../../utils/costPdf";
 import { Lx } from "../../utils/lang";
-import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
+import { saleUnitInfo, unitWordFor, quantityIntent } from "../../utils/saleUnit";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
@@ -136,9 +136,18 @@ export function CostBreakdown() {
   // The price is per sale unit (piece, set, box…). When the title says how many
   // pieces a set holds, the client can say whether their quantity is in pieces.
   const unitInfo = saleUnitInfo(stateSupplier);
-  const [qtyInPieces, setQtyInPieces] = useState(false);
+  // What the client wrote decides by default ("500 lápices" = pieces); if it is
+  // unclear, the estimate waits until they say whether the quantity is in sets or pieces.
+  const intent = quantityIntent(String(location.state?.productDescription ?? ""));
+  const [qtyMode, setQtyMode] = useState<"sets" | "pieces" | null>(
+    intent === "piece" ? "pieces" : intent === "pack" ? "sets" : null,
+  );
+  const [customPack, setCustomPack] = useState(0);
+  const packSize = unitInfo.packSize > 1 ? unitInfo.packSize : customPack;
+  const needsUnitDecision =
+    unitInfo.multi && (qtyMode === null || (qtyMode === "pieces" && !(packSize > 1)));
   const quantity =
-    qtyInPieces && unitInfo.packSize > 1 ? Math.ceil(requestedQty / unitInfo.packSize) : requestedQty;
+    unitInfo.multi && qtyMode === "pieces" && packSize > 1 ? Math.ceil(requestedQty / packSize) : requestedQty;
   // 0 = the client didn't give a budget (never invent one)
   const budget = parseFloat(String(stateBudget)) || 0;
   const destination = String(stateDestination);
@@ -158,6 +167,30 @@ export function CostBreakdown() {
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
+  if (!needsPriceDecision && needsUnitDecision) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          <button onClick={() => navigate(-1)} className="mb-4 text-sm text-slate-600 hover:text-[#0B3C5D]">
+            ← {L("Volver a proveedores", "Back to suppliers")}
+          </button>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
+          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+          <SaleUnitNotice
+            unit={unitInfo.unit}
+            packSize={packSize}
+            packFromTitle={unitInfo.packSize > 1}
+            requested={requestedQty}
+            mode={qtyMode}
+            fromDescription={intent !== ""}
+            onMode={setQtyMode}
+            onPack={setCustomPack}
+            blocking
+          />
+        </div>
+      </div>
+    );
+  }
   if (needsPriceDecision) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
@@ -337,10 +370,13 @@ export function CostBreakdown() {
         {unitInfo.multi && (
           <SaleUnitNotice
             unit={unitInfo.unit}
-            packSize={unitInfo.packSize}
+            packSize={packSize}
+            packFromTitle={unitInfo.packSize > 1}
             requested={requestedQty}
-            inPieces={qtyInPieces}
-            onChange={setQtyInPieces}
+            mode={qtyMode}
+            fromDescription={intent !== ""}
+            onMode={setQtyMode}
+            onPack={setCustomPack}
           />
         )}
         <SupplierDisclaimer
@@ -821,71 +857,102 @@ function OwnPrice({ current, onChange }: { current: number; onChange: (v: number
 function SaleUnitNotice({
   unit,
   packSize,
+  packFromTitle,
   requested,
-  inPieces,
-  onChange,
+  mode,
+  fromDescription,
+  onMode,
+  onPack,
+  blocking = false,
 }: {
   unit: string;
   packSize: number;
+  packFromTitle: boolean;
   requested: number;
-  inPieces: boolean;
-  onChange: (v: boolean) => void;
+  mode: "sets" | "pieces" | null;
+  fromDescription: boolean;
+  onMode: (m: "sets" | "pieces") => void;
+  onPack: (n: number) => void;
+  blocking?: boolean;
 }) {
+  const [packText, setPackText] = useState("");
   const one = unitWordFor(unit, 1);
-  const units = unitWordFor(unit, requested);
+  const many = unitWordFor(unit, 2);
   const sets = packSize > 1 ? Math.ceil(requested / packSize) : 0;
+  const packValue = parseInt(packText, 10);
+  const btn = (active: boolean) =>
+    `px-3 py-2 rounded-lg border-2 text-left ${active ? "border-[#0B3C5D] bg-white font-semibold" : "border-amber-300 bg-amber-50/50"}`;
   return (
-    <div className="mb-6 -mt-2 bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-900">
-      <p className="font-semibold mb-1">
-        {Lx(`El precio publicado es por ${one}`, `The published price is per ${one}`)}
-        {packSize > 1 ? Lx(` (${packSize} piezas según el título)`, ` (${packSize} pieces according to the title)`) : ""}
+    <div className={`${blocking ? "mb-8" : "mb-6 -mt-2"} bg-amber-50 border-2 border-amber-300 rounded-xl p-4 sm:p-5 text-sm text-amber-900`}>
+      <p className="font-semibold mb-1 text-base">
+        {blocking
+          ? Lx("Antes de calcular: ¿tu cantidad es en piezas o en " + many + "?", "Before calculating: is your quantity in pieces or in " + many + "?")
+          : Lx(`El precio publicado es por ${one}`, `The published price is per ${one}`)}
       </p>
-      {packSize > 1 ? (
-        <>
-          <p className="mb-3">
-            {Lx(
-              `¿Tu cantidad de ${requested.toLocaleString()} es en ${unitWordFor(unit, 2)} o en piezas sueltas?`,
-              `Is your quantity of ${requested.toLocaleString()} in ${unitWordFor(unit, 2)} or in single pieces?`,
-            )}
-          </p>
-          <div className="flex flex-col sm:flex-row gap-2">
-            <button
-              onClick={() => onChange(false)}
-              className={`px-3 py-2 rounded-lg border-2 text-left ${!inPieces ? "border-[#0B3C5D] bg-white font-semibold" : "border-amber-300"}`}
-            >
-              {Lx(`${requested.toLocaleString()} ${units}`, `${requested.toLocaleString()} ${units}`)}
-              <span className="block text-xs font-normal">
-                {Lx(`= ${(requested * packSize).toLocaleString()} piezas`, `= ${(requested * packSize).toLocaleString()} pieces`)}
-              </span>
-            </button>
-            <button
-              onClick={() => onChange(true)}
-              className={`px-3 py-2 rounded-lg border-2 text-left ${inPieces ? "border-[#0B3C5D] bg-white font-semibold" : "border-amber-300"}`}
-            >
-              {Lx(`${requested.toLocaleString()} piezas`, `${requested.toLocaleString()} pieces`)}
-              <span className="block text-xs font-normal">
-                {Lx(
+      <p className="mb-3">
+        {Lx(`Esta publicación vende por ${one}`, `This listing sells per ${one}`)}
+        {packFromTitle
+          ? Lx(` y su título indica ${packSize} piezas por ${one}.`, ` and its title says ${packSize} pieces per ${one}.`)
+          : Lx(`; el título no dice cuántas piezas trae cada ${one}.`, `; the title doesn't say how many pieces each ${one} holds.`)}
+        {fromDescription && mode
+          ? Lx(
+              ` Por lo que escribiste, tomamos tu cantidad como ${mode === "pieces" ? "piezas" : many}; puedes cambiarlo.`,
+              ` From what you wrote, we took your quantity as ${mode === "pieces" ? "pieces" : many}; you can change it.`,
+            )
+          : ""}
+      </p>
+      <div className="flex flex-col sm:flex-row gap-2">
+        <button onClick={() => onMode("sets")} className={btn(mode === "sets")}>
+          {`${requested.toLocaleString()} ${unitWordFor(unit, requested)}`}
+          {packSize > 1 && (
+            <span className="block text-xs font-normal">
+              {Lx(`= ${(requested * packSize).toLocaleString()} piezas`, `= ${(requested * packSize).toLocaleString()} pieces`)}
+            </span>
+          )}
+        </button>
+        <button onClick={() => onMode("pieces")} className={btn(mode === "pieces")}>
+          {Lx(`${requested.toLocaleString()} piezas`, `${requested.toLocaleString()} pieces`)}
+          <span className="block text-xs font-normal">
+            {packSize > 1
+              ? Lx(
                   `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} piezas)`,
                   `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} pieces)`,
-                )}
-              </span>
-            </button>
-          </div>
-          <p className="text-xs mt-2">
-            {Lx(
-              "El contenido se lee del título publicado: confírmalo con el proveedor antes de comprar.",
-              "The content is read from the listing title: confirm it with the supplier before buying.",
-            )}
-          </p>
-        </>
-      ) : (
-        <p>
-          {Lx(
-            `Calculamos con ${requested.toLocaleString()} ${units}. La publicación no dice cuántas piezas trae cada ${one}: confírmalo con el proveedor, porque cambia el costo por pieza.`,
-            `We calculated with ${requested.toLocaleString()} ${units}. The listing doesn't say how many pieces each ${one} holds: confirm it with the supplier, as it changes the cost per piece.`,
-          )}
-        </p>
+                )
+              : Lx(`necesitamos saber cuántas trae cada ${one}`, `we need to know how many each ${one} holds`)}
+          </span>
+        </button>
+      </div>
+      {mode === "pieces" && !packFromTitle && (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            if (packValue > 1 && packValue <= 100000) onPack(packValue);
+          }}
+          className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-end"
+        >
+          <label className="flex-1">
+            <span className="block mb-1 font-medium">{Lx(`Piezas por ${one} (según el proveedor)`, `Pieces per ${one} (per the supplier)`)}</span>
+            <input
+              type="number"
+              min="2"
+              inputMode="numeric"
+              value={packText}
+              onChange={(e) => setPackText(e.target.value)}
+              className="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder={Lx("Ej. 12", "e.g. 12")}
+            />
+          </label>
+          <button type="submit" disabled={!(packValue > 1)} className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white font-semibold disabled:opacity-50">
+            {Lx("Calcular", "Calculate")}
+          </button>
+        </form>
       )}
+      <p className="text-xs mt-3">
+        {Lx(
+          "El contenido se lee del título o lo indicas tú: confírmalo con el proveedor antes de comprar, porque cambia el costo por pieza.",
+          "The content comes from the title or from you: confirm it with the supplier before buying, as it changes the cost per piece.",
+        )}
+      </p>
     </div>
   );
 }

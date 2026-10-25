@@ -213,10 +213,10 @@ export function getReviewTopics(productType: string, supplier: any, description 
       {
         title: T("Etiquetas e instrucciones en español", "Labels and instructions in Spanish"),
         why: T(
-          "Para la venta al consumidor, la información del producto debe poder leerse en español.",
-          "For sale to consumers, product information should be readable in Spanish.",
+          "Si el producto se venderá al consumidor, conviene confirmar qué información debe llevar en español la etiqueta para venderlo en Guatemala.",
+          "If the product will be sold to consumers, it is worth confirming what information the label should carry in Spanish to sell it in Guatemala.",
         ),
-        action: T("Confirmar con el proveedor si puede etiquetar en español o planificar el etiquetado en Guatemala.", "Confirm whether the supplier can label in Spanish, or plan labeling in Guatemala."),
+        action: T("Confirmarlo con la fuente indicada y, según la respuesta, pedir al proveedor el etiquetado en español o planificarlo en Guatemala.", "Confirm it with the source below and, depending on the answer, ask the supplier for Spanish labels or plan labeling in Guatemala."),
         source: T("DIACO · Agente aduanero (SEAL)", "DIACO · Customs broker (SEAL)"),
       },
     );
