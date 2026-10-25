@@ -28,9 +28,10 @@ import { SEAL_COMPANY } from "../../utils/reportExports";
 import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
 import { Lx, plural } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
-import { flagPrices } from "../../utils/priceCheck";
+import { flagPrices, comparablePrice } from "../../utils/priceCheck";
 import { orderByUse, matchUse, wantedText } from "../../utils/useMatch";
-import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
+import { orderByMaterial, matchMaterial } from "../../utils/materialMatch";
+import { saleUnitInfo, unitWordFor, packSizeFromTitle } from "../../utils/saleUnit";
 import { descriptionIsDetailed } from "../../utils/descriptionCheck";
 import {
   supplierPriceInfo,
@@ -577,10 +578,13 @@ function SpecSummary({ reqs, list }: { reqs: Spec[]; list: { productName?: strin
 function sortSuppliers<T extends { price: number; rating: number | null; moq: number; trustScore?: number; aiScore: number }>(
   list: T[],
   by: string,
+  productType = "",
 ): T[] {
   if (by === "seal") return list;
   const copy = [...list];
-  const price = (s: T) => (s.price > 0 ? s.price : Infinity);
+  // lowest price per piece: a box of 100 is not "cheaper" than one piece; packs
+  // without a known content go last
+  const price = (s: T) => comparablePrice(s as never, productType) ?? Infinity;
   if (by === "price") copy.sort((a, b) => price(a) - price(b));
   if (by === "trust") copy.sort((a, b) => (b.trustScore ?? b.aiScore) - (a.trustScore ?? a.aiScore));
   if (by === "rating") copy.sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0));
@@ -594,6 +598,8 @@ interface Supplier {
   productName?: string;
   priceRange?: string;
   priceFlag?: string;
+  priceNotComparable?: boolean;
+  saleUnit?: string;
   rating: number | null;
   reviews: number;
   moq: number;
@@ -646,7 +652,7 @@ export function SupplierResults() {
   const reqSpecs = requestedSpecs(String(location.state?.productDescription ?? ""));
   // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
   // Order: requested use first (a paint mill is not a corn mill), then specs, then the rest
-  const displaySuppliers: Supplier[] = flagPrices(orderByUse(orderBySpecs(
+  const displaySuppliers: Supplier[] = flagPrices(orderByUse(orderByMaterial(orderBySpecs(
     (apiData?.topSuppliers ?? []).map((s: Supplier, idx: number) => ({
       ...s,
       // Older results could carry 0 when the price text was "US$0.02-0.05": use the range midpoint
@@ -665,17 +671,19 @@ export function SupplierResults() {
       productName: s.productName ? decodeEntities(s.productName) : s.productName,
     })),
     reqSpecs,
-  ), String(location.state?.productDescription ?? "")).slice(0, 9), String(location.state?.productType ?? ""));
+  ), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")).slice(0, 9), String(location.state?.productType ?? ""));
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
+  // the list of filtered-out listings is capped; the count is the real one
+  const filteredTotal = Math.max(Number(apiData?.filteredCount) || 0, filteredOutList.length);
   const isLiveData = !!(apiData?.topSuppliers?.length > 0);
 
   // ── Navigation state for cost breakdown ───────────────────────────────────
   const navQuantity = location.state?.quantity ?? "1000";
   const navBudget = location.state?.budget ?? "";
   const navDestination = location.state?.destination ?? "GT";
-  const navProductType = location.state?.productType ?? "furniture";
+  const navProductType = location.state?.productType ?? "";
 
   const rates = useRates();
 
@@ -686,12 +694,30 @@ export function SupplierResults() {
   // client chooses explicitly: we never jump to a very different alternative.
   const descriptionText = String(location.state?.productDescription ?? "");
   const keyOf = (s: Supplier) => supplierKey(s, descriptionText);
+  // The same scenario the costs page uses (choices the client made there, if any)
+  const storedChoicesFor = (s: Supplier) => (loadCostChoices(supplierKey(s, descriptionText)) ?? {}) as CostChoices;
+  const scenarioFor = (s: Supplier) =>
+    resolveScenario(s, storedChoicesFor(s), {
+      requestedQty: parseInt(String(location.state?.quantity ?? "1000")) || 1000,
+      productType: String(location.state?.productType ?? ""),
+      description: descriptionText,
+    });
+  const moqText = (s: Supplier) => {
+    const n = Number(String(s.moq ?? "").replace(/,/g, ""));
+    if (!(n > 0)) return Lx("N/D", "N/A");
+    const unit = (s as { saleUnit?: string }).saleUnit;
+    if (unit) return `${n.toLocaleString()} ${unitWordFor(unit, n)}`;
+    return packSizeFromTitle(s.productName) > 1 ? `${n.toLocaleString()} ${Lx("(¿piezas o sets?)", "(pieces or sets?)")}` : `${n.toLocaleString()} ${unitWordFor("piece", n)}`;
+  };
   const first = displaySuppliers[0];
   const firstUsable =
     !!first &&
     !first.priceFlag &&
     first.price > 0 &&
     matchUse(descriptionText, first.productName)?.status !== "other" &&
+    matchMaterial(descriptionText, first.productName)?.status !== "other" &&
+    // an option whose minimum order is above the client's order is not taken on its own
+    !scenarioFor(first).moqNote &&
     // when the client gave specs, only an option that states them is taken on its own
     (!reqSpecs.length || matchSpecs(reqSpecs, first.productName)!.items.every((x) => x.status === "meets" && !x.edge));
   const [chosen, setChosen] = useState<Supplier | null>(
@@ -872,7 +898,7 @@ export function SupplierResults() {
           </h1>
           <p className="text-slate-600">
             {displaySuppliers.length} {plural(displaySuppliers.length, "proveedor mejor clasificado", "proveedores mejor clasificados", "top-ranked supplier", "top-ranked suppliers")} •{" "}
-            {filteredOutList.length} {plural(filteredOutList.length, "filtrado", "filtrados", "filtered out", "filtered out")}
+            {filteredTotal} {plural(filteredTotal, "filtrado", "filtrados", "filtered out", "filtered out")}
             <button
               onClick={() => setShowFiltered(!showFiltered)}
               className="ml-2 text-blue-600 hover:underline text-sm"
@@ -945,8 +971,13 @@ export function SupplierResults() {
           <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6 mb-6">
             <h3 className="font-semibold text-red-900 mb-4 flex items-center gap-2">
               <X className="w-5 h-5" />
-              {filteredOutList.length} {plural(filteredOutList.length, "proveedor que no pasó los filtros", "proveedores que no pasaron los filtros", "supplier that did not pass the filters", "suppliers that did not pass the filters")}
+              {filteredTotal} {plural(filteredTotal, "proveedor que no pasó los filtros", "proveedores que no pasaron los filtros", "supplier that did not pass the filters", "suppliers that did not pass the filters")}
             </h3>
+            {filteredTotal > filteredOutList.length && (
+              <p className="text-sm text-red-800 mb-3">
+                {Lx(`Mostramos los primeros ${filteredOutList.length}.`, `Showing the first ${filteredOutList.length}.`)}
+              </p>
+            )}
             <div className="space-y-2">
               {filteredOutList.map((s: any, i: number) => (
                 <div
@@ -999,7 +1030,13 @@ export function SupplierResults() {
                       ? Lx("tiene un precio por confirmar", "has a price to confirm")
                       : matchUse(descriptionText, first.productName)?.status === "other"
                         ? Lx("parece para otro uso", "seems meant for another use")
-                        : Lx("no indica todo lo que pediste", "doesn't state everything you asked for");
+                        : matchMaterial(descriptionText, first.productName)?.status === "other"
+                          ? Lx("indica otro material", "names another material")
+                        : scenarioFor(first).moqNote
+                          ? /sin indicar|without saying/.test(scenarioFor(first).moqNote)
+                            ? Lx("no aclara en qué unidad es su pedido mínimo", "doesn't say what unit its minimum order is in")
+                            : Lx("pide un pedido mínimo mayor que tu cantidad", "requires a minimum order above your quantity")
+                          : Lx("no indica todo lo que pediste", "doesn't state everything you asked for");
                   return Lx(
                     `La primera de la lista ${why}, así que no escogemos una por ti. Toca la opción que quieres revisar.`,
                     `The first one on the list ${why}, so we don't pick one for you. Tap the option you want to review.`,
@@ -1028,7 +1065,7 @@ export function SupplierResults() {
             </div>
 
             {/* Supplier Cards */}
-            {sortSuppliers(displaySuppliers, sortBy).map((supplier, index) => {
+            {sortSuppliers(displaySuppliers, sortBy, String(location.state?.productType ?? "")).map((supplier, index) => {
               const images = getProductImages(supplier);
               return (
                 <div
@@ -1143,12 +1180,20 @@ export function SupplierResults() {
                               </div>
                               {pi.isRange && (
                                 <div className="text-xs text-slate-500">
-                                  {Lx("medio", "midpoint")} {formatUSD(pi.used, 2)}
+                                  {pi.isMid ? Lx("medio", "midpoint") : Lx("se usa", "used")} {formatUSD(pi.used, 2)}
                                 </div>
                               )}
                               {supplier.priceFlag && (
                                 <div className="mt-1 inline-block text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2 py-0.5">
                                   {Lx("Precio atípico", "Atypical price")}
+                                </div>
+                              )}
+                              {supplier.priceNotComparable && (
+                                <div className="mt-1 block text-xs text-slate-600 max-w-[14rem] ml-auto">
+                                  {Lx(
+                                    `No comparable hasta confirmar el empaque: no dice cuántas piezas trae cada ${unitWordFor(supplier.saleUnit, 1)}.`,
+                                    `Not comparable until the packaging is confirmed: it doesn't say how many pieces each ${unitWordFor(supplier.saleUnit, 1)} holds.`,
+                                  )}
                                 </div>
                               )}
                             </>
@@ -1164,8 +1209,20 @@ export function SupplierResults() {
                           {t("suppliers.moq")}
                         </div>
                         <div className="font-semibold text-[#0B3C5D] text-sm">
-                          {supplier.moq}
+                          {moqText(supplier)}
                         </div>
+                        {(() => {
+                          const sc = scenarioFor(supplier);
+                          return sc.moqNote ? (
+                            <div className="text-[11px] leading-tight text-amber-800 mt-1">
+                              {sc.moqNote.startsWith("El pedido mínimo publicado es") || sc.moqNote.startsWith("The published minimum")
+                                ? /sin indicar|without saying/.test(sc.moqNote)
+                                  ? Lx("Unidad del mínimo por confirmar", "Minimum's unit to confirm")
+                                  : Lx("Tu pedido queda por debajo", "Your order is below it")
+                                : ""}
+                            </div>
+                          ) : null;
+                        })()}
                       </div>
                       <div className="bg-slate-50 rounded-lg p-3">
                         <div className="text-xs text-slate-600 mb-1">
@@ -1341,11 +1398,8 @@ export function SupplierResults() {
                     if (!hasChoice) return <p className="text-slate-600">{Lx("Elige una opción de la lista.", "Choose an option from the list.")}</p>;
                     // The same scenario the costs page uses for this supplier
                     // (price the client typed, sets or pieces, price basis)
-                    const sc = resolveScenario(
-                      selectedSupplier,
-                      (loadCostChoices(supplierKey(selectedSupplier, descriptionText)) ?? {}) as CostChoices,
-                      { requestedQty: parseInt(navQuantity || "1000") || 1000, productType: String(location.state?.productType ?? ""), description: descriptionText },
-                    );
+                    const sc = scenarioFor(selectedSupplier);
+                    const hasChoices = Object.values(storedChoicesFor(selectedSupplier)).some((v) => v !== undefined && v !== 0 && v !== false);
                     if (!(sc.price > 0))
                       return (
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-700">
@@ -1388,14 +1442,15 @@ export function SupplierResults() {
                     );
                     return (
                       <>
-                        {(sc.ownPrice || sc.notes.length > 0) && (
-                          <p className="text-xs text-slate-500">
-                            {[
-                              sc.ownPrice ? Lx("Con el precio que indicaste", "With the price you entered") : "",
-                              `${sc.quantity.toLocaleString()} ${unitWordFor(sc.unitInfo.unit, sc.quantity)}`,
-                            ].filter(Boolean).join(" · ")}
-                            {Lx(" (mismo escenario del desglose)", " (same scenario as the breakdown)")}
-                          </p>
+                        <p className="text-xs text-slate-500">
+                          {[
+                            sc.ownPrice ? Lx("Con el precio que indicaste", "With the price you entered") : "",
+                            `${sc.quantity.toLocaleString()} ${unitWordFor(sc.unitInfo.unit, sc.quantity)}${sc.piecesPerUnit > 1 ? ` (${(sc.quantity * sc.piecesPerUnit).toLocaleString()} ${Lx("piezas", "pieces")})` : ""}`,
+                          ].filter(Boolean).join(" · ")}
+                          {hasChoices ? Lx(" · mismo escenario del desglose", " · same scenario as the breakdown") : ""}
+                        </p>
+                        {sc.moqNote && (
+                          <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded p-2">{sc.moqNote}</p>
                         )}
                         <div className="flex items-center justify-between">
                           <span>{t("suppliers.baseCost")}</span>
@@ -1420,7 +1475,7 @@ export function SupplierResults() {
                           </span>
                         </div>
                         <div className="flex items-center justify-between pt-2 border-t border-slate-200 font-semibold text-[#0B3C5D]">
-                          <span>{t("suppliers.totalEstimate")}</span>
+                          <span>{est.freightPending ? Lx("Total parcial, sin flete:", "Partial total, without freight:") : t("suppliers.totalEstimate")}</span>
                           <span>{formatQ(est.totalCost, est.exchangeRate)}</span>
                         </div>
                       </>

@@ -124,7 +124,7 @@ export function CostBreakdown() {
   const stateQuantity = location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
-  const stateProductType = location.state?.productType ?? "furniture";
+  const stateProductType = location.state?.productType ?? "";
   const requestedQty = parseInt(String(stateQuantity)) || 1000;
   // Price, sale unit, pieces per set, price basis and minimum order: one
   // scenario shared with the supplier list and the reports (utils/scenario)
@@ -146,20 +146,25 @@ export function CostBreakdown() {
   const isLiveData = hasUsableSupplier(stateSupplier);
   const priceInfo = supplierPriceInfo(stateSupplier);
   const productDescription = String(location.state?.productDescription ?? "");
-  const priceNote = priceInfo.isRange
-    ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
+  const priceNote = stateSupplier?.priceBasisNote
+    ? String(stateSupplier.priceBasisNote)
+    : priceInfo.isRange
+    ? priceInfo.isMid
+      ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
+      : L(`rango publicado ${priceInfo.published}`, `published range ${priceInfo.published}`)
     : "";
 
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
   useEffect(() => {
-    const choices: CostChoices = { qtyMode: qtyMode ?? undefined, customPack, customPrice, usePublished, priceBasis };
+    // only what the client chose; the default read from the description is recomputed
+    const choices: CostChoices = { qtyMode: qtyModeChoice, customPack, customPrice, usePublished, priceBasis };
     saveCostChoices(choiceKey, choices);
     if (JSON.stringify(location.state?.costChoices ?? {}) === JSON.stringify(choices)) return;
     navigate(location.pathname, { replace: true, state: { ...(location.state ?? {}), costChoices: choices } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qtyMode, customPack, customPrice, usePublished, priceBasis]);
+  }, [qtyModeChoice, customPack, customPrice, usePublished, priceBasis]);
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
   if (!needsPriceDecision && needsUnitDecision) {
     return (
@@ -212,7 +217,7 @@ export function CostBreakdown() {
               </button>
             </div>
           </div>
-          <OwnPrice current={customPrice} onChange={(v) => setCustomPrice(v)} />
+          <OwnPrice current={customPrice} unit={unitInfo.unit} onChange={(v) => setCustomPrice(v)} />
         </div>
       </div>
     );
@@ -230,6 +235,7 @@ export function CostBreakdown() {
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
           <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
           <PriceDecision
+            unit={unitInfo.unit}
             reason={priceFlag}
             published={priceInfo.published}
             onCustom={(v) => setCustomPrice(v)}
@@ -300,7 +306,10 @@ export function CostBreakdown() {
     amount: l.amount,
     details: l.detail,
     color: LINE_STYLE[l.key]?.color ?? "blue",
-    displayPercent: `${((l.amount / costs.totalCost) * 100).toFixed(1)}%`,
+    displayPercent:
+      (l.key === "freight" && costs.freightPending) || !(costs.totalCost > 0)
+        ? "—"
+        : `${((l.amount / costs.totalCost) * 100).toFixed(1)}%`,
     pending: l.key === "freight" && costs.freightPending,
   }));
 
@@ -407,7 +416,7 @@ export function CostBreakdown() {
         </div>
 
         <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
-        <OwnPrice current={customPrice} onChange={(v) => setCustomPrice(v)} />
+        <OwnPrice current={customPrice} unit={unitInfo.unit} onChange={(v) => setCustomPrice(v)} />
         {unitInfo.multi && (
           <SaleUnitNotice
             unit={unitInfo.unit}
@@ -438,7 +447,9 @@ export function CostBreakdown() {
           <div className="relative z-10 flex items-center justify-between gap-4">
             <div className="flex-1 min-w-0">
               <div className="text-blue-100 mb-2 sm:mb-3 text-sm sm:text-lg">
-                {t("cost.totalLandedCost")}
+                {costs.freightPending
+                  ? L("Costo parcial estimado en Guatemala (sin flete)", "Estimated partial cost in Guatemala (without freight)")
+                  : t("cost.totalLandedCost")}
               </div>
               <div className="text-3xl sm:text-5xl md:text-6xl font-bold drop-shadow-lg mb-2 sm:mb-3 break-all">
                 {Q(costs.totalCost)}
@@ -691,12 +702,33 @@ export function CostBreakdown() {
                             `exceeds your purchase budget of ${formatUSD(budget, 2)} by ${formatUSD(-diff, 2)}.`,
                           )}{" "}
                       {L(
-                        `Aparte, traer la compra a Guatemala suma ${Q(extra)} en flete, seguro, impuestos y gastos${costs.freightPending ? " (sin contar el flete, por cotizar)" : ""}. Confírmalo con una cotización antes de decidir.`,
-                        `On top of that, bringing it to Guatemala adds ${Q(extra)} in freight, insurance, taxes and charges${costs.freightPending ? " (freight not included, to be quoted)" : ""}. Confirm it with a quote before deciding.`,
+                        costs.freightPending
+                          ? `Aparte, traer la compra a Guatemala suma ${Q(extra)} en seguro, impuestos y gastos; el flete se cotiza aparte y no está incluido. Confírmalo con una cotización antes de decidir.`
+                          : `Aparte, traer la compra a Guatemala suma ${Q(extra)} en flete, seguro, impuestos y gastos. Confírmalo con una cotización antes de decidir.`,
+                        costs.freightPending
+                          ? `On top of that, bringing it to Guatemala adds ${Q(extra)} in insurance, taxes and charges; freight is quoted separately and not included. Confirm it with a quote before deciding.`
+                          : `On top of that, bringing it to Guatemala adds ${Q(extra)} in freight, insurance, taxes and charges. Confirm it with a quote before deciding.`,
                       )}
                     </span>
                   </li>
                 );
+              })()}
+              {(() => {
+                // Small orders: fixed charges weigh more than the product itself
+                const fixed = costs.lines
+                  .filter((l) => l.key === "insurance" || l.key === "customs" || l.key === "local")
+                  .reduce((a, l) => a + l.amount, 0);
+                return costs.totalCost > 0 && costs.productCost < fixed ? (
+                  <li className="flex items-start gap-2">
+                    <span className="text-green-500 mt-1">•</span>
+                    <span>
+                      {L(
+                        `En este pedido, los cargos que no dependen de la cantidad (seguro mínimo, honorarios de aduana y gastos en destino) suman ${Q(fixed)}, más que el producto (${Q(costs.productCost)}). Por eso el costo por ${unitWordFor(unitInfo.unit, 1)} sale alto; con una cantidad mayor se reparte entre más unidades.`,
+                        `In this order, the charges that don't depend on quantity (minimum insurance, customs fee and destination charges) add up to ${Q(fixed)}, more than the product (${Q(costs.productCost)}). That's why the cost per ${unitWordFor(unitInfo.unit, 1)} is high; with a larger quantity it is spread over more units.`,
+                      )}
+                    </span>
+                  </li>
+                ) : null;
               })()}
               <li className="flex items-start gap-2">
                 <span className="text-green-500 mt-1">•</span>
@@ -750,7 +782,7 @@ export function CostBreakdown() {
               {L("Variables que pueden cambiar este escenario", "Variables that can change this scenario")}
             </h3>
             <ul className="space-y-2 text-sm text-blue-800">
-              {scenarioVariables(costs, { priceIsMidpoint: priceInfo.isRange }).map((v, i) => (
+              {scenarioVariables(costs, { priceIsMidpoint: priceInfo.isMid }).map((v, i) => (
                 <li key={i} className="flex items-start gap-2">
                   <span className="text-blue-500 mt-1">•</span>
                   <span>{v}</span>
@@ -805,7 +837,9 @@ function PriceDecision({
   onCustom,
   onUsePublished,
   onBack,
+  unit = "",
 }: {
+  unit?: string;
   reason: string;
   published: string;
   onCustom: (v: number) => void;
@@ -835,7 +869,7 @@ function PriceDecision({
         className="flex flex-col sm:flex-row gap-3 sm:items-end mb-4"
       >
         <label className="flex-1 text-sm text-slate-700">
-          <span className="block mb-1 font-medium">{Lx("Precio unitario cotizado (US$)", "Quoted unit price (US$)")}</span>
+          <span className="block mb-1 font-medium">{Lx(`Precio cotizado por ${unitWordFor(unit, 1)} (US$)`, `Quoted price per ${unitWordFor(unit, 1)} (US$)`)}</span>
           <input
             type="number"
             min="0.01"
@@ -868,7 +902,7 @@ function PriceDecision({
 }
 
 /** Lets the client recalculate with the price they were quoted. */
-function OwnPrice({ current, onChange }: { current: number; onChange: (v: number) => void }) {
+function OwnPrice({ current, onChange, unit = "" }: { current: number; onChange: (v: number) => void; unit?: string }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(current > 0 ? String(current) : "");
   const value = parseFloat(text.replace(",", "."));
@@ -896,7 +930,7 @@ function OwnPrice({ current, onChange }: { current: number; onChange: (v: number
       className="mb-6 -mt-4 flex flex-col sm:flex-row gap-3 sm:items-end bg-white border border-slate-200 rounded-xl p-4"
     >
       <label className="flex-1 text-sm text-slate-700">
-        <span className="block mb-1 font-medium">{Lx("Precio unitario cotizado (US$)", "Quoted unit price (US$)")}</span>
+        <span className="block mb-1 font-medium">{Lx(`Precio cotizado por ${unitWordFor(unit, 1)} (US$)`, `Quoted price per ${unitWordFor(unit, 1)} (US$)`)}</span>
         <input
           type="number"
           min="0.01"

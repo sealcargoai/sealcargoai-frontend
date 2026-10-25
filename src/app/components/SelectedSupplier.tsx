@@ -7,6 +7,7 @@ import { formatUSD } from "../../utils/costCalculator";
 import { Lx } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, specLabel } from "../../utils/capacity";
 import { matchUse } from "../../utils/useMatch";
+import { matchMaterial } from "../../utils/materialMatch";
 
 const SPEC_TONE: Record<string, string> = {
   green: "bg-green-50 border-green-200 text-green-800",
@@ -21,7 +22,8 @@ export function SpecTags({ description, productName, warn = false }: { descripti
   const reqs = requestedSpecs(description);
   const m = matchSpecs(reqs, productName);
   const use = matchUse(description, productName);
-  if (!m && !use) return null;
+  const mat = matchMaterial(description, productName);
+  if (!m && !use && !mat) return null;
   const differs = !!m?.items.some((i) => i.status !== "meets");
   const otherUse = use?.status === "other";
   const useTag = use
@@ -62,6 +64,17 @@ export function SpecTags({ description, productName, warn = false }: { descripti
             {useTag.sub && <span className="opacity-80"> · {useTag.sub}</span>}
           </span>
         )}
+        {mat && (
+          <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[mat.status === "match" ? "green" : "red"]}`}>
+            <span className="font-semibold">
+              {mat.status === "match"
+                ? Lx(`Indica el material: ${mat.listed}`, `States the material: ${mat.listed}`)
+                : Lx(`Material distinto: ${mat.listed}`, `Different material: ${mat.listed}`)}
+            </span>
+            {mat.status === "other" && mat.asked && <span className="opacity-80"> · {Lx(`Pediste ${mat.asked}`, `You asked for ${mat.asked}`)}</span>}
+            {mat.status === "other" && !mat.asked && <span className="opacity-80"> · {Lx("Lo excluiste", "You ruled it out")}</span>}
+          </span>
+        )}
         {m?.items.map((i, k) => {
           const l = specLabel(i);
           return (
@@ -82,6 +95,19 @@ export function SpecTags({ description, productName, warn = false }: { descripti
             : Lx(
                 `Ojo: esta publicación parece destinada a ${use!.listed}, no a ${use!.asked}. El escenario de costos puede no corresponder a lo que buscas; vuelve a la lista y escoge una opción para el uso que necesitas.`,
                 `Note: this listing seems meant for ${use!.listed}, not ${use!.asked}. The cost scenario may not match what you're looking for; go back to the list and choose an option for the use you need.`,
+              )}
+        </p>
+      )}
+      {warn && mat?.status === "other" && (
+        <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
+          {mat.asked
+            ? Lx(
+                `Ojo: esta publicación indica ${mat.listed}, no ${mat.asked}. El material cambia el producto, el precio y la partida; confírmalo con el proveedor o escoge otra opción.`,
+                `Note: this listing states ${mat.listed}, not ${mat.asked}. The material changes the product, the price and the tariff heading; confirm it with the supplier or choose another option.`,
+              )
+            : Lx(
+                `Ojo: esta publicación indica ${mat.listed}, un material que excluiste. Confírmalo con el proveedor o escoge otra opción.`,
+                `Note: this listing states ${mat.listed}, a material you ruled out. Confirm it with the supplier or choose another option.`,
               )}
         </p>
       )}
@@ -266,7 +292,9 @@ export function supplierPriceInfo(s?: SelectedSupplierData | null) {
     : used > 0
       ? formatUSD(used, 2)
       : Lx("N/D", "N/A");
-  return { used, isRange, published };
+  // "midpoint" only when the price used really is the middle of the range
+  const isMid = isRange && used > 0 && Math.abs(used - (nums[0] + nums[1]) / 2) <= Math.max(0.005, used * 0.005);
+  return { used, isRange, published, isMid };
 }
 
 export function hasUsableSupplier(s?: SelectedSupplierData | null): boolean {
@@ -360,7 +388,9 @@ export function SelectedSupplierCard({ supplier, description = "" }: { supplier:
           )}
           {isRange && (
             <p className="text-xs text-slate-500 mt-0.5">
-              {Lx(`Se calculó con ${formatUSD(used, 2)} (precio medio)`, `Calculated with ${formatUSD(used, 2)} (midpoint)`)}
+              {supplierPriceInfo(supplier).isMid
+                ? Lx(`Se calculó con ${formatUSD(used, 2)} (precio medio)`, `Calculated with ${formatUSD(used, 2)} (midpoint)`)
+                : Lx(`Se calculó con ${formatUSD(used, 2)}`, `Calculated with ${formatUSD(used, 2)}`)}
             </p>
           )}
           {link && (

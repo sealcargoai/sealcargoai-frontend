@@ -111,7 +111,7 @@ export function FinalCTA() {
   const stateQuantity = location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
-  const stateProductType = location.state?.productType ?? "furniture";
+  const stateProductType = location.state?.productType ?? "";
   const stateSuppliersData = location.state?.suppliersData ?? null;
 
   const quantity = parseInt(String(stateQuantity)) || 1000;
@@ -125,10 +125,14 @@ export function FinalCTA() {
   const supplierName = stateSupplier?.name || "";
   const isLiveData = hasUsableSupplier(stateSupplier);
   const priceInfo = supplierPriceInfo(stateSupplier);
-  const priceNote = stateSupplier?.priceSource === "client"
+  const priceNote = stateSupplier?.priceBasisNote
+    ? String(stateSupplier.priceBasisNote)
+    : stateSupplier?.priceSource === "client"
     ? L("precio indicado por el cliente", "price entered by the client")
     : priceInfo.isRange
-      ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
+      ? priceInfo.isMid
+        ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
+        : L(`rango publicado ${priceInfo.published}`, `published range ${priceInfo.published}`)
       : stateSupplier?.priceConfirmed
         ? L("precio publicado atípico, usado a pedido del cliente", "atypical published price, used at the client's request")
         : "";
@@ -167,6 +171,8 @@ export function FinalCTA() {
 
 
   // ── Modal state ───────────────────────────────────────────────────────────
+  // One ID per report: the screen, the PDF and the email show the same one
+  const [reportId] = useState(() => `SEAL-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -184,13 +190,13 @@ export function FinalCTA() {
 
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
 
-  const reportId = `SEAL-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`;
 
   // Exactly what the PDF contains
   const reportSections = [
     { name: L("Datos de la consulta y descripción del producto", "Request details and product description") },
     { name: L("Proveedor considerado", "Supplier considered") },
     { name: L("Escenario estimado de costos en Guatemala", "Estimated cost scenario in Guatemala") },
+    ...(reportNotes.length ? [{ name: L("Supuestos de cantidad, precio y pedido mínimo", "Quantity, price and minimum-order assumptions") }] : []),
     { name: L("Variables que pueden cambiar el escenario", "Variables that can change the scenario") },
     { name: L(`Aspectos por revisar (${reviewTopics.length})`, `Aspects to review (${reviewTopics.length})`) },
     { name: L("Aviso y alcance de la herramienta", "Notice and scope of the tool") },
@@ -503,8 +509,8 @@ export function FinalCTA() {
               <div className="text-sm text-blue-700 mb-2">
                 {t("final.bestSupplier")}
               </div>
-              <div className="font-bold text-xl text-[#0B3C5D] mb-1 truncate">
-                {supplierName.split(" ").slice(0, 2).join(" ")}
+              <div className="font-bold text-lg text-[#0B3C5D] mb-1 break-words" title={supplierName}>
+                {supplierName}
               </div>
               <div className="flex items-center gap-1 text-sm text-blue-700">
                 <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
@@ -519,7 +525,7 @@ export function FinalCTA() {
 
             <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-6 border border-green-200">
               <div className="text-sm text-green-700 mb-2">
-                {t("final.totalCost")}
+                {costs.freightPending ? L("Costo parcial estimado (sin flete)", "Estimated partial cost (without freight)") : t("final.totalCost")}
               </div>
               <div className="font-bold text-xl text-[#0B3C5D] mb-1">
                 {Q(costs.totalCost)}

@@ -1,4 +1,5 @@
 import { wantedText } from "../../utils/useMatch";
+import { FOOD_USE } from "../../utils/category";
 import { useNavigate, useLocation } from "react-router";
 import { cleanSupplier } from "../../utils/text";
 import { ClipboardList, FileText, Info, ArrowRight, Building2, CheckCircle, Circle } from "lucide-react";
@@ -36,8 +37,6 @@ export function categoryLabel(c: string): string {
   return Lx(l[0], l[1]);
 }
 
-// Machines whose description mentions food use get the food-contact topic
-const FOOD_USE = /aliment|comida|\bfood|caf[eé](?![a-záéíóúñ])|coffee|panader|bakery|\bpan\b|bread|tortill|carne|\bmeat|l[aá]cte|leche|dairy|\bmilk|bebida|beverage|jugo|juice|snack|chocolate|cacao|az[uú]car|sugar|harina|flour|granos?\b|grain|ma[ií]z|\bcorn\b|frut|fruit|verdura|vegetable|cocina|kitchen|restaurante|restaurant/i;
 
 export function getReviewTopics(productType: string, supplier: any, description = ""): ReviewTopic[] {
   const T = (es: string, en: string) => Lx(es, en);
