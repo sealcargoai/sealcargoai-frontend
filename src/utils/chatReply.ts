@@ -1,7 +1,7 @@
 // Chat answers: short, honest, and tied to the product the client actually
 // named. Without a known product the answer stays general and asks for it.
 import { Lx } from "./lang";
-import { inferCategory, FOOD_USE } from "./category";
+import { inferCategory, FOOD_USE, CATEGORY_KEYWORDS } from "./category";
 import { wantedText } from "./useMatch";
 
 export interface ChatCtx {
@@ -10,7 +10,7 @@ export interface ChatCtx {
 
 // "son lápices escolares", "es un molino", "mi producto es…", "quiero importar…"
 const STATEMENT =
-  /^\s*(?:no[,.]?\s+)?(?:(?:en\s+realidad|realmente|perd[oó]n|corrijo)[,.]?\s+)?(?:son|es|eran|era|se\s+trata\s+de|mi\s+producto\s+es|el\s+producto\s+es|lo\s+que\s+importo\s+(?:es|son)|quiero\s+importar|voy\s+a\s+importar|importar[eé]|hablo\s+de|me\s+refiero\s+a|(?:they|it)\s+(?:are|is)|it's|my\s+product\s+is|i(?:'m|\s+am)\s+importing|i\s+want\s+to\s+import|i\s+mean)\s+(.{3,120}?)\s*[.!]?\s*$/i;
+  /^\s*(?:no[,.]?\s+)?(?:(?:te\s+(?:aclaro|digo|dije|repito|coment[eé])|ya\s+te\s+(?:dije|indiqu[eé])|como\s+te\s+dije|repito|aclaro|i\s+(?:said|told\s+you)|as\s+i\s+said)\s+(?:que\s+|that\s+)?)?(?:(?:en\s+realidad|realmente|perd[oó]n|corrijo)[,.]?\s+)?(?:son|es|eran|era|se\s+trata\s+de|mi\s+producto\s+es|el\s+producto\s+es|lo\s+que\s+importo\s+(?:es|son)|quiero\s+importar|voy\s+a\s+importar|importar[eé]|hablo\s+de|me\s+refiero\s+a|(?:they|it)\s+(?:are|is)|it's|my\s+product\s+is|i(?:'m|\s+am)\s+importing|i\s+want\s+to\s+import|i\s+mean)\s+(.{3,120}?)\s*[.!]?\s*$/i;
 
 // verbs that clearly introduce the product; "es …" / "son …" alone also start
 // ordinary sentences ("es confiable este proveedor"), so they need a product word
@@ -33,8 +33,28 @@ export function productFromMessage(text: string): string | null {
     return null;
   }
   // a bare product name ("lápices escolares") right after a question about it
-  if (!asks && t.split(/\s+/).length <= 6 && inferCategory(t) !== "other") return clean(t);
+  if (!asks && t.split(/\s+/).length <= 4 && inferCategory(t) !== "other") return clean(t);
+  // a product named inside a longer sentence ("mi pregunta era por lápices escolares")
+  if (!asks) return productMention(t);
   return null;
+}
+
+/** The product a message mentions, even inside a question ("¿el CE sirve para lápices escolares?"). */
+export function productMention(text: string): string | null {
+  const t = wantedText(String(text || "").replace(/[¿?¡!]/g, " "));
+  let best: { at: number; end: number } | null = null;
+  for (const re of Object.values(CATEGORY_KEYWORDS)) {
+    const m = t.match(new RegExp(re.source, "i"));
+    if (m && m.index !== undefined && (!best || m.index < best.at)) best = { at: m.index, end: m.index + m[0].length };
+  }
+  if (!best) return null;
+  // the word and up to three following words, until punctuation or a new clause
+  const tail = t.slice(best.at).split(/[,.;:]|\s+(?:y|o|pero|que|and|or|but|that|para\s+(?:qu[eé]|saber))\s+/i)[0];
+  const words = tail.trim().split(/\s+/).slice(0, 6);
+  // drop trailing connectors ("lápices de")
+  while (words.length > 1 && /^(?:de|del|para|con|en|a|of|for|with|in)$/i.test(words[words.length - 1])) words.pop();
+  const out = clean(words.join(" "));
+  return out.length >= 3 ? out : null;
 }
 const clean = (s: string) => s.replace(/^(?:un|una|unos|unas|los|las|el|la|a|an|the)\s+/i, "").replace(/[.!]+$/, "").trim();
 
@@ -137,6 +157,7 @@ export interface ReplySpec {
   text: string; // the client's message
   product: string; // product known when answering
   newProduct?: string; // product the message stated (correction or first mention)
+  mentioned?: string; // product named inside a question (used as context, no acknowledgement)
   previous?: string; // product before this message ("" when unknown)
   reask?: string; // earlier question to answer again for the new product
   earlierFood?: boolean; // an earlier answer talked about food-contact materials

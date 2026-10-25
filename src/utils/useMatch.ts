@@ -47,9 +47,19 @@ const CONCEPTS: Concept[] = [
   C("mineral", "vidrio y cerámica", "glass and ceramics", ["vidrio", "glass", "cerámic", "ceramic"]),
 ];
 
+const STEM_OK = new Set(["corn", "soy", "soya", "bean", "herb", "seed", "cafe", "café", "rice", "meat"]);
+// Short words must be whole words ("sand" is not "sandalias", "corn" is not "corner");
+// longer ones are stems ("aliment", "farmac", "químic")
+const hasWord = (t: string, w: string) => {
+  if (w.endsWith(" ")) return t.includes(` ${w}`);
+  // food words that start compounds in English titles ("cornmeal", "soybean", "herbal")
+  if (w.length <= 4 && !STEM_OK.has(w)) return new RegExp(` ${w}(?:s|es)? `).test(t);
+  if (STEM_OK.has(w)) return new RegExp(` ${w}(?!er)`).test(t); // "corner" is not corn
+  return t.includes(` ${w}`);
+};
 function conceptsIn(text?: string): Set<Concept> {
   const t = ` ${String(text || "").toLowerCase().replace(/[^a-z0-9áéíóúüñ]+/g, " ")} `;
-  return new Set(CONCEPTS.filter((c) => c.w.some((w) => t.includes(` ${w}`))));
+  return new Set(CONCEPTS.filter((c) => c.w.some((w) => hasWord(t, w))));
 }
 const groupsOf = (cs: Set<Concept>) => new Set([...cs].map((c) => c.g));
 
@@ -57,7 +67,7 @@ const groupsOf = (cs: Set<Concept>) => new Set([...cs].map((c) => c.g));
 // "not for paint or ink". The excluded part runs until the end of the clause
 // (punctuation, "sino", "pero", "solo", "but", "only") or a new "para"/"for".
 const NEG_START =
-  /\b(?:sin\s+(?:usarl[oa]s?|usar|uso|utilizarl[oa]|emplearl[oa])(?:\s+(?:en|para|con))?|nada\s+de|evit(?:ar|ando|o|e)(?:\s+(?:usarlo\s+)?(?:en|para|con))?|nunca(?:\s+para)?|jam[aá]s(?:\s+para)?|avoid(?:ing)?|never(?:\s+for)?|without(?:\s+(?:using\s+it\s+)?(?:for|on|with))?|que\s+no\s+sea(?:\s+para)?|no\s+(?:es\s+|sea\s+|sirve\s+|lo\s+quiero\s+|apt[oa]s?\s+)?(?:para|de)\b|no(?=\s)|ni(?:\s+para)?|excepto(?:\s+para)?|salvo(?:\s+para)?|menos\s+para|excluyendo|not(?:\s+(?:for|suitable\s+for|used\s+for|meant\s+for))?|nor(?:\s+for)?|except(?:\s+for)?|other\s+than|excluding)\b/g;
+  /\b(?:sin\s+(?:usarl[oa]s?|usar|uso|utilizarl[oa]|emplearl[oa])(?:\s+(?:en|para|con))?|nada\s+de|evit(?:ar|ando|o|e)(?:\s+(?:usarlo\s+)?(?:en|para|con))?|nunca(?:\s+para)?|jam[aá]s(?:\s+para)?|avoid(?:ing)?|never(?:\s+for)?|without(?:\s+(?:using\s+it\s+)?(?:for|on|with))?|que\s+no\s+sea(?:\s+para)?|no\s+(?:es\s+|sea\s+|sirve\s+|lo\s+quiero\s+|apt[oa]s?\s+)?(?:para|de)\b|no(?=\s)(?!\s+(?:tejid|t[oó]xic|toxic|inflamab|corrosiv|pereceder|retornab|reciclab|adhesiv|desechab|lavab|el[eé]ctric|met[aá]lic|magn[eé]tic|estéril|esteril|slip|woven))|ni(?:\s+para)?|excepto(?:\s+para)?|salvo(?:\s+para)?|menos\s+para|excluyendo|not(?:\s+(?:for|suitable\s+for|used\s+for|meant\s+for))?|nor(?:\s+for)?|except(?:\s+for)?|other\s+than|excluding)\b/g;
 const NEG_END = /[.,;:!?()]|\b(?:sino|pero|solo|sólo|solamente|únicamente|unicamente|but|only|para|for)\b/;
 
 /** Splits a description into what the client wants and what they rule out. */
@@ -104,13 +114,18 @@ export interface UseMatch {
 }
 
 /** null when the client did not say what the product is (or is not) for. */
+// "Molino para cemento" is a use; "zapatos con puntera de fibra de vidrio" names a material
+const MACHINE = /\b(m[aá]quinas?|machines?|molinos?|mills?|grinders?|moledoras?|trituradoras?|crushers?|mezcladoras?|mixers?|hornos?|kilns?|equipos?|equipment|plantas?|plants?)\b/i;
+
 export function matchUse(description: string, productTitle?: string): UseMatch | null {
   const parts = splitExclusions(description);
-  const askedC = conceptsIn(parts.wanted);
-  const excludedC = new Set([...conceptsIn(parts.excluded)].filter((c) => !askedC.has(c)));
+  const machine = MACHINE.test(description);
+  const keep = (cs: Set<Concept>) => new Set([...cs].filter((c) => c.g !== "mineral" || machine));
+  const askedC = keep(conceptsIn(parts.wanted));
+  const excludedC = new Set([...keep(conceptsIn(parts.excluded))].filter((c) => !askedC.has(c)));
   const asked = groupsOf(askedC);
   if (!asked.size && !excludedC.size) return null;
-  const listedC = conceptsIn(productTitle);
+  const listedC = keep(conceptsIn(productTitle));
   const listed = groupsOf(listedC);
   const hit = [...listedC].filter((c) => excludedC.has(c));
   // The listing names a use asked for (the concept itself, or its group when

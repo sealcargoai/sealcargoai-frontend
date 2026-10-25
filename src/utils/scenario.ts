@@ -13,6 +13,8 @@ export interface CostChoices {
   qtyMode?: "sets" | "pieces";
   customPack?: number;
   priceBasis?: "unit" | "piece"; // the published price is per sale unit or per piece
+  confirmedPack?: number; // pieces per pack when the price was confirmed (a change asks again)
+  completeConfirmed?: boolean; // the client confirmed the listing is the complete product
 }
 
 interface Ctx {
@@ -29,6 +31,8 @@ export interface Scenario {
   supplier: any; // supplier with the price actually used
   priceFlag: string;
   needsPriceDecision: boolean;
+  needsCompleteDecision: boolean;
+  confirmationReset: boolean; // a price confirmation was dropped because the pack content changed
   needsUnitDecision: boolean;
   needsBasisDecision: boolean;
   unitInfo: SaleUnitInfo;
@@ -48,6 +52,15 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
   const productType = String(ctx.productType || "");
   const priceFlag = priceIssue(original, [], productType);
   const customPrice = original?.priceSource === "client" ? Number(original.price) || 0 : Number(choices.customPrice) || 0;
+  // A price confirmation holds only for the pack content it was made with:
+  // 1.67 per box of 200 is not 1.67 per box of 1,000
+  const packNow = (() => {
+    const u = saleUnitInfo(original, productType);
+    return u.packSize > 1 ? u.packSize : Number(choices.customPack) || 0;
+  })();
+  // 0 = confirmed before the pack content was known: entering it the first time keeps the confirmation
+  const confirmationValid = !choices.confirmedPack || choices.confirmedPack === packNow;
+  if (!confirmationValid) choices = { ...choices, usePublished: undefined, priceBasis: undefined };
   const usePublished = !!original?.priceConfirmed || !!choices.usePublished;
   let supplier =
     original && customPrice > 0 && original.priceSource !== "client"
@@ -59,13 +72,20 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
           : original;
   const ownPrice = customPrice > 0;
   const needsPriceDecision = !!priceFlag && !usePublished && !ownPrice;
+  // a listing that may be a part (toe cap, casters…) waits for the client
+  const needsCompleteDecision = !!original?.componentFlag && !choices.completeConfirmed;
 
   const unitInfo = saleUnitInfo(supplier, productType);
   const intent = quantityIntent(ctx.description);
   const requested = Math.max(1, Math.floor(ctx.requestedQty) || 1);
-  const qtyMode = choices.qtyMode ?? (intent === "piece" ? "pieces" : intent === "pack" ? "sets" : null);
+  // "200 zapatos" with a price per pair could mean 200 pairs: ask instead of halving it
+  const qtyMode =
+    choices.qtyMode ??
+    (intent === "pack" ? "sets" : intent === "piece" && unitInfo.unit !== "pair" ? "pieces" : null);
   const packSize = unitInfo.packSize > 1 ? unitInfo.packSize : Number(choices.customPack) || 0;
-  const piecesPerUnit = unitInfo.multi && qtyMode !== null && packSize > 1 ? packSize : 0;
+  // a client counting pairs ("100 pares") needs no per-piece figures
+  const piecesPerUnit =
+    unitInfo.multi && qtyMode !== null && packSize > 1 && !(unitInfo.unit === "pair" && qtyMode === "sets") ? packSize : 0;
   const needsUnitDecision = unitInfo.multi && (qtyMode === null || (qtyMode === "pieces" && !(packSize > 1)));
   let quantity = unitInfo.multi && qtyMode === "pieces" && packSize > 1 ? Math.ceil(requested / packSize) : requested;
 
@@ -128,8 +148,8 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
     if (qtyMode === "pieces") {
       notes.push(
         Lx(
-          `Pediste ${requested.toLocaleString("en-US")} piezas. Con ${piecesPerUnit} piezas por ${one} (${fromTitle ? "según el título de la publicación" : "dato que escribiste"}, supuesto por confirmar con el proveedor) se calculan ${quantity.toLocaleString("en-US")} ${many} = ${(quantity * piecesPerUnit).toLocaleString("en-US")} piezas.`,
-          `You asked for ${requested.toLocaleString("en-US")} pieces. With ${piecesPerUnit} pieces per ${one} (${fromTitle ? "from the listing title" : "figure you entered"}, an assumption to confirm with the supplier) we calculate ${quantity.toLocaleString("en-US")} ${many} = ${(quantity * piecesPerUnit).toLocaleString("en-US")} pieces.`,
+          `Pediste ${requested.toLocaleString("en-US")} piezas. Con ${piecesPerUnit} piezas por ${one} (${unitInfo.unit === "pair" ? "cada par son 2 piezas" : `${fromTitle ? "según el título de la publicación" : "dato que escribiste"}, supuesto por confirmar con el proveedor`}) se calculan ${quantity.toLocaleString("en-US")} ${many} = ${(quantity * piecesPerUnit).toLocaleString("en-US")} piezas.`,
+          `You asked for ${requested.toLocaleString("en-US")} pieces. With ${piecesPerUnit} pieces per ${one} (${unitInfo.unit === "pair" ? "each pair is 2 pieces" : `${fromTitle ? "from the listing title" : "figure you entered"}, an assumption to confirm with the supplier`}) we calculate ${quantity.toLocaleString("en-US")} ${many} = ${(quantity * piecesPerUnit).toLocaleString("en-US")} pieces.`,
         ),
       );
     } else {
@@ -168,7 +188,7 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
   if (moqNote) notes.push(moqNote);
 
   return {
-    supplier, priceFlag, needsPriceDecision, needsUnitDecision, needsBasisDecision, unitInfo, intent, qtyMode,
+    supplier, priceFlag, needsPriceDecision, needsCompleteDecision, confirmationReset: !confirmationValid, needsUnitDecision, needsBasisDecision, unitInfo, intent, qtyMode,
     packSize, piecesPerUnit, quantity, price, ownPrice, publishedPerPiece, notes, moqNote,
   };
 }

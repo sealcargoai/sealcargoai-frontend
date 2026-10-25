@@ -82,6 +82,8 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
     if (n > 1 && n <= 5000) packSize = n;
   }
   if (WHOLE_ITEM_TYPES.has(productType) && !(packSize > 1)) return { unit: "piece", packSize: 0, multi: false };
+  // a pair holds two pieces by definition
+  if (fromMoq === "pair" && !(packSize > 1)) packSize = 2;
   let unit: SaleUnit = fromMoq;
   // "piece" from the MOQ text plus "set of 12" in the title: trust the platform's unit
   if (!unit && packSize > 1) unit = unitFromTitle(s?.productName) || "set";
@@ -94,23 +96,49 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
  * "500 lápices" / "500 piezas" → "piece"; "500 paquetes" / "500 cajas" → "pack".
  * A negated mention ("no 500 paquetes") does not count. "" when it's unclear.
  */
-export function quantityIntent(description?: string): "piece" | "pack" | "" {
+interface QtyRead { intent: "piece" | "pack" | ""; word: string }
+function readQuantity(description?: string): QtyRead {
   const PACK = "(?:paquetes?|sets?|juegos?|cajas?|docenas?|estuches?|packs?|boxes|box|dozens?|cartons?|cartones?|kits?|pares|par|pairs?|bolsas?|bags?|rollos?|rolls?)";
   const t = ` ${String(description || "").toLowerCase()} `
     // "5 mil cajas" = 5000 cajas
     .replace(/(\d+(?:[.,]\d+)?)\s*(?:mil|thousand)\b/g, (_, n) => String(Math.round(parseFloat(n.replace(",", ".")) * 1000)))
     .replace(/(\d+(?:[.,]\d+)?)\s*(?:mill[oó]n(?:es)?|millions?)\b/g, (_, n) => String(Math.round(parseFloat(n.replace(",", ".")) * 1e6)))
+    // "1000 individual gloves": the counted word is "gloves"
+    .replace(/(\d[\d.,]*)\s+(?:individual(?:es)?|single|loose|separate|sueltos?|sueltas?|unitari[oa]s?)\s+/g, "$1 ")
     // the content of each pack is not the order quantity: "cajas de 100 piezas", "set of 12"
     .replace(new RegExp(`(${PACK})\\s+(?:de|of|con|with|x)\\s+\\d[\\d.,]*(?:\\s*[a-záéíóúüñ]+)?`, "g"), "$1 ");
   const MEASURE = "(?:kg|kgs|kilos?|g|gramos?|t|ton|toneladas?|l|lts?|litros?|ml|m|metros?|cm|mm|m2|m3|w|kw|v|hp|hz|agujas?|needles?|cabezal(?:es)?|heads?|%)";
   const num = "\\d[\\d.,]*";
   const NEG = "(\\b(?:no|not|ni|nor|sin|without)\\s+(?:en\\s+|in\\s+)?)?";
-  const packHit = [...t.matchAll(new RegExp(`${NEG}${num}\\s*${PACK}\\b`, "g"))].filter((m) => !m[1]).length > 0;
+  const packs = [...t.matchAll(new RegExp(`${NEG}${num}\\s*(${PACK})\\b`, "g"))].filter((m) => !m[1]);
   // a number followed by a word that is not packaging nor a measure: "500 lápices", "500 piezas"
-  const pieceHit = [...t.matchAll(new RegExp(`${NEG}${num}\\s+([a-záéíóúüñ]{3,})`, "g"))].some(
+  const pieces = [...t.matchAll(new RegExp(`${NEG}${num}\\s+([a-záéíóúüñ]{3,})`, "g"))].filter(
     (m) => !m[1] && !new RegExp(`^${PACK}$`).test(m[2]) && !new RegExp(`^${MEASURE}$`).test(m[2]),
   );
-  if (pieceHit && !packHit) return "piece";
-  if (packHit && !pieceHit) return "pack";
-  return "";
+  if (pieces.length && !packs.length) return { intent: "piece", word: pieces[0][2] };
+  if (packs.length && !pieces.length) return { intent: "pack", word: packs[0][2] };
+  return { intent: "", word: "" };
+}
+
+/**
+ * What the client's own quantity refers to, from their description:
+ * "500 lápices" / "500 piezas" → "piece"; "500 paquetes" / "500 cajas" → "pack".
+ * A negated mention ("no 500 paquetes") does not count. "" when it's unclear.
+ */
+export function quantityIntent(description?: string): "piece" | "pack" | "" {
+  return readQuantity(description).intent;
+}
+
+/** The word the client counted with ("guantes", "lápices", "cajas"), "" when unclear. */
+export function quantityWord(description: string | undefined, n: number): string {
+  const { intent, word } = readQuantity(description);
+  if (!intent) return "";
+  if (n !== 1) return word;
+  // singular of the counted word
+  const one: Record<string, string> = { cajas: "caja", sets: "set", paquetes: "paquete", juegos: "juego", docenas: "docena", estuches: "estuche", boxes: "box", packs: "pack", kits: "kit", piezas: "pieza", pieces: "piece", pares: "par", pairs: "pair", bolsas: "bolsa", bags: "bag", rollos: "rollo", rolls: "roll", unidades: "unidad", units: "unit" };
+  if (one[word]) return one[word];
+  if (/ces$/.test(word)) return word.replace(/ces$/, "z"); // lápices → lápiz
+  if (/ones$/.test(word)) return word.replace(/ones$/, "ón"); // camiones → camión
+  if (/[lnrdjy]es$/.test(word)) return word.replace(/es$/, ""); // colores → color
+  return word.replace(/s$/, ""); // guantes → guante, gloves → glove
 }
