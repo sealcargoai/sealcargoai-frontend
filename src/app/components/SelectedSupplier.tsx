@@ -55,8 +55,8 @@ export function trustInfo(s?: SelectedSupplierData | null) {
 export function badgeText(s?: SelectedSupplierData | null): string {
   const years = s?.yearsInBusiness || 0;
   const y = years ? ` · ${years} ${Lx(years === 1 ? "año" : "años", years === 1 ? "year" : "years")}` : "";
-  if (s?.verifiedSupplier === true) return `Verified Supplier (${Lx("auditado", "audited")})${y}`;
-  if (s?.goldSupplier || s?.verified) return `Gold Supplier${y}`;
+  if (s?.verifiedSupplier === true) return `${Lx("Proveedor verificado (auditado)", "Verified Supplier (audited)")}${y}`;
+  if (s?.goldSupplier || s?.verified) return `${Lx("Miembro Gold", "Gold Supplier")}${y}`;
   return Lx("Sin insignia de verificación", "No verification badge");
 }
 
@@ -220,7 +220,7 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Package className="w-4 h-4 text-slate-400" />
-              {Lx("Pedido mínimo:", "Minimum order:")} {supplier.moq ? (/^\s*[\d.,]+\s*$/.test(String(supplier.moq)) ? `${supplier.moq.toLocaleString()} ${Lx("uds.", "units")}` : String(supplier.moq)) : Lx("N/D", "N/A")}
+              {Lx("Pedido mínimo:", "Minimum order:")} {supplier.moq ? (/^\s*[\d.,]+\s*$/.test(String(supplier.moq)) ? `${supplier.moq.toLocaleString()} ${Number(supplier.moq) === 1 ? Lx("unidad", "unit") : Lx("uds.", "units")}` : String(supplier.moq)) : Lx("N/D", "N/A")}
             </span>
             {supplier.storeRating ? (
               <span className="inline-flex items-center gap-1.5">
@@ -266,12 +266,12 @@ export function NoSupplierNotice({ hasSupplierWithoutPrice }: { hasSupplierWitho
         <h1 className="text-xl font-bold text-[#0B3C5D] mb-2">
           {hasSupplierWithoutPrice
             ? Lx("Este proveedor no publica precio", "This supplier does not publish a price")
-            : Lx("Primero escoja un proveedor", "First choose a supplier")}
+            : Lx("Primero escoge un proveedor", "First choose a supplier")}
         </h1>
         <p className="text-sm text-slate-600 mb-6">
           {hasSupplierWithoutPrice
-            ? Lx("Sin el precio real no podemos calcular el costo en Guatemala. Escoja otro proveedor de la lista.", "Without the real price we cannot estimate the cost in Guatemala. Choose another supplier from the list.")
-            : Lx("El costo en Guatemala se calcula con el precio real del proveedor que usted escoja en la lista de resultados.", "The cost in Guatemala is estimated with the real price of the supplier you choose from the results.")}
+            ? Lx("Sin el precio real no podemos calcular el costo en Guatemala. Escoge otro proveedor de la lista.", "Without the real price we cannot estimate the cost in Guatemala. Choose another supplier from the list.")
+            : Lx("El costo en Guatemala se calcula con el precio real del proveedor que escojas en la lista de resultados.", "The cost in Guatemala is estimated with the real price of the supplier you choose from the results.")}
         </p>
         <div className="flex flex-col sm:flex-row gap-3 justify-center">
           <button
@@ -312,8 +312,19 @@ const TRUST_LABEL_EN: Record<string, string> = {
 
 // Backend details are in Spanish; translate the fixed phrases for English
 export function trustDetail(d: string): string {
-  if (Lx("es", "en") !== "en") return d;
+  if (Lx("es", "en") !== "en") {
+    // Older cached results used Alibaba's English program names
+    return d
+      .replace("Verified Supplier (auditoría de tercero)", "Proveedor verificado (auditoría de tercero)")
+      .replace("Gold Supplier (membresía, sin auditoría en planta)", "Miembro Gold (membresía, sin auditoría en planta)")
+      .replace("Sin Trade Assurance", "Sin protección de pedidos")
+      .replace(/^Trade Assurance$/, "Protección de pedidos");
+  }
   return d
+    .replace("Proveedor verificado (auditoría de tercero)", "Verified Supplier (third-party audit)")
+    .replace("Miembro Gold (membresía, sin auditoría en planta)", "Gold Supplier (membership, no on-site audit)")
+    .replace("Sin protección de pedidos", "No Trade Assurance")
+    .replace(/^Protección de pedidos$/, "Trade Assurance")
     .replace("Verified Supplier (auditoría de tercero)", "Verified Supplier (third-party audit)")
     .replace("Gold Supplier (membresía, sin auditoría en planta)", "Gold Supplier (membership, no on-site audit)")
     .replace("Sin insignia de verificación", "No verification badge")
@@ -387,13 +398,13 @@ export function SupplierDisclaimer({
         }),
       });
       if (res.status === 400) {
-        setError(Lx("Revise su nombre y correo (por ejemplo nombre@empresa.com).", "Check your name and email (for example name@company.com)."));
+        setError(Lx("Revisa tu nombre y correo (por ejemplo nombre@empresa.com).", "Check your name and email (for example name@company.com)."));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSent(true);
     } catch {
-      setError(Lx("No se pudo enviar. Escríbanos al WhatsApp +502 5996 4664.", "Could not send. Message us on WhatsApp +502 5996 4664."));
+      setError(Lx("No se pudo enviar. Escríbenos al WhatsApp +502 5996 4664.", "Could not send. Message us on WhatsApp +502 5996 4664."));
     } finally {
       setSending(false);
     }
@@ -413,7 +424,7 @@ export function SupplierDisclaimer({
           </p>
           {sent ? (
             <p className="mt-3 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
-              ✅ {Lx("Recibimos su solicitud. Un ejecutivo de SEAL le contacta para la verificación en China.", "We received your request. A SEAL executive will contact you about the verification in China.")}
+              ✅ {Lx("Recibimos tu solicitud. Un ejecutivo de SEAL te contacta para la verificación en China.", "We received your request. A SEAL executive will contact you about the verification in China.")}
             </p>
           ) : !open ? (
             <button
@@ -435,12 +446,12 @@ export function SupplierDisclaimer({
                 </p>
               )}
               <div className="grid sm:grid-cols-2 gap-2">
-                <input className={input} placeholder={Lx("Su nombre", "Your name")} value={name} onChange={(e) => setName(e.target.value)} required />
-                <input className={input} type="email" placeholder={Lx("Su correo", "Your email")} value={email} onChange={(e) => setEmail(e.target.value)} required />
+                <input className={input} placeholder={Lx("Tu nombre", "Your name")} value={name} onChange={(e) => setName(e.target.value)} required />
+                <input className={input} type="email" placeholder={Lx("Tu correo", "Your email")} value={email} onChange={(e) => setEmail(e.target.value)} required />
               </div>
               <textarea
                 className={`${input} min-h-[70px]`}
-                placeholder={Lx("¿Qué le gustaría verificar? (opcional)", "What would you like to verify? (optional)")}
+                placeholder={Lx("¿Qué te gustaría verificar? (opcional)", "What would you like to verify? (optional)")}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
               />

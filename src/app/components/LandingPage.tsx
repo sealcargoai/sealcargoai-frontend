@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS } from "../../utils/descriptionCheck";
 import { useNavigate } from "react-router";
 import { Search, Shield, Globe, TrendingUp, CheckCircle } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
@@ -6,7 +7,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { getUserData, getSearchLimit } from "../../utils/searchLimit";
 
-const QUERY_MIN = 3;
+const QUERY_MIN = DESCRIPTION_MIN_CHARS;
 const QUERY_MAX = 1500; // same limit as the product description in the next step
 const NAME_MIN = 2;
 const NAME_MAX = 120;
@@ -24,13 +25,13 @@ export function LandingPage() {
   const navigate = useNavigate();
 
   const queryTrim = query.trim();
-  const queryOk = queryTrim.length >= QUERY_MIN && queryTrim.length <= QUERY_MAX;
+  const queryOk = descriptionIsDetailed(queryTrim) && queryTrim.length <= QUERY_MAX;
 
   const handleStartAnalysis = async (e: React.FormEvent) => {
     e.preventDefault();
     const n = name.trim();
     const m = email.trim();
-    if (!queryOk) return setFormError(L(`Describe lo que quieres importar (mínimo ${QUERY_MIN} caracteres).`, `Describe what you want to import (minimum ${QUERY_MIN} characters).`));
+    if (!queryOk) return setFormError(queryTrim.length > QUERY_MAX ? L(`Máximo ${QUERY_MAX.toLocaleString()} caracteres.`, `Maximum ${QUERY_MAX.toLocaleString()} characters.`) : descriptionDetailMessage());
     if (n.length < NAME_MIN) return setFormError(L("Escribe tu nombre completo.", "Enter your full name."));
     if (!EMAIL_RE.test(m)) return setFormError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
     setFormError("");
@@ -142,8 +143,8 @@ export function LandingPage() {
                   {query.length > 0 && (
                     <div className="flex justify-between gap-3 px-3 pt-2 text-xs text-slate-500">
                       <span>
-                        {queryTrim.length < QUERY_MIN
-                          ? L(`Mínimo ${QUERY_MIN} caracteres`, `Minimum ${QUERY_MIN} characters`)
+                        {!descriptionIsDetailed(queryTrim)
+                          ? L("Di qué es y para qué se usa (al menos 2 palabras)", "Say what it is and what it's for (at least 2 words)")
                           : L("Puedes detallar más en el siguiente paso", "You can add more detail in the next step")}
                       </span>
                       <span className="shrink-0">

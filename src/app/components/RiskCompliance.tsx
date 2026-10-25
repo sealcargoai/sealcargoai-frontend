@@ -54,7 +54,7 @@ export function getReviewTopics(productType: string, supplier: any): ReviewTopic
         "To clear the goods, the importer's NIT must be enabled for imports.",
       ),
       action: T(
-        "Verificar en la Agencia Virtual de la SAT que su NIT esté activo como importador.",
+        "Verificar en la Agencia Virtual de la SAT que tu NIT esté activo como importador.",
         "Check in SAT's Agencia Virtual that your NIT is active as an importer.",
       ),
       source: "SAT",
@@ -100,10 +100,10 @@ export function getReviewTopics(productType: string, supplier: any): ReviewTopic
           "Guatemala's grid is 60 Hz. A 50 Hz machine or one with another voltage may not work properly.",
         ),
         action: T(
-          "Confirmar por escrito voltaje, fases y 60 Hz con el proveedor, según su instalación.",
+          "Confirmar por escrito voltaje, fases y 60 Hz con el proveedor, según tu instalación.",
           "Confirm voltage, phases and 60 Hz in writing with the supplier, according to your installation.",
         ),
-        source: T("Proveedor · su técnico eléctrico", "Supplier · your electrician"),
+        source: T("Proveedor · tu técnico eléctrico", "Supplier · your electrician"),
       },
       {
         title: T("Manuales, repuestos, garantía e instalación", "Manuals, spare parts, warranty and installation"),
@@ -127,7 +127,7 @@ export function getReviewTopics(productType: string, supplier: any): ReviewTopic
           "Pedir al proveedor la especificación del material y los certificados que declare.",
           "Ask the supplier for the material specification and any certificates they declare.",
         ),
-        source: T("Proveedor · MSPAS para la operación de su planta", "Supplier · MSPAS for your plant's operation"),
+        source: T("Proveedor · MSPAS para la operación de tu planta", "Supplier · MSPAS for your plant's operation"),
       },
     );
   } else if (productType === "food") {
@@ -204,7 +204,7 @@ function assumptions(productType: string, description: string): string[] {
   return [
     Lx("Destino: Guatemala.", "Destination: Guatemala."),
     Lx(
-      `Tipo de producto inferido de su descripción: ${categoryLabel(productType)}.`,
+      `Tipo de producto inferido de tu descripción: ${categoryLabel(productType)}.`,
       `Product type inferred from your description: ${categoryLabel(productType)}.`,
     ),
     Lx(
@@ -292,7 +292,7 @@ export function RiskCompliance() {
           </h1>
           <p className="text-sm sm:text-base text-slate-600">
             {L(
-              "Orientación inicial para su importación a Guatemala. No es un dictamen ni una evaluación de riesgo: son temas que conviene confirmar con las fuentes indicadas.",
+              "Orientación inicial para tu importación a Guatemala. No es un dictamen ni una evaluación de riesgo: son temas que conviene confirmar con las fuentes indicadas.",
               "Initial guidance for your import into Guatemala. It is not a ruling or a risk assessment: these are topics worth confirming with the sources indicated.",
             )}
           </p>
@@ -301,7 +301,7 @@ export function RiskCompliance() {
         {/* Product */}
         <div className="bg-white rounded-xl shadow border border-slate-200 p-4 sm:p-5 mb-6">
           <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">
-            {L("Su producto", "Your product")}
+            {L("Tu producto", "Your product")}
           </p>
           <p className="text-sm text-slate-800 whitespace-pre-line break-words">
             {productDescription || categoryLabel(productType)}

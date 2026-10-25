@@ -116,13 +116,13 @@ function MorePlatforms({
         }),
       });
       if (res.status === 400) {
-        setError(Lx("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
+        setError(Lx("Revisa tu correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setSent(true);
     } catch {
-      setError(Lx(`No se pudo enviar. Llámenos al ${SEAL_COMPANY.phone}.`, `Could not send. Call us at ${SEAL_COMPANY.phone}.`));
+      setError(Lx(`No se pudo enviar. Llámanos al ${SEAL_COMPANY.phone}.`, `Could not send. Call us at ${SEAL_COMPANY.phone}.`));
     } finally {
       setSending(false);
     }
@@ -159,14 +159,14 @@ function MorePlatforms({
       <div className="mt-5 pt-5 border-t border-slate-200">
         {sent ? (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
-            ✅ {Lx("Recibimos el proveedor. Un ejecutivo de SEAL le cotiza flete y nacionalización.", "We received the supplier. A SEAL executive will quote freight and customs clearance.")}
+            ✅ {Lx("Recibimos el proveedor. Un ejecutivo de SEAL te cotiza flete y nacionalización.", "We received the supplier. A SEAL executive will quote freight and customs clearance.")}
           </div>
         ) : !open ? (
           <button
             onClick={() => setOpen(true)}
             className="text-sm font-semibold text-[#0B3C5D] hover:underline"
           >
-            {Lx("¿Encontró un proveedor en otra plataforma? Páselo a SEAL y le cotizamos flete y aduana →", "Found a supplier on another platform? Send it to SEAL and we'll quote freight and customs →")}
+            {Lx("¿Encontraste un proveedor en otra plataforma? Pásalo a SEAL y te cotizamos flete y aduana →", "Found a supplier on another platform? Send it to SEAL and we'll quote freight and customs →")}
           </button>
         ) : (
           <form onSubmit={submit} className="space-y-3">
@@ -188,7 +188,7 @@ function MorePlatforms({
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                placeholder={Lx("Su nombre", "Your name")}
+                placeholder={Lx("Tu nombre", "Your name")}
                 className={input}
               />
               <input
@@ -198,7 +198,7 @@ function MorePlatforms({
                 required
                 pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
                 title={Lx("Correo completo, por ejemplo nombre@empresa.com", "Complete email, for example name@company.com")}
-                placeholder={Lx("Su correo", "Your email")}
+                placeholder={Lx("Tu correo", "Your email")}
                 className={input}
               />
             </div>
@@ -206,7 +206,7 @@ function MorePlatforms({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={2}
-              placeholder={Lx("Precio que le dieron, cantidad, comentarios...", "Price you were given, quantity, comments...")}
+              placeholder={Lx("Precio que te dieron, cantidad, comentarios...", "Price you were given, quantity, comments...")}
               className={input}
             />
             {error && (
@@ -283,7 +283,7 @@ function NoResults({
         }),
       });
       if (res.status === 400) {
-        setError(Lx("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
+        setError(Lx("Revisa tu correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -306,7 +306,7 @@ function NoResults({
           </div>
           <h1 className="text-3xl font-bold text-[#0B3C5D] mb-3">
             {noRelevant
-              ? Lx("No encontramos opciones suficientemente relacionadas con su producto", "We didn't find options closely related to your product")
+              ? Lx("No encontramos opciones suficientemente relacionadas con tu producto", "We didn't find options closely related to your product")
               : allFiltered
                 ? Lx("Ningún proveedor pasó nuestros filtros", "No supplier passed our filters")
                 : Lx("No pudimos obtener resultados en este momento", "We couldn't get results right now")}
@@ -314,16 +314,16 @@ function NoResults({
           <p className="text-slate-600 mb-6">
             {noRelevant
               ? Lx(
-                  "Los resultados de la plataforma no coincidían con lo que describió, así que preferimos no mostrarlos. Agregue más detalles (tipo exacto de producto, uso, capacidad, material) y busque de nuevo, o pida a SEAL que haga la búsqueda por usted.",
+                  "Los resultados de la plataforma no coincidían con lo que describiste, así que preferimos no mostrarlos. Agrega más detalles (tipo exacto de producto, uso, capacidad, material) y busca de nuevo, o pide a SEAL que haga la búsqueda por ti.",
                   "The platform results didn't match what you described, so we prefer not to show them. Add more details (exact product type, use, capacity, material) and search again, or ask SEAL to do the search for you.",
                 )
               : allFiltered
                 ? Lx(
-                    `Analizamos ${totalAnalyzed} proveedores, pero ninguno cumplió los criterios de verificación, reputación y pedido mínimo de SEAL. Preferimos no mostrarle opciones que no los cumplen.`,
+                    `Analizamos ${totalAnalyzed} proveedores, pero ninguno cumplió los criterios de verificación, reputación y pedido mínimo de SEAL. Preferimos no mostrarte opciones que no los cumplen.`,
                     `We analyzed ${totalAnalyzed} suppliers, but none met SEAL's verification, reputation and minimum-order criteria. We prefer not to show options that don't meet them.`,
                   )
                 : Lx(
-                    "En este momento la plataforma no nos devolvió resultados para su producto. No le vamos a mostrar datos de ejemplo: un ejecutivo de SEAL puede hacer la búsqueda por usted y enviarle opciones para revisar con su costo estimado.",
+                    "En este momento la plataforma no nos devolvió resultados para tu producto. No te vamos a mostrar datos de ejemplo: un ejecutivo de SEAL puede hacer la búsqueda por ti y enviarte opciones para revisar con su costo estimado.",
                     "Right now the platform didn't return results for your product. We won't show you sample data: a SEAL executive can do the search for you and send you options to review with their estimated cost.",
                   )}
           </p>
@@ -349,12 +349,12 @@ function NoResults({
               <div className="font-semibold mb-1 flex items-center gap-2">
                 <CheckCircle className="w-5 h-5" /> {Lx("Solicitud recibida", "Request received")}
               </div>
-              {Lx("Un ejecutivo de SEAL le contactará para darle seguimiento a su búsqueda.", "A SEAL executive will contact you to follow up on your search.")}
+              {Lx("Un ejecutivo de SEAL te contactará para darle seguimiento a tu búsqueda.", "A SEAL executive will contact you to follow up on your search.")}
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-4">
               <h2 className="text-lg font-semibold text-[#0B3C5D]">
-                {Lx("Que SEAL busque los proveedores por usted", "Let SEAL search for suppliers for you")}
+                {Lx("Que SEAL busque los proveedores por ti", "Let SEAL search for suppliers for you")}
               </h2>
               {productDescription && (
                 <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-600 whitespace-pre-line break-words">
@@ -450,12 +450,28 @@ function NoResults({
 // ─── Types ────────────────────────────────────────────────────────────────────
 // Order options for the results list. "seal" keeps the backend order
 // (trust level first, then lowest price inside each level).
+function decodeEntities(t: string): string {
+  return String(t ?? "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0*39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&#(\d+);/g, (_m, n) => String.fromCharCode(Number(n)))
+    .replace(/&amp;/g, "&");
+}
+
 // Filter reasons come from the backend in Spanish
 function rejectReason(r: string): string {
-  if (!r || Lx("es", "en") === "es") return r;
+  if (!r) return r;
+  if (Lx("es", "en") === "es")
+    return r
+      .replace("(no es Verified ni Gold Supplier)", "(no es proveedor verificado ni miembro Gold)")
+      .replace(/^Gold Supplier con/, "Miembro Gold con")
+      .replace("mayor a su cantidad", "mayor a tu cantidad");
   const rules: [RegExp, (m: RegExpMatchArray) => string][] = [
     [/^Sin verificación/, () => "No verification (not Verified or Gold Supplier)"],
-    [/^Gold Supplier con menos de (\d+) años/, (m) => `Gold Supplier with less than ${m[1]} years`],
+    [/^(?:Gold Supplier|Miembro Gold) con menos de (\d+) años/, (m) => `Gold Supplier with less than ${m[1]} years`],
     [/^Calificación ([\d.]+) por debajo de ([\d.]+)/, (m) => `Rating ${m[1]} below ${m[2]}`],
     [/^Pedido mínimo de ([\d,]+) unidades/, (m) => `Minimum order of ${m[1]} units, above your quantity`],
     [/^Índice (?:referencial|de Confianza) (\d+)\/100, debajo del mínimo de (\d+)/, (m) => `Reference index ${m[1]}/100, below the minimum of ${m[2]}`],
@@ -591,7 +607,15 @@ export function SupplierResults() {
 
   // Only real results — no demo data
   const reqCap = requestedCapacity(String(location.state?.productDescription ?? ""));
-  const displaySuppliers: Supplier[] = orderByCapacity(apiData?.topSuppliers ?? [], reqCap);
+  // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
+  const displaySuppliers: Supplier[] = orderByCapacity(
+    (apiData?.topSuppliers ?? []).map((s: Supplier) => ({
+      ...s,
+      name: decodeEntities(s.name),
+      productName: s.productName ? decodeEntities(s.productName) : s.productName,
+    })),
+    reqCap,
+  );
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
@@ -702,9 +726,9 @@ export function SupplierResults() {
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setShowContactModal(false);
-      alert(Lx("¡Solicitud enviada! Un ejecutivo de SEAL le dará seguimiento.", "Request sent! A SEAL executive will follow up."));
+      alert(Lx("¡Solicitud enviada! Un ejecutivo de SEAL te dará seguimiento.", "Request sent! A SEAL executive will follow up."));
     } catch {
-      alert(Lx(`No se pudo enviar. Llámenos al ${SEAL_COMPANY.phone}.`, `Could not send. Call us at ${SEAL_COMPANY.phone}.`));
+      alert(Lx(`No se pudo enviar. Llámanos al ${SEAL_COMPANY.phone}.`, `Could not send. Call us at ${SEAL_COMPANY.phone}.`));
     }
   };
 

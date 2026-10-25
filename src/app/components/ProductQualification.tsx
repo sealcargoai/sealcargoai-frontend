@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS } from "../../utils/descriptionCheck";
 import { useNavigate, useLocation } from "react-router";
 import {
   Package,
@@ -34,7 +35,7 @@ const CATEGORY_KEYWORDS: Record<string, RegExp> = {
 
 // Field limits (shown to the client next to each field)
 export const LIMITS = {
-  productMin: 3,
+  productMin: DESCRIPTION_MIN_CHARS,
   productMax: 1500,
   quantityMax: 10_000_000,
   budgetMax: 100_000_000,
@@ -62,12 +63,12 @@ function fieldError(name: string, value: string): string {
   const n = Number(v);
   switch (name) {
     case "productType":
-      if (v.length < LIMITS.productMin) return Lx(`Describa el producto con al menos ${LIMITS.productMin} caracteres.`, `Describe the product with at least ${LIMITS.productMin} characters.`);
+      if (!descriptionIsDetailed(v)) return descriptionDetailMessage();
       if (v.length > LIMITS.productMax) return Lx(`Máximo ${LIMITS.productMax.toLocaleString()} caracteres.`, `Maximum ${LIMITS.productMax.toLocaleString()} characters.`);
       return "";
     case "quantity":
       if (!v) return Lx("La cantidad es obligatoria.", "Quantity is required.");
-      if (!Number.isInteger(n) || n < 1) return Lx("Escriba una cantidad entera mayor a 0.", "Enter a whole number greater than 0.");
+      if (!Number.isInteger(n) || n < 1) return Lx("Escribe una cantidad entera mayor a 0.", "Enter a whole number greater than 0.");
       if (n > LIMITS.quantityMax) return Lx(`Máximo ${LIMITS.quantityMax.toLocaleString()} unidades.`, `Maximum ${LIMITS.quantityMax.toLocaleString()} units.`);
       return "";
     case "budget":
@@ -224,7 +225,7 @@ export function ProductQualification() {
 
     if (Object.values(errors).some(Boolean)) {
       setTouched({ productType: true, quantity: true, budget: true, volumeCbm: true, weightKg: true });
-      setError(L("Revise los datos marcados en rojo antes de buscar.", "Check the fields marked in red before searching."));
+      setError(L("Revisa los datos marcados en rojo antes de buscar.", "Check the fields marked in red before searching."));
       return;
     }
 
@@ -266,6 +267,14 @@ export function ProductQualification() {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const suppliers = await response.json();
+
+      // The server also checks the description; nothing is searched or counted
+      if (suppliers?.needsMoreDetail) {
+        setStep(1);
+        setTouched((t) => ({ ...t, productType: true }));
+        setError(descriptionDetailMessage());
+        return;
+      }
 
       // ── RECORD SEARCH ONLY WHEN IT SHOWED OPTIONS ────
       // A search that found nothing useful (no related products, blocked,
@@ -417,7 +426,7 @@ export function ProductQualification() {
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[180px] leading-relaxed"
                 />
                 <div className="flex justify-between gap-3 text-xs text-slate-500">
-                  <span>{t("qualification.productHelp")} {L(`(mínimo ${LIMITS.productMin} caracteres)`, `(minimum ${LIMITS.productMin} characters)`)}</span>
+                  <span>{t("qualification.productHelp")} {L("(qué es, para qué se usa y, si aplica, capacidad o material)", "(what it is, what it's for and, if relevant, capacity or material)")}</span>
                   <span className="shrink-0">
                     {formData.productType.length.toLocaleString()}/{LIMITS.productMax.toLocaleString()}
                   </span>
@@ -522,7 +531,7 @@ export function ProductQualification() {
                 <p className="text-xs text-slate-500 -mt-2">
                   <span>
                     {L(
-                      "Opcional, pero con el volumen o el peso le estimamos el flete. Si no lo sabe, déjelo en blanco y un ejecutivo de SEAL se lo cotiza.",
+                      "Opcional, pero con el volumen o el peso te estimamos el flete. Si no lo sabes, déjalo en blanco y un ejecutivo de SEAL te lo cotiza.",
                       "Optional, but with the volume or weight we estimate the freight. If you don't know it, leave it blank and a SEAL executive will quote it.",
                     )}
                   </span>

@@ -28,15 +28,15 @@ export function AppError() {
         <p className="text-sm text-slate-600 mb-4">
           <span>
             {hasDraft
-              ? Lx("Lo que usted ingresó quedó guardado. Puede reintentar o volver al formulario sin escribirlo de nuevo.", "What you entered was saved. You can retry or go back to the form without typing it again.")
-              : Lx("Puede reintentar o volver a empezar.", "You can retry or start over.")}
+              ? Lx("Lo que ingresaste quedó guardado. Puedes reintentar o volver al formulario sin escribirlo de nuevo.", "What you entered was saved. You can retry or go back to the form without typing it again.")
+              : Lx("Puedes reintentar o volver a empezar.", "You can retry or start over.")}
           </span>
         </p>
         {looksLikeTranslation && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-left">
             <span>
               {Lx(
-                "Parece que el traductor automático del navegador modificó la página. Desactívelo para este sitio y use el botón ES / EN de la herramienta.",
+                "Parece que el traductor automático del navegador modificó la página. Desactívalo para este sitio y usa el botón ES / EN de la herramienta.",
                 "It looks like the browser's automatic translator changed the page. Turn it off for this site and use the tool's ES / EN button.",
               )}
             </span>
@@ -65,7 +65,7 @@ export function AppError() {
           className="mt-5 inline-flex items-center gap-1.5 text-sm text-blue-600 hover:underline"
         >
           <Phone className="w-4 h-4" />
-          <span>{Lx("¿Sigue fallando? Escríbanos al +502 5996 4664", "Still failing? Message us at +502 5996 4664")}</span>
+          <span>{Lx("¿Sigue fallando? Escríbenos al +502 5996 4664", "Still failing? Message us at +502 5996 4664")}</span>
         </a>
         {message && (
           <p className="mt-4 text-[11px] text-slate-400 break-words">

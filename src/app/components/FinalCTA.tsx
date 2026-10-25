@@ -21,7 +21,7 @@ import { LanguageToggle } from "./LanguageToggle";
 import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, sealDisclaimer, badgeText, TrustBadge, supplierPriceInfo } from "./SelectedSupplier";
 import { getReviewTopics } from "./RiskCompliance";
 import { buildCostPdf } from "../../utils/costPdf";
-import { Lx } from "../../utils/lang";
+import { Lx, unitsWord } from "../../utils/lang";
 import {
   SEAL_COMPANY,
   drawCompanyInfoBox,
@@ -54,7 +54,7 @@ function generateReportPDF(data: {
   saveFile?: boolean;
 }): string {
   return buildCostPdf({
-    title: Lx("Informe de orientación para su importación · costos estimados", "Guidance report for your import · estimated costs"),
+    title: Lx("Informe de orientación para tu importación · costos estimados", "Guidance report for your import · estimated costs"),
     supplierName: data.supplierName,
     productDescription: data.productDescription,
     quantity: data.quantity,
@@ -127,7 +127,7 @@ export function FinalCTA() {
   const rates = useRates();
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg }, rates);
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
-  const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})`;
+  const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? Lx(" — estimación parcial, sin flete", " — partial estimate, without freight") : ""}`;
 
   // ── Dynamic stats ─────────────────────────────────────────────────────────
   // Real counts from the supplier search; null = not available (block is hidden)
@@ -300,7 +300,7 @@ export function FinalCTA() {
         },
       );
       if (res.status === 400) {
-        alert("Revise su correo: debe ser completo, por ejemplo nombre@empresa.com.");
+        alert("Revisa tu correo: debe ser completo, por ejemplo nombre@empresa.com.");
         return;
       }
       if (!res.ok) throw new Error("Failed");
@@ -309,7 +309,7 @@ export function FinalCTA() {
         // Could not email the client directly — SEAL got the report and will forward it.
         downloadReportNow();
         alert(
-          `Su informe se descargó en este dispositivo. Además, un ejecutivo de SEAL se lo enviará a ${emailRecipient}.`,
+          `Tu informe se descargó en este dispositivo. Además, un ejecutivo de SEAL te lo enviará a ${emailRecipient}.`,
         );
       } else {
         alert(t("final.emailSuccess"));
@@ -321,7 +321,7 @@ export function FinalCTA() {
       // Never leave the user empty-handed: give them the PDF right away
       downloadReportNow();
       alert(
-        `No pudimos enviarlo por correo, pero su informe se descargó en este dispositivo. Si lo necesita, llámenos al ${SEAL_COMPANY.phone}.`,
+        `No pudimos enviarlo por correo, pero tu informe se descargó en este dispositivo. Si lo necesitas, llámanos al ${SEAL_COMPANY.phone}.`,
       );
     } finally {
       setSubmitting(false);
@@ -470,6 +470,11 @@ export function FinalCTA() {
               <div className="font-bold text-xl text-[#0B3C5D] mb-1">
                 {Q(costs.totalCost)}
               </div>
+              {costs.freightPending && (
+                <div className="text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2 py-0.5 inline-block mb-1">
+                  {Lx("Estimación parcial, sin flete", "Partial estimate, without freight")}
+                </div>
+              )}
               <div className="text-sm text-green-700">
                 {Q(costs.perUnit, 2)} {t("final.perUnit")}
               </div>
@@ -669,8 +674,9 @@ export function FinalCTA() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-5 text-sm">
               <p className="font-semibold text-[#0B3C5D]">{supplierName}</p>
               <p className="text-slate-600 mt-1">
-                {quantity.toLocaleString()} {t("final.quoteUnits")}{" "}
+                {quantity.toLocaleString()} {unitsWord(quantity)} • {costs.freightPending ? Lx("Total parcial:", "Partial total:") : Lx("Total estimado:", "Estimated total:")}{" "}
                 {Q(costs.totalCost)}
+                {costs.freightPending ? Lx(" (sin flete)", " (without freight)") : ""}
               </p>
             </div>
 

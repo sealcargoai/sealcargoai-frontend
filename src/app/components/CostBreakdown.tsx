@@ -134,11 +134,11 @@ export function CostBreakdown() {
     .map((l) => ({ name: l.label.replace("*", ""), value: l.amount, color: l.color }))
     .sort((a, b) => b.value - a.value); // largest to smallest
 
-  // "¿En qué se va su dinero?": the real calculator lines grouped in 4 blocks
+  // "¿En qué se va tu dinero?": the real calculator lines grouped in 4 blocks
   const sumKeys = (keys: string[]) =>
     costs.lines.filter((l) => keys.includes(l.key)).reduce((a, l) => a + l.amount, 0);
   const moneyGroups = [
-    { key: "product", name: L("Producto (FOB)", "Product (FOB)"), desc: L("Lo que le paga al proveedor", "What you pay the supplier"), amount: sumKeys(["product"]), color: "#0B3C5D" },
+    { key: "product", name: L("Producto (FOB)", "Product (FOB)"), desc: L("Lo que le pagas al proveedor", "What you pay the supplier"), amount: sumKeys(["product"]), color: "#0B3C5D" },
     { key: "logistics", name: L("Traerlo a Guatemala", "Bringing it to Guatemala"), desc: L("Flete, seguro y gastos en destino", "Freight, insurance and destination charges"), amount: sumKeys(["freight", "insurance", "local"]), color: "#3B82F6" },
     { key: "taxes", name: L("Impuestos SAT", "SAT taxes"), desc: L("DAI e IVA de importación", "Import DAI and IVA"), amount: sumKeys(["duties", "vat"]), color: "#60A5FA" },
     { key: "seal", name: L("Servicio de aduana SEAL", "SEAL customs service"), desc: L("Honorarios del agente aduanero", "Customs broker fee"), amount: sumKeys(["customs"]), color: "#8B5CF6" },
@@ -294,6 +294,11 @@ export function CostBreakdown() {
               <div className="text-3xl sm:text-5xl md:text-6xl font-bold drop-shadow-lg mb-2 sm:mb-3 break-all">
                 {Q(costs.totalCost)}
               </div>
+              {costs.freightPending && (
+                <div className="mb-2 sm:mb-3 inline-block bg-amber-400 text-amber-950 rounded-lg px-3 py-1 text-xs sm:text-sm font-semibold">
+                  {L("Estimación parcial, sin flete", "Partial estimate, without freight")}
+                </div>
+              )}
               <div className="text-blue-100 text-xs sm:text-base md:text-lg">
                 {quantity.toLocaleString()} {unitsWord(quantity)} •{" "}
                 <span className="font-bold text-white">
@@ -350,7 +355,7 @@ export function CostBreakdown() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-xs text-slate-500">{L("Total estimado", "Estimated total")}</span>
+                <span className="text-xs text-slate-500">{costs.freightPending ? L("Total parcial, sin flete", "Partial total, no freight") : L("Total estimado", "Estimated total")}</span>
                 <span className="text-lg font-bold text-[#0B3C5D]">
                   {Q(costs.totalCost)}
                 </span>
@@ -378,14 +383,14 @@ export function CostBreakdown() {
             </ul>
             {costs.freightPending && (
               <p className="text-xs text-slate-500 mt-3">
-                {L("El flete marítimo no está incluido: se cotiza con el volumen o peso de su carga.", "Ocean freight is not included: it's quoted with the volume or weight of your cargo.")}
+                {L("El flete marítimo no está incluido: se cotiza con el volumen o peso de tu carga.", "Ocean freight is not included: it's quoted with the volume or weight of your cargo.")}
               </p>
             )}
           </div>
 
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-4 sm:p-6 min-w-0">
             <h2 className="font-semibold text-[#0B3C5D] mb-1">
-              {L("¿En qué se va su dinero?", "Where does your money go?")}
+              {L("¿En qué se va tu dinero?", "Where does your money go?")}
             </h2>
             <p className="text-sm text-slate-500 mb-5">
               {L("Porcentaje del costo total estimado", "Share of the estimated total cost")}
@@ -473,7 +478,7 @@ export function CostBreakdown() {
           {costs.freightPending && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
               ⚠️ {L(
-                "El total no incluye flete porque no indicó volumen ni peso. Un ejecutivo de SEAL le cotiza el flete, o puede volver al formulario y agregar el volumen (m³) o peso (kg).",
+                "El total no incluye flete porque no indicaste volumen ni peso. Un ejecutivo de SEAL te cotiza el flete, o puedes volver al formulario y agregar el volumen (m³) o peso (kg).",
                 "The total doesn't include freight because no volume or weight was given. A SEAL executive can quote it, or you can go back to the form and add the volume (m³) or weight (kg).",
               )}
             </div>
@@ -507,14 +512,14 @@ export function CostBreakdown() {
                   <li className="flex items-start gap-2">
                     <span className="text-green-500 mt-1">•</span>
                     <span>
-                      {L("Su presupuesto equivale a", "Your budget is")} <b>{Q(budgetPerUnit, 2)}</b>{" "}
+                      {L("Tu presupuesto equivale a", "Your budget is")} <b>{Q(budgetPerUnit, 2)}</b>{" "}
                       {L("por unidad. En este escenario quedaría", "per unit. In this scenario it would be")}{" "}
                       <b>{Q(Math.abs(diff), 2)}</b>{" "}
                       {diff >= 0
-                        ? L("por debajo de su presupuesto", "below your budget")
-                        : L("por encima de su presupuesto", "above your budget")}
+                        ? L("por debajo de tu presupuesto", "below your budget")
+                        : L("por encima de tu presupuesto", "above your budget")}
                       {L(
-                        " por unidad. Confírmelo con una cotización antes de decidir.",
+                        " por unidad. Confírmalo con una cotización antes de decidir.",
                         " per unit. Confirm it with a quote before deciding.",
                       )}
                     </span>
@@ -554,7 +559,7 @@ export function CostBreakdown() {
                         <span className="text-green-500 mt-1">•</span>
                         <span>
                           {L(
-                            `Su carga ocupa ${cbm.toFixed(0)} de ${n * rates.container40Cbm} m³. Le quedan ${free.toFixed(0)} m³ libres en el contenedor.`,
+                            `Tu carga ocupa ${cbm.toFixed(0)} de ${n * rates.container40Cbm} m³. Te quedan ${free.toFixed(0)} m³ libres en el contenedor.`,
                             `Your cargo uses ${cbm.toFixed(0)} of ${n * rates.container40Cbm} m³. ${free.toFixed(0)} m³ remain free in the container.`,
                           )}
                         </span>
@@ -589,7 +594,10 @@ export function CostBreakdown() {
             </ul>
             <a
               href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
-                `Hola SEAL, quiero una cotización confirmada para ${quantity.toLocaleString()} unidades (escenario estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}).`,
+                L(
+                  `Hola SEAL, quiero una cotización confirmada para ${quantity.toLocaleString()} ${quantity === 1 ? "unidad" : "unidades"}${productDescription ? ` de: ${productDescription.slice(0, 200)}` : ""} (escenario estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", sin flete" : ""}).`,
+                  `Hello SEAL, I'd like a confirmed quote for ${quantity.toLocaleString()} ${quantity === 1 ? "unit" : "units"}${productDescription ? ` of: ${productDescription.slice(0, 200)}` : ""} (estimated scenario ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", without freight" : ""}).`,
+                ),
               )}`}
               target="_blank"
               rel="noopener noreferrer"
