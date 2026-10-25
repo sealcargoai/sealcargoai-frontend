@@ -32,7 +32,14 @@ function median(values: number[]): number {
  * Reason the price looks atypical, or "" when it looks usable.
  * `peerPrices` are the prices of the other options in the same search.
  */
-export function priceIssue(s: PricedSupplier | null | undefined, peerPrices: number[] = []): string {
+// Product types where a published unit price of US$1 or less is not realistic
+const COSTLY_TYPES = new Set(["machinery", "electronics", "furniture"]);
+
+export function priceIssue(
+  s: PricedSupplier | null | undefined,
+  peerPrices: number[] = [],
+  productType = "",
+): string {
   if (!s || s.priceSource === "client") return "";
   if (s.priceFlag) return s.priceFlag;
   const price = s.price ?? 0;
@@ -41,7 +48,11 @@ export function priceIssue(s: PricedSupplier | null | undefined, peerPrices: num
   const lo = nums.length ? Math.min(...nums) : price;
   const hi = nums.length ? Math.max(...nums) : price;
 
-  if (price <= 1 || lo <= 1) {
+  const peers = peerPrices.filter((p) => p > 0);
+  const peerMedian = peers.length >= 3 ? median(peers) : 0;
+  // US$1 or less is normal for a pencil, not for a machine: flag it only for
+  // costly product types, or when the other options cost far more
+  if ((price <= 1 || lo <= 1) && (COSTLY_TYPES.has(productType) || peerMedian >= 20)) {
     return Lx(
       `El precio publicado (${formatUSD(lo, 2)}) parece simbólico o inicial, no el precio real de la unidad.`,
       `The published price (${formatUSD(lo, 2)}) looks symbolic or a starting price, not the real unit price.`,
@@ -53,10 +64,9 @@ export function priceIssue(s: PricedSupplier | null | undefined, peerPrices: num
       `The published range is very wide (${formatUSD(lo, 2)} – ${formatUSD(hi, 2)}); the minimum is usually an accessory or a different model.`,
     );
   }
-  const peers = peerPrices.filter((p) => p > 0);
-  if (peers.length >= 3) {
-    const m = median(peers);
-    if (m > 0 && price < m * 0.2) {
+  if (peerMedian > 0) {
+    const m = peerMedian;
+    if (price < m * 0.2) {
       return Lx(
         `Está muy por debajo de las demás opciones de esta búsqueda (precio típico cercano a ${formatUSD(m, 0)}).`,
         `It is far below the other options in this search (typical price around ${formatUSD(m, 0)}).`,
@@ -67,11 +77,11 @@ export function priceIssue(s: PricedSupplier | null | undefined, peerPrices: num
 }
 
 /** Adds `priceFlag` to each supplier, comparing it with the others in the list. */
-export function flagPrices<T extends PricedSupplier>(list: T[]): T[] {
+export function flagPrices<T extends PricedSupplier>(list: T[], productType = ""): T[] {
   const prices = list.map((s) => s.price ?? 0);
   return list.map((s, i) => {
     const peers = prices.filter((_, k) => k !== i);
-    const flag = priceIssue({ ...s, priceFlag: undefined }, peers);
+    const flag = priceIssue({ ...s, priceFlag: undefined }, peers, productType);
     return flag ? { ...s, priceFlag: flag } : s;
   });
 }
