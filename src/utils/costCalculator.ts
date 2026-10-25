@@ -47,7 +47,7 @@ export const DEFAULT_RATES: Rates = {
 // Shown wherever a cost appears: this tool estimates, SEAL quotes
 export function estimateNote(): string {
   return Lx(
-    "Estimación referencial, no es una cotización. Un ejecutivo de SEAL le confirma el costo antes del embarque.",
+    "Estimación referencial, no es una cotización. Un ejecutivo de SEAL te confirma el costo antes del embarque.",
     "Reference estimate, not a quote. A SEAL executive confirms the cost before shipment.",
   );
 }
@@ -157,7 +157,7 @@ export function calculateFreight(
   // W/M: the greater of m³ and metric tons (1,000 kg = 1 m³)
   const chargeable = Math.max(volumeCbm || 0, (weightKg || 0) / 1000);
   if (!chargeable) {
-    return { amount: 0, mode: null, detail: Lx("Por cotizar — indique volumen o peso", "To be quoted — enter volume or weight"), chargeableCbm: 0 };
+    return { amount: 0, mode: null, detail: Lx("Por cotizar — indica volumen o peso", "To be quoted — enter volume or weight"), chargeableCbm: 0 };
   }
 
   if (chargeable <= rates.lclMaxCbm) {

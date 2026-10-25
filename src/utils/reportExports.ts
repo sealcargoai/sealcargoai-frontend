@@ -438,7 +438,9 @@ export async function generateBeautifulExcel(
   const totalAmountCell = ws.getRow(totalRowNum).getCell(4);
   const totalPctCell = ws.getRow(totalRowNum).getCell(5);
 
-  totalConceptCell.value = Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA");
+  totalConceptCell.value = data.costs.freightPending
+    ? Lx("TOTAL PARCIAL, SIN FLETE", "PARTIAL TOTAL, WITHOUT FREIGHT")
+    : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA");
   totalDetailCell.value = `${data.quantity.toLocaleString()} ${unitsWord(data.quantity)}`;
   totalRateCell.value = "—";
   totalAmountCell.value = Math.round(data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX));

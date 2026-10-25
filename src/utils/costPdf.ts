@@ -127,7 +127,9 @@ export function buildCostPdf(d: CostPdfInput): string {
       ];
     }),
     foot: [[
-      Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA"),
+      d.costs.freightPending
+        ? Lx("TOTAL PARCIAL, SIN FLETE", "PARTIAL TOTAL, WITHOUT FREIGHT")
+        : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA"),
       `${d.quantity.toLocaleString("en-US")} ${unitsWord(d.quantity)}`,
       formatQ(d.costs.totalCost, fx),
       "100%",
@@ -153,8 +155,8 @@ export function buildCostPdf(d: CostPdfInput): string {
   doc.setFontSize(10);
   text(
     Lx(
-      `Escenario preliminar: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} por unidad`,
-      `Preliminary scenario: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} per unit`,
+      `${d.costs.freightPending ? "Estimación parcial, sin flete" : "Escenario preliminar"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} por unidad`,
+      `${d.costs.freightPending ? "Partial estimate, without freight" : "Preliminary scenario"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} per unit`,
     ),
     W / 2, y + 8.5, { align: "center" },
   );
