@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { clearDraft } from "../../utils/draft";
-import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS } from "../../utils/descriptionCheck";
+import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
 import { useNavigate } from "react-router";
 import { Search, Shield, Globe, TrendingUp, CheckCircle } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
@@ -26,7 +26,9 @@ export function LandingPage() {
   const navigate = useNavigate();
 
   const queryTrim = query.trim();
-  const queryOk = descriptionIsDetailed(queryTrim) && queryTrim.length <= QUERY_MAX;
+  // Sentences addressed to the tool are dropped from the start (chat, form, reports)
+  const cleaned = cleanDescription(queryTrim);
+  const queryOk = descriptionIsDetailed(cleaned.text) && queryTrim.length <= QUERY_MAX;
 
   const handleStartAnalysis = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,7 +46,7 @@ export function LandingPage() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: n, email: m, query: queryTrim }),
+          body: JSON.stringify({ name: n, email: m, query: cleaned.text }),
         },
       );
     } catch {
@@ -54,7 +56,7 @@ export function LandingPage() {
     getUserData(m, n);
     setSubmitting(false);
     clearDraft(); // a new query starts a new analysis
-    navigate("/chat", { state: { query: queryTrim, name: n, email: m } });
+    navigate("/chat", { state: { query: cleaned.text, descriptionCleaned: cleaned.removed, name: n, email: m } });
   };
 
   return (

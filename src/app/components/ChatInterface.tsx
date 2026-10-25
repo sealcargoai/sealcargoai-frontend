@@ -14,7 +14,7 @@ export function ChatInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { query, name, email } = location.state || {};
+  const { query, name, email, descriptionCleaned } = location.state || {};
   const { t, L } = useLanguage();
 
   // Assistant texts are resolved at render time so they follow the ES / EN switch
@@ -22,8 +22,8 @@ export function ChatInterface() {
     {
       role: "ai",
       content: L(
-        `${name ? `Hola, ${name}.` : "Hola."} Soy el asistente de orientación de SEAL. Puedo ayudarte a organizar la información de tu importación, explorar posibles proveedores y revisar algunos aspectos que conviene considerar.${query ? ` Tu consulta: "${query}".` : ""}`,
-        `${name ? `Hi, ${name}.` : "Hi."} I'm SEAL's guidance assistant. I can help you organize the information for your import, explore possible suppliers and review some aspects worth considering.${query ? ` Your request: "${query}".` : ""}`,
+        `${name ? `Hola, ${name}.` : "Hola."} Soy el asistente de orientación de SEAL. Puedo ayudarte a organizar la información de tu importación, explorar posibles proveedores y revisar algunos aspectos que conviene considerar.${query ? ` Tu consulta: "${query}".` : ""}${descriptionCleaned ? " Dejé fuera una parte del texto que no describe el producto; la herramienta no garantiza proveedores." : ""}`,
+        `${name ? `Hi, ${name}.` : "Hi."} I'm SEAL's guidance assistant. I can help you organize the information for your import, explore possible suppliers and review some aspects worth considering.${query ? ` Your request: "${query}".` : ""}${descriptionCleaned ? " I left out part of the text that doesn't describe the product; the tool does not guarantee suppliers." : ""}`,
       ),
     },
     {
@@ -155,7 +155,7 @@ export function ChatInterface() {
             <p className="text-sm text-slate-600 mb-4">{t("chat.ctaDesc")}</p>
             <button
               onClick={() =>
-                navigate("/qualify", { state: { query, name, email } })
+                navigate("/qualify", { state: { query, name, email, descriptionCleaned } })
               }
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-xl hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center gap-2 shadow-lg hover:shadow-xl"
             >

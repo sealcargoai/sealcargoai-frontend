@@ -66,9 +66,9 @@ const PLATFORMS = [
   {
     name: "Global Sources",
     url: (kw: string) =>
-      // Global Sources drops some queries with numbers ("15-needle"): search the product name
+      // Same keyword as the other platforms; hyphens split ("15-needle" → "15 needle")
       `https://www.globalsources.com/searchList/products?keyWord=${encodeURIComponent(
-        kw.replace(/\S*\d\S*/g, " ").replace(/\s+/g, " ").trim() || kw.trim(),
+        kw.replace(/-/g, " ").replace(/\s+/g, " ").trim(),
       )}`,
   },
 ];
@@ -610,7 +610,7 @@ export function SupplierResults() {
       productName: s.productName ? decodeEntities(s.productName) : s.productName,
     })),
     reqSpecs,
-  ).slice(0, 9));
+  ).slice(0, 9), String(location.state?.productType ?? ""));
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
@@ -1204,7 +1204,17 @@ export function SupplierResults() {
                   {t("suppliers.selectedSupplier")}
                 </h3>
                 <div className="text-sm text-slate-600 space-y-2">
-                  {(() => {
+                  {selectedSupplier.priceFlag ? (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900">
+                      <p className="font-semibold mb-1">{Lx("Precio por confirmar", "Price to be confirmed")}</p>
+                      <p>
+                        {Lx(
+                          "No calculamos la estimación con este precio publicado. En el desglose de costos podrás escribir el precio que te coticen o confirmarlo.",
+                          "We don't estimate with this published price. In the cost breakdown you can enter the price you're quoted or confirm it.",
+                        )}
+                      </p>
+                    </div>
+                  ) : (() => {
                     const est = calculateCosts(
                       {
                         price: selectedSupplier.price || 0,

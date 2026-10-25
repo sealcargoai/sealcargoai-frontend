@@ -104,7 +104,7 @@ export function CostBreakdown() {
   const originalSupplier = location.state?.supplier ?? null;
   // Atypical published prices (US$1, very wide ranges…) are not used until the
   // client confirms them or types the price they were quoted.
-  const priceFlag = priceIssue(originalSupplier);
+  const priceFlag = priceIssue(originalSupplier, [], String(location.state?.productType ?? ""));
   const [customPrice, setCustomPrice] = useState<number>(
     originalSupplier?.priceSource === "client" ? Number(originalSupplier.price) || 0 : 0,
   );

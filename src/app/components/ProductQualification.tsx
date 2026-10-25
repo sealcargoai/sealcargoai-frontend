@@ -312,7 +312,7 @@ export function ProductQualification() {
           ...formData,
           productType: productCategory,
           productDescription,
-          descriptionCleaned,
+          descriptionCleaned: descriptionCleaned || !!location.state?.descriptionCleaned,
           suppliers,
         },
       });
@@ -586,7 +586,7 @@ export function ProductQualification() {
                       <span className="font-medium">
                         {t("qualification.product")}
                       </span>{" "}
-                      {formData.productType}
+                      {cleanDescription(formData.productType).text}
                     </p>
                     <p>
                       <span className="font-medium">
