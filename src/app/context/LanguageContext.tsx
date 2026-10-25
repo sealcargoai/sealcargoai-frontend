@@ -112,7 +112,7 @@ const translations = {
     "qualification.productHelp":
       "Cuantos más detalles compartas, mejor podremos organizar las referencias y los supuestos de la estimación.",
     "qualification.quantity": "Cantidad (unidades)",
-    "qualification.budget": "Presupuesto (USD)",
+    "qualification.budget": "Presupuesto de compra al proveedor (USD)",
     "qualification.destination": "País de destino",
     "qualification.selectDestination": "Seleccionar destino",
     "qualification.review": "Revisa tus Detalles",
@@ -391,7 +391,7 @@ const translations = {
     "qualification.productPlaceholder": "Describe the product in as much detail as possible: what it is, what it is used for, material, dimensions, capacity or voltage, colors, reference brand or model, certifications needed, packaging, etc.",
     "qualification.productHelp": "The more details you share, the better we can organize the references and the assumptions behind the estimate.",
     "qualification.quantity": "Quantity (units)",
-    "qualification.budget": "Budget (USD)",
+    "qualification.budget": "Purchase budget with the supplier (USD)",
     "qualification.destination": "Destination country",
     "qualification.selectDestination": "Select destination",
     "qualification.review": "Review your details",
