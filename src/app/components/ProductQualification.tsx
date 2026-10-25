@@ -1,3 +1,4 @@
+import { wantedText } from "../../utils/useMatch";
 import { useState, useEffect } from "react";
 import { DRAFT_KEY } from "../../utils/draft";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
@@ -94,7 +95,8 @@ function fieldError(name: string, value: string): string {
 
 function inferCategory(description: string): string {
   for (const [category, regex] of Object.entries(CATEGORY_KEYWORDS)) {
-    if (regex.test(description)) return category;
+    // uses the client rules out ("no para alimentos") don't decide the category
+    if (regex.test(wantedText(description))) return category;
   }
   return "other";
 }

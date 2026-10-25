@@ -25,18 +25,32 @@ export function SpecTags({ description, productName, warn = false }: { descripti
   const otherUse = use?.status === "other";
   const useTag = use
     ? use.status === "match"
-      ? { tone: "green", text: Lx(`Indica el uso pedido: ${use.asked}`, `States the requested use: ${use.asked}`), sub: "" }
-      : use.status === "other"
+      ? {
+          tone: "green",
+          text: use.asked
+            ? Lx(`Indica el uso pedido: ${use.listed}`, `States the requested use: ${use.listed}`)
+            : Lx(`Indica: ${use.listed}`, `States: ${use.listed}`),
+          sub: use.excluded ? Lx(`Excluiste ${use.excluded}`, `You ruled out ${use.excluded}`) : "",
+        }
+      : use.status === "other" && use.hitsExcluded
         ? {
             tone: "red",
-            text: Lx(`Parece para otro uso: ${use.listed}`, `Seems meant for another use: ${use.listed}`),
-            sub: Lx(`Pediste ${use.asked}`, `You asked for ${use.asked}`),
+            text: Lx(`Menciona un uso que excluiste: ${use.hitsExcluded}`, `Mentions a use you ruled out: ${use.hitsExcluded}`),
+            sub: use.asked ? Lx(`Pediste ${use.asked}`, `You asked for ${use.asked}`) : "",
           }
-        : {
-            tone: "slate",
-            text: Lx("La publicación no dice para qué uso es", "The listing doesn't say what it's for"),
-            sub: Lx(`Confirma que sirva para ${use.asked}`, `Confirm it works for ${use.asked}`),
-          }
+        : use.status === "other"
+          ? {
+              tone: "red",
+              text: Lx(`Parece para otro uso: ${use.listed}`, `Seems meant for another use: ${use.listed}`),
+              sub: Lx(`Pediste ${use.asked}`, `You asked for ${use.asked}`),
+            }
+          : {
+              tone: "slate",
+              text: Lx("La publicación no dice para qué uso es", "The listing doesn't say what it's for"),
+              sub: use.asked
+                ? Lx(`Confirma que sirva para ${use.asked}`, `Confirm it works for ${use.asked}`)
+                : Lx(`Confirma que no sea para ${use.excluded}`, `Confirm it isn't meant for ${use.excluded}`),
+            }
     : null;
   return (
     <div className="mb-3">
@@ -59,10 +73,15 @@ export function SpecTags({ description, productName, warn = false }: { descripti
       </div>
       {warn && otherUse && (
         <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
-          {Lx(
-            `Ojo: esta publicación parece destinada a ${use!.listed}, no a ${use!.asked}. El escenario de costos puede no corresponder a lo que buscas; vuelve a la lista y escoge una opción para el uso que necesitas.`,
-            `Note: this listing seems meant for ${use!.listed}, not ${use!.asked}. The cost scenario may not match what you're looking for; go back to the list and choose an option for the use you need.`,
-          )}
+          {use!.hitsExcluded
+            ? Lx(
+                `Ojo: esta publicación menciona ${use!.hitsExcluded}, un uso que excluiste. El escenario de costos puede no corresponder a lo que buscas; vuelve a la lista y escoge otra opción.`,
+                `Note: this listing mentions ${use!.hitsExcluded}, a use you ruled out. The cost scenario may not match what you're looking for; go back to the list and choose another option.`,
+              )
+            : Lx(
+                `Ojo: esta publicación parece destinada a ${use!.listed}, no a ${use!.asked}. El escenario de costos puede no corresponder a lo que buscas; vuelve a la lista y escoge una opción para el uso que necesitas.`,
+                `Note: this listing seems meant for ${use!.listed}, not ${use!.asked}. The cost scenario may not match what you're looking for; go back to the list and choose an option for the use you need.`,
+              )}
         </p>
       )}
       {warn && differs && !otherUse && (

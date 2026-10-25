@@ -1,3 +1,4 @@
+import { wantedText } from "../../utils/useMatch";
 import { useNavigate, useLocation } from "react-router";
 import { cleanSupplier } from "../../utils/text";
 import { ClipboardList, FileText, Info, ArrowRight, Building2, CheckCircle, Circle } from "lucide-react";
@@ -124,7 +125,7 @@ export function getReviewTopics(productType: string, supplier: any, description 
       },
     );
     // Only the client's own description decides (listing titles mix many uses)
-    if (FOOD_USE.test(description || "")) {
+    if (FOOD_USE.test(wantedText(description || ""))) {
       topics.push(
         {
           title: T("Partes en contacto con alimentos", "Parts in contact with food"),

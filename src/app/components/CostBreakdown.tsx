@@ -1,3 +1,4 @@
+import { supplierKey, loadCostChoices, saveCostChoices } from "../../utils/draft";
 import { useEffect, useState } from "react";
 import { cleanSupplier } from "../../utils/text";
 import { useNavigate, useLocation } from "react-router";
@@ -107,12 +108,21 @@ export function CostBreakdown() {
   // Atypical published prices (US$1, very wide ranges…) are not used until the
   // client confirms them or types the price they were quoted.
   const priceFlag = priceIssue(originalSupplier, [], String(location.state?.productType ?? ""));
+  // Choices for this supplier: from this page's history entry, or from an
+  // earlier visit (back to the list and forward again creates a new entry)
+  const choiceKey = supplierKey(originalSupplier, String(location.state?.productDescription ?? ""));
+  const storedChoices = (location.state?.costChoices ?? loadCostChoices(choiceKey) ?? {}) as {
+    customPrice?: number;
+    usePublished?: boolean;
+    qtyMode?: "sets" | "pieces";
+    customPack?: number;
+  };
   const [customPrice, setCustomPrice] = useState<number>(
     originalSupplier?.priceSource === "client"
       ? Number(originalSupplier.price) || 0
-      : Number(location.state?.costChoices?.customPrice) || 0,
+      : Number(storedChoices.customPrice) || 0,
   );
-  const savedPrice = (location.state?.costChoices ?? {}) as { customPrice?: number; usePublished?: boolean };
+  const savedPrice = storedChoices;
   const [usePublished, setUsePublished] = useState<boolean>(!!originalSupplier?.priceConfirmed || !!savedPrice.usePublished);
   const stateSupplier =
     originalSupplier && customPrice > 0 && originalSupplier.priceSource !== "client"
@@ -145,7 +155,7 @@ export function CostBreakdown() {
   const intent = quantityIntent(String(location.state?.productDescription ?? ""));
   // Choices are kept in this page's history entry, so coming back from
   // "Aspectos por revisar" or the report does not ask for them again.
-  const saved = (location.state?.costChoices ?? {}) as { qtyMode?: "sets" | "pieces"; customPack?: number };
+  const saved = storedChoices;
   const [qtyMode, setQtyMode] = useState<"sets" | "pieces" | null>(
     saved.qtyMode ?? (intent === "piece" ? "pieces" : intent === "pack" ? "sets" : null),
   );
@@ -176,6 +186,7 @@ export function CostBreakdown() {
   const rates = useRates();
   useEffect(() => {
     const choices = { qtyMode: qtyMode ?? undefined, customPack, customPrice, usePublished };
+    saveCostChoices(choiceKey, choices);
     if (JSON.stringify(location.state?.costChoices ?? {}) === JSON.stringify(choices)) return;
     navigate(location.pathname, { replace: true, state: { ...(location.state ?? {}), costChoices: choices } });
     // eslint-disable-next-line react-hooks/exhaustive-deps

@@ -1,3 +1,4 @@
+import { supplierKey } from "../../utils/draft";
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import {
@@ -500,28 +501,36 @@ function rejectReason(r: string): string {
 function UseSummary({ description, list }: { description: string; list: { productName?: string }[] }) {
   const first = list.length ? matchUse(description, list[0].productName) : null;
   if (!first) return null;
-  let match = 0, other = 0, unknown = 0;
+  let match = 0, other = 0, unknown = 0, excl = 0;
   list.forEach((s) => {
-    const st = matchUse(description, s.productName)!.status;
+    const u = matchUse(description, s.productName)!;
+    const st = u.status;
     if (st === "match") match++;
+    else if (st === "other" && u.hitsExcluded) excl++;
     else if (st === "other") other++;
     else unknown++;
   });
   const parts = [
     match && `${match} ${plural(match, "indica ese uso", "indican ese uso", "states that use", "state that use")}`,
+    excl && `${excl} ${plural(excl, "menciona un uso que excluiste", "mencionan un uso que excluiste", "mentions a use you ruled out", "mention a use you ruled out")}`,
     unknown && `${unknown} ${plural(unknown, "no dice para qué uso es", "no dicen para qué uso son", "doesn't say its use", "don't say their use")}`,
     other && `${other} ${plural(other, "parece para otro uso", "parecen para otro uso", "seems meant for another use", "seem meant for another use")}`,
   ].filter(Boolean);
   return (
-    <div className={`rounded-lg border p-4 text-sm ${other && !match ? "bg-red-50 border-red-200 text-red-900" : "bg-white border-slate-200 text-slate-700"}`}>
+    <div className={`rounded-lg border p-4 text-sm ${(other || excl) && !match ? "bg-red-50 border-red-200 text-red-900" : "bg-white border-slate-200 text-slate-700"}`}>
       <p>
-        <span className="font-semibold text-[#0B3C5D]">{Lx(`Uso pedido: ${first.asked}.`, `Requested use: ${first.asked}.`)}</span>{" "}
+        {first.asked && (
+          <span className="font-semibold text-[#0B3C5D]">{Lx(`Uso pedido: ${first.asked}.`, `Requested use: ${first.asked}.`)} </span>
+        )}
+        {first.excluded && (
+          <span className="font-semibold text-[#0B3C5D]">{Lx(`Excluiste: ${first.excluded}.`, `You ruled out: ${first.excluded}.`)} </span>
+        )}
         {parts.join(" · ")}.
       </p>
       <p className="text-xs text-slate-500 mt-1">
         {Lx(
-          "Primero aparecen las que indican ese uso; las que parecen para otro uso quedan al final y no se escogen para el cálculo. El uso se lee del título publicado: confírmalo con el proveedor.",
-          "Listings stating that use come first; those that seem meant for another use go last and are not picked for the estimate. Use is read from the listing title: confirm it with the supplier.",
+          "Primero aparecen las que indican ese uso; las que parecen para otro uso o para un uso que excluiste quedan al final y no se escogen para el cálculo. El uso se lee del título publicado: confírmalo con el proveedor.",
+          "Listings stating that use come first; those that seem meant for another use, or for a use you ruled out, go last and are not picked for the estimate. Use is read from the listing title: confirm it with the supplier.",
         )}
       </p>
     </div>
@@ -632,12 +641,13 @@ export function SupplierResults() {
   // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
   // Order: requested use first (a paint mill is not a corn mill), then specs, then the rest
   const displaySuppliers: Supplier[] = flagPrices(orderByUse(orderBySpecs(
-    (apiData?.topSuppliers ?? []).map((s: Supplier) => ({
+    (apiData?.topSuppliers ?? []).map((s: Supplier, idx: number) => ({
       ...s,
       // Older results could carry 0 when the price text was "US$0.02-0.05": use the range midpoint
       price: s.price > 0 ? s.price : rangeMidpoint(s.priceRange),
       // Incomplete records never break the page
-      id: s.id ?? Math.random(),
+      // stable across renders, so the selected card stays marked
+      id: s.id ?? (-1 - idx),
       tags: Array.isArray(s.tags) ? s.tags : [],
       images: Array.isArray(s.images) ? s.images : [],
       rating: typeof s.rating === "number" ? s.rating : null,
@@ -664,18 +674,28 @@ export function SupplierResults() {
   const rates = useRates();
 
   // ── State ─────────────────────────────────────────────────────────────────
-  // Default: the first option whose price looks usable (atypical prices need confirmation)
-  const [selectedSupplier, setSelectedSupplier] = useState<Supplier>(
-    (displaySuppliers.find(
-      (s) =>
-        !s.priceFlag &&
-        s.price > 0 &&
-        matchUse(String(location.state?.productDescription ?? ""), s.productName)?.status !== "other",
-    ) ??
-      displaySuppliers.find((s) => !s.priceFlag && s.price > 0) ??
-      displaySuppliers.find((s) => s.price > 0) ??
-      displaySuppliers[0]) as Supplier,
+  // Selection: the one the client chose earlier (kept in this page's history
+  // entry), or the first option only when it can be used as it is. If the first
+  // option has a price to confirm, no price, or seems meant for another use, the
+  // client chooses explicitly: we never jump to a very different alternative.
+  const descriptionText = String(location.state?.productDescription ?? "");
+  const keyOf = (s: Supplier) => supplierKey(s, descriptionText);
+  const first = displaySuppliers[0];
+  const firstUsable =
+    !!first && !first.priceFlag && first.price > 0 && matchUse(descriptionText, first.productName)?.status !== "other";
+  const [chosen, setChosen] = useState<Supplier | null>(
+    () =>
+      displaySuppliers.find((s) => keyOf(s) === location.state?.selectedKey) ??
+      (firstUsable ? first : null),
   );
+  const [pickNotice, setPickNotice] = useState(false);
+  const selectedSupplier = (chosen ?? first) as Supplier;
+  const hasChoice = !!chosen;
+  const setSelectedSupplier = (s: Supplier) => {
+    setChosen(s);
+    setPickNotice(false);
+    navigate(location.pathname, { replace: true, state: { ...(location.state ?? {}), selectedKey: keyOf(s) } });
+  };
   const [showFiltered, setShowFiltered] = useState(false);
   const [sortBy, setSortBy] = useState("seal");
   const [savedSuppliers, setSavedSuppliers] = useState<number[]>([]);
@@ -718,6 +738,11 @@ export function SupplierResults() {
 
   // ── Navigate to costs with selected supplier ──────────────────────────────
   const goToCosts = () => {
+    if (!chosen) {
+      setPickNotice(true);
+      document.getElementById("supplier-list")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      return;
+    }
     navigate("/costs", {
       state: {
         supplier: selectedSupplier,
@@ -899,7 +924,7 @@ export function SupplierResults() {
         </div>
 
         <SupplierDisclaimer
-          supplier={selectedSupplier}
+          supplier={chosen}
           productDescription={location.state?.productDescription ?? ""}
           quantity={navQuantity}
         />
@@ -946,6 +971,21 @@ export function SupplierResults() {
             )}
             <UseSummary description={String(location.state?.productDescription ?? "")} list={displaySuppliers} />
             <SpecSummary reqs={reqSpecs} list={displaySuppliers} />
+            {!hasChoice && (
+              <div
+                id="supplier-list"
+                role={pickNotice ? "alert" : undefined}
+                className={`rounded-lg border p-3 text-sm scroll-mt-24 ${
+                  pickNotice ? "bg-amber-50 border-amber-300 text-amber-900" : "bg-blue-50 border-blue-200 text-[#0B3C5D]"
+                }`}
+              >
+                <span className="font-semibold">{Lx("Elige una opción para calcular costos. ", "Choose an option to estimate costs. ")}</span>
+                {Lx(
+                  "La primera de la lista tiene un precio por confirmar, no publica precio o parece para otro uso, así que no escogemos otra por ti. Toca la opción que quieres revisar.",
+                  "The first one on the list has a price to confirm, no published price, or seems meant for another use, so we don't pick another one for you. Tap the option you want to review.",
+                )}
+              </div>
+            )}
 
             {/* Sort Bar */}
             <div className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4">
@@ -973,7 +1013,7 @@ export function SupplierResults() {
                 <div
                   key={supplier.id}
                   className={`bg-white rounded-xl border-2 cursor-pointer transition-all hover:shadow-lg relative ${
-                    selectedSupplier.id === supplier.id
+                    hasChoice && selectedSupplier.id === supplier.id
                       ? "border-blue-500 shadow-lg"
                       : "border-slate-200"
                   }`}
@@ -1234,6 +1274,12 @@ export function SupplierResults() {
               </h2>
 
               {/* Selected supplier: Índice de Confianza SEAL breakdown */}
+              {!hasChoice ? (
+                <div className="mb-6 p-4 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-700">
+                  <p className="font-semibold text-[#0B3C5D] mb-1">{Lx("Aún no has elegido una opción", "You haven't chosen an option yet")}</p>
+                  <p>{Lx("Toca una opción de la lista para ver su índice referencial y una estimación de costos.", "Tap an option on the list to see its reference index and a cost estimate.")}</p>
+                </div>
+              ) : (
               <div className="mb-6 p-4 bg-gradient-to-br from-blue-50 to-blue-100 border border-blue-200 rounded-lg">
                 <div className="font-semibold text-[#0B3C5D] mb-2 text-sm leading-tight">
                   {selectedSupplier.name}
@@ -1251,6 +1297,7 @@ export function SupplierResults() {
                   </span>
                 </div>
               </div>
+              )}
 
               {/* How we order */}
               <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 mb-6 text-sm text-slate-700">
@@ -1269,7 +1316,9 @@ export function SupplierResults() {
                   {t("suppliers.selectedSupplier")}
                 </h3>
                 <div className="text-sm text-slate-600 space-y-2">
-                  {!(selectedSupplier.price > 0) ? (
+                  {!hasChoice ? (
+                    <p className="text-slate-600">{Lx("Elige una opción de la lista.", "Choose an option from the list.")}</p>
+                  ) : !(selectedSupplier.price > 0) ? (
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-700">
                       <p className="font-semibold mb-1">{Lx("Sin precio publicado", "No published price")}</p>
                       <p>
