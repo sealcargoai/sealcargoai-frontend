@@ -6,7 +6,7 @@ import { Lx } from "../utils/lang";
 
 // Shown small in the corner so testers can tell which version they are seeing.
 // Update it with each published change.
-export const APP_VERSION = "2026.10.25-a";
+export const APP_VERSION = "2026.10.25-b";
 
 // Name of the main script this tab is running (it changes with every deploy)
 function currentBundle(): string {
