@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { DRAFT_KEY } from "../../utils/draft";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
 import { useNavigate, useLocation } from "react-router";
 import {
@@ -43,7 +44,7 @@ export const LIMITS = {
   weightMax: 5_000_000,
 };
 
-const DRAFT_KEY = "seal_qualify_draft";
+// DRAFT_KEY lives in utils/draft.ts
 // The backend gives up at ~75 s; the browser waits a little longer, then offers a way out
 const SEARCH_TIMEOUT_MS = 95_000;
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";

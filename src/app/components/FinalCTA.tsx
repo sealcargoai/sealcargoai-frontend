@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { clearDraft } from "../../utils/draft";
 import { useNavigate, useLocation } from "react-router";
 import {
   Download,
@@ -361,7 +362,10 @@ export function FinalCTA() {
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <button
-              onClick={() => navigate("/")}
+              onClick={() => {
+              clearDraft();
+              navigate("/");
+            }}
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-[#0B3C5D] text-[#0B3C5D] rounded-xl hover:bg-[#0B3C5D] hover:text-white transition-all font-medium shadow-sm hover:shadow-md text-xs sm:text-sm whitespace-nowrap"
             >
               {t("final.startNew")}
@@ -684,7 +688,10 @@ export function FinalCTA() {
         {/* Start Over */}
         <div className="text-center mt-12">
           <button
-            onClick={() => navigate("/")}
+            onClick={() => {
+              clearDraft();
+              navigate("/");
+            }}
             className="px-8 py-3 border-2 border-[#0B3C5D] text-[#0B3C5D] rounded-lg hover:bg-[#0B3C5D] hover:text-white transition-all"
           >
             {t("final.startNew")}

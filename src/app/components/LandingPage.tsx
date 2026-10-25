@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { clearDraft } from "../../utils/draft";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS } from "../../utils/descriptionCheck";
 import { useNavigate } from "react-router";
 import { Search, Shield, Globe, TrendingUp, CheckCircle } from "lucide-react";
@@ -52,6 +53,7 @@ export function LandingPage() {
     // Initialize user in localStorage
     getUserData(m, n);
     setSubmitting(false);
+    clearDraft(); // a new query starts a new analysis
     navigate("/chat", { state: { query: queryTrim, name: n, email: m } });
   };
 

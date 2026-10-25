@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { clearDraft } from "../../utils/draft";
 import { useNavigate } from "react-router";
 import { MapPin, Award, Star, Package, ExternalLink, AlertCircle, ArrowLeft, Search, ShieldCheck } from "lucide-react";
 import { formatUSD } from "../../utils/costCalculator";
@@ -342,7 +343,10 @@ export function NoSupplierNotice({ hasSupplierWithoutPrice }: { hasSupplierWitho
             <span>{Lx("Volver a proveedores", "Back to suppliers")}</span>
           </button>
           <button
-            onClick={() => navigate("/qualify")}
+            onClick={() => {
+              clearDraft();
+              navigate("/");
+            }}
             className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg border-2 border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50"
           >
             <Search className="w-4 h-4" />
