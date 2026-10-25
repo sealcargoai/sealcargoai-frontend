@@ -288,6 +288,7 @@ export function RiskCompliance() {
         volumeCbm: location.state?.volumeCbm,
         weightKg: location.state?.weightKg,
         productDescription,
+        piecesPerUnit: location.state?.piecesPerUnit,
       },
     });
   };

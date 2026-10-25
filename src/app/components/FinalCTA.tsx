@@ -520,6 +520,14 @@ export function FinalCTA() {
               )}
               <div className="text-sm text-green-700">
                 {Q(costs.perUnit, 2)} {Lx("por", "per")} {unitWordFor(saleUnit, 1)}
+                {Number(location.state?.piecesPerUnit) > 1 && (
+                  <span className="block text-xs text-green-800">
+                    {Lx(
+                      `≈ ${Q(costs.perUnit / Number(location.state.piecesPerUnit), 2)} por pieza (supuesto: ${location.state.piecesPerUnit} piezas por ${unitWordFor(saleUnit, 1)}, por confirmar)`,
+                      `≈ ${Q(costs.perUnit / Number(location.state.piecesPerUnit), 2)} per piece (assumption: ${location.state.piecesPerUnit} pieces per ${unitWordFor(saleUnit, 1)}, to be confirmed)`,
+                    )}
+                  </span>
+                )}
               </div>
               <div className="text-xs text-green-800 mt-1">
                 <span>{L("Escenario estimado, no cotización", "Estimated scenario, not a quote")}</span>

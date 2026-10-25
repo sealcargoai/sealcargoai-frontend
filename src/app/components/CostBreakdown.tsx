@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { priceIssue } from "../../utils/priceCheck";
 import {
@@ -107,9 +107,12 @@ export function CostBreakdown() {
   // client confirms them or types the price they were quoted.
   const priceFlag = priceIssue(originalSupplier, [], String(location.state?.productType ?? ""));
   const [customPrice, setCustomPrice] = useState<number>(
-    originalSupplier?.priceSource === "client" ? Number(originalSupplier.price) || 0 : 0,
+    originalSupplier?.priceSource === "client"
+      ? Number(originalSupplier.price) || 0
+      : Number(location.state?.costChoices?.customPrice) || 0,
   );
-  const [usePublished, setUsePublished] = useState<boolean>(!!originalSupplier?.priceConfirmed);
+  const savedPrice = (location.state?.costChoices ?? {}) as { customPrice?: number; usePublished?: boolean };
+  const [usePublished, setUsePublished] = useState<boolean>(!!originalSupplier?.priceConfirmed || !!savedPrice.usePublished);
   const stateSupplier =
     originalSupplier && customPrice > 0 && originalSupplier.priceSource !== "client"
       ? {
@@ -139,11 +142,15 @@ export function CostBreakdown() {
   // What the client wrote decides by default ("500 lápices" = pieces); if it is
   // unclear, the estimate waits until they say whether the quantity is in sets or pieces.
   const intent = quantityIntent(String(location.state?.productDescription ?? ""));
+  // Choices are kept in this page's history entry, so coming back from
+  // "Aspectos por revisar" or the report does not ask for them again.
+  const saved = (location.state?.costChoices ?? {}) as { qtyMode?: "sets" | "pieces"; customPack?: number };
   const [qtyMode, setQtyMode] = useState<"sets" | "pieces" | null>(
-    intent === "piece" ? "pieces" : intent === "pack" ? "sets" : null,
+    saved.qtyMode ?? (intent === "piece" ? "pieces" : intent === "pack" ? "sets" : null),
   );
-  const [customPack, setCustomPack] = useState(0);
+  const [customPack, setCustomPack] = useState(saved.customPack ?? 0);
   const packSize = unitInfo.packSize > 1 ? unitInfo.packSize : customPack;
+  const piecesPerUnit = unitInfo.multi && qtyMode !== null && packSize > 1 ? packSize : 0;
   const needsUnitDecision =
     unitInfo.multi && (qtyMode === null || (qtyMode === "pieces" && !(packSize > 1)));
   const quantity =
@@ -166,6 +173,12 @@ export function CostBreakdown() {
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
+  useEffect(() => {
+    const choices = { qtyMode: qtyMode ?? undefined, customPack, customPrice, usePublished };
+    if (JSON.stringify(location.state?.costChoices ?? {}) === JSON.stringify(choices)) return;
+    navigate(location.pathname, { replace: true, state: { ...(location.state ?? {}), costChoices: choices } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qtyMode, customPack, customPrice, usePublished]);
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
   if (!needsPriceDecision && needsUnitDecision) {
     return (
@@ -319,6 +332,7 @@ export function CostBreakdown() {
                   state: {
                     supplier: stateSupplier,
                     quantity: String(quantity),
+                    piecesPerUnit,
                     budget: stateBudget,
                     destination: stateDestination,
                     productType: stateProductType,
@@ -405,6 +419,14 @@ export function CostBreakdown() {
                 {quantity.toLocaleString()} {unitWordFor(unitInfo.unit, quantity)} •{" "}
                 <span className="font-bold text-white">
                   {Q(costs.perUnit, 2)} {Lx("por", "per")} {unitWordFor(unitInfo.unit, 1)}
+                  {piecesPerUnit > 1 && (
+                    <span className="block text-xs sm:text-sm font-normal text-blue-100">
+                      {Lx(
+                        `≈ ${Q(costs.perUnit / piecesPerUnit, 2)} por pieza (supuesto: ${piecesPerUnit} piezas por ${unitWordFor(unitInfo.unit, 1)}, por confirmar)`,
+                        `≈ ${Q(costs.perUnit / piecesPerUnit, 2)} per piece (assumption: ${piecesPerUnit} pieces per ${unitWordFor(unitInfo.unit, 1)}, to be confirmed)`,
+                      )}
+                    </span>
+                  )}
                 </span>
               </div>
               <div className="text-blue-200 text-xs sm:text-sm mt-1">
@@ -598,11 +620,20 @@ export function CostBreakdown() {
               <li className="flex items-start gap-2">
                 <span className="text-green-500 mt-1">•</span>
                 <span>
-                  {L("En este escenario, cada unidad quedaría en", "In this scenario, each unit would come to")}{" "}
-                  <b>{Q(costs.perUnit, 2)}</b>{" "}
                   {L(
-                    "puesta en Guatemala. Es una estimación preliminar, sujeta a revisión.",
-                    "landed in Guatemala. It's a preliminary estimate, subject to review.",
+                    `En este escenario, el costo en Guatemala de cada ${unitWordFor(unitInfo.unit, 1)} sería de`,
+                    `In this scenario, the landed cost in Guatemala of each ${unitWordFor(unitInfo.unit, 1)} would be`,
+                  )}{" "}
+                  <b>{Q(costs.perUnit, 2)}</b>
+                  {piecesPerUnit > 1
+                    ? L(
+                        ` (unos ${Q(costs.perUnit / piecesPerUnit, 2)} por pieza, suponiendo ${piecesPerUnit} piezas por ${unitWordFor(unitInfo.unit, 1)})`,
+                        ` (about ${Q(costs.perUnit / piecesPerUnit, 2)} per piece, assuming ${piecesPerUnit} pieces per ${unitWordFor(unitInfo.unit, 1)})`,
+                      )
+                    : ""}
+                  {L(
+                    ". Es una estimación preliminar, sujeta a revisión.",
+                    ". It's a preliminary estimate, subject to review.",
                   )}
                   {costs.freightPending ? L(" No incluye flete.", " Freight not included.") : ""}
                 </span>
@@ -892,8 +923,13 @@ function SaleUnitNotice({
       <p className="mb-3">
         {Lx(`Esta publicación vende por ${one}`, `This listing sells per ${one}`)}
         {packFromTitle
-          ? Lx(` y su título indica ${packSize} piezas por ${one}.`, ` and its title says ${packSize} pieces per ${one}.`)
-          : Lx(`; el título no dice cuántas piezas trae cada ${one}.`, `; the title doesn't say how many pieces each ${one} holds.`)}
+          ? Lx(
+              ` y su título indica ${packSize} piezas por ${one}: usamos ese dato como supuesto, pendiente de confirmar con el proveedor.`,
+              ` and its title says ${packSize} pieces per ${one}: we use it as an assumption, to be confirmed with the supplier.`,
+            )
+          : packSize > 1
+            ? Lx(` y tú indicaste ${packSize} piezas por ${one}.`, ` and you entered ${packSize} pieces per ${one}.`)
+            : Lx(`; el título no dice cuántas piezas trae cada ${one}.`, `; the title doesn't say how many pieces each ${one} holds.`)}
         {fromDescription && mode
           ? Lx(
               ` Por lo que escribiste, tomamos tu cantidad como ${mode === "pieces" ? "piezas" : many}; puedes cambiarlo.`,
