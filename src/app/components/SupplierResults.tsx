@@ -97,7 +97,7 @@ function MorePlatforms({
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
 
-  const kw = (keyword || productDescription || "").trim();
+  const kw = (keyword || productDescription || "").replace(/[,;:.]+/g, " ").replace(/\s+/g, " ").trim();
   // No external searches for descriptions that don't name a product ("abc")
   if (!kw || !descriptionIsDetailed(productDescription || keyword)) return null;
 
@@ -457,6 +457,11 @@ function NoResults({
 // ─── Types ────────────────────────────────────────────────────────────────────
 // Order options for the results list. "seal" keeps the backend order
 // (trust level first, then lowest price inside each level).
+function rangeMidpoint(range?: string): number {
+  const n = String(range || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/g)?.map(Number).filter((x) => x > 0) ?? [];
+  return n.length >= 2 ? (n[0] + n[1]) / 2 : n[0] ?? 0;
+}
+
 function decodeEntities(t: string): string {
   return String(t ?? "")
     .replace(/&nbsp;/g, " ")
@@ -606,6 +611,8 @@ export function SupplierResults() {
   const displaySuppliers: Supplier[] = flagPrices(orderBySpecs(
     (apiData?.topSuppliers ?? []).map((s: Supplier) => ({
       ...s,
+      // Older results could carry 0 when the price text was "US$0.02-0.05": use the range midpoint
+      price: s.price > 0 ? s.price : rangeMidpoint(s.priceRange),
       name: decodeEntities(s.name),
       productName: s.productName ? decodeEntities(s.productName) : s.productName,
     })),
@@ -627,7 +634,9 @@ export function SupplierResults() {
   // ── State ─────────────────────────────────────────────────────────────────
   // Default: the first option whose price looks usable (atypical prices need confirmation)
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier>(
-    (displaySuppliers.find((s) => !s.priceFlag) ?? displaySuppliers[0]) as Supplier,
+    (displaySuppliers.find((s) => !s.priceFlag && s.price > 0) ??
+      displaySuppliers.find((s) => s.price > 0) ??
+      displaySuppliers[0]) as Supplier,
   );
   const [showFiltered, setShowFiltered] = useState(false);
   const [sortBy, setSortBy] = useState("seal");
@@ -1204,7 +1213,17 @@ export function SupplierResults() {
                   {t("suppliers.selectedSupplier")}
                 </h3>
                 <div className="text-sm text-slate-600 space-y-2">
-                  {selectedSupplier.priceFlag ? (
+                  {!(selectedSupplier.price > 0) ? (
+                    <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-700">
+                      <p className="font-semibold mb-1">{Lx("Sin precio publicado", "No published price")}</p>
+                      <p>
+                        {Lx(
+                          "Esta opción no publica un precio utilizable, así que no mostramos una estimación. Escoge otra opción o pide la cotización al proveedor.",
+                          "This option doesn't publish a usable price, so we don't show an estimate. Choose another option or ask the supplier for a quote.",
+                        )}
+                      </p>
+                    </div>
+                  ) : selectedSupplier.priceFlag ? (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900">
                       <p className="font-semibold mb-1">{Lx("Precio por confirmar", "Price to be confirmed")}</p>
                       <p>
