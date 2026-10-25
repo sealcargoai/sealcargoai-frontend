@@ -34,20 +34,43 @@ export function ChatInterface() {
       ),
     },
   ];
-  const REPLY = L(
-    "Gracias. Por ahora no respondo preguntas abiertas en este chat. Para orientarte, continúa con el formulario: ahí ordenamos tus datos y preparamos las referencias y estimaciones. Si prefieres hablar con una persona, escribe al WhatsApp de SEAL +502 5996 4664.",
-    "Thanks. For now I don't answer open questions in this chat. To guide you, continue with the form: there we organize your data and prepare the references and estimates. If you'd rather talk to a person, message SEAL on WhatsApp +502 5996 4664.",
-  );
-  // "ai" entries in state are placeholders for the fixed reply above
+  // Short, honest answers: what the tool can't confirm, why, and the useful next step.
+  const REPLIES: Record<string, string> = {
+    supplier: L(
+      "No puedo confirmar si un proveedor es real o confiable: la herramienta solo organiza lo que publica la plataforma (insignias, años, reseñas) y no lo verifica. Siguiente paso: continúa con el formulario para ver opciones ordenadas por índice referencial y, si vas a comprar, pide a SEAL la verificación del proveedor en China (servicio adicional).",
+      "I can't confirm whether a supplier is real or reliable: the tool only organizes what the platform publishes (badges, years, reviews) and doesn't verify it. Next step: continue with the form to see options sorted by reference index and, if you're going to buy, ask SEAL for the supplier verification in China (additional service).",
+    ),
+    dai: L(
+      "No puedo confirmar el DAI de tu producto: depende de la partida arancelaria, que se define con la ficha técnica. En la estimación usamos 15% como referencia y el IVA de 12% sobre CIF + DAI. Siguiente paso: completa el formulario para ver el escenario y, para la partida exacta, un agente aduanero de SEAL puede clasificar tu producto (WhatsApp +502 5996 4664).",
+      "I can't confirm the DAI duty for your product: it depends on the tariff heading, which is set from the technical sheet. The estimate uses 15% as reference and 12% IVA on CIF + DAI. Next step: complete the form to see the scenario and, for the exact heading, a SEAL customs broker can classify your product (WhatsApp +502 5996 4664).",
+    ),
+    cost: L(
+      "Puedo prepararte una estimación preliminar con los datos del formulario (producto, cantidad y, si lo tienes, volumen o peso). Un costo confirmado solo lo da una cotización de SEAL. Siguiente paso: continúa con el formulario.",
+      "I can prepare a preliminary estimate with the form data (product, quantity and, if you have it, volume or weight). A confirmed cost only comes from a SEAL quote. Next step: continue with the form.",
+    ),
+    general: L(
+      "Gracias. Por ahora no respondo preguntas abiertas en este chat. Para orientarte, continúa con el formulario: ahí ordenamos tus datos y preparamos las referencias y estimaciones. Si prefieres hablar con una persona, escribe al WhatsApp de SEAL +502 5996 4664.",
+      "Thanks. For now I don't answer open questions in this chat. To guide you, continue with the form: there we organize your data and prepare the references and estimates. If you'd rather talk to a person, message SEAL on WhatsApp +502 5996 4664.",
+    ),
+  };
+  const replyKind = (text: string) => {
+    const t = text.toLowerCase();
+    if (/proveedor|supplier|confiable|reliable|\breal\b|estafa|fraude|scam|verific|garantiz|guarantee|legit/.test(t)) return "supplier";
+    if (/\bdai\b|arancel|partida|impuesto|\biva\b|tariff|duty|duties|\btax|\bsac\b/.test(t)) return "dai";
+    if (/precio|costo|cu[aá]nto|cotiz|price|cost|quote|how much/.test(t)) return "cost";
+    return "general";
+  };
+  // "ai" entries in state hold the reply kind; the text is resolved at render (ES / EN)
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
 
   const handleSend = () => {
     if (!input.trim()) return;
+    const kind = replyKind(input);
     setMessages([...messages, { role: "user", content: input }]);
     setInput("");
     setTimeout(() => {
-      setMessages((prev) => [...prev, { role: "ai", content: "" }]);
+      setMessages((prev) => [...prev, { role: "ai", content: kind }]);
     }, 1000);
   };
 
@@ -116,7 +139,7 @@ export function ChatInterface() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {[...intro, ...messages.map((m) => (m.role === "ai" ? { ...m, content: REPLY } : m))].map((msg, i) => (
+          {[...intro, ...messages.map((m) => (m.role === "ai" ? { ...m, content: REPLIES[m.content] ?? REPLIES.general } : m))].map((msg, i) => (
             <div
               key={i}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}

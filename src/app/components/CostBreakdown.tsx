@@ -554,7 +554,7 @@ export function CostBreakdown() {
             </div>
             <div className="mt-6 pt-4 border-t border-slate-200 flex items-baseline justify-between">
               <p className="text-sm text-slate-600">
-                {L("Por cada unidad, además del precio de fábrica", "Per unit, on top of the factory price")}
+                {L(`Por cada ${unitWordFor(unitInfo.unit, 1)}, además del precio de fábrica`, `Per ${unitWordFor(unitInfo.unit, 1)}, on top of the factory price`)}
                 {costs.freightPending ? L(" (sin flete)", " (without freight)") : ""}
               </p>
               <p className="text-base font-bold text-[#0B3C5D]">
