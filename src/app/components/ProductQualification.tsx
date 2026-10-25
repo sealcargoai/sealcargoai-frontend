@@ -218,6 +218,8 @@ export function ProductQualification() {
   // ── Submit: call backend then navigate ──────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // The search only runs from step 3 (review), never by moving between steps or pressing Enter earlier
+    if (step !== 3 || isLoading) return;
 
     // ── CHECK LIMIT FIRST ────────────────────────────────
     if (userEmail && !canUserSearch(userEmail, userName)) {
@@ -633,6 +635,7 @@ export function ProductQualification() {
 
               {step < 3 ? (
                 <button
+                  key="next-step"
                   type="button"
                   onClick={() => {
                     if (!stepValid) {
@@ -655,6 +658,7 @@ export function ProductQualification() {
                 </button>
               ) : (
                 <button
+                  key="search-submit"
                   type="submit"
                   disabled={isLoading}
                   className="flex-1 px-6 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
@@ -699,8 +703,8 @@ export function ProductQualification() {
                   {elapsed < 15
                     ? L("Revisando plataformas de proveedores…", "Checking supplier platforms…")
                     : L(
-                        `Esto puede tardar hasta un minuto y medio (${elapsed} s). Tus datos ya quedaron guardados.`,
-                        `This can take up to a minute and a half (${elapsed} s). Your data is already saved.`,
+                        `Llevamos ${elapsed} s buscando; puede tardar hasta un minuto y medio. Tus datos ya quedaron guardados.`,
+                        `${elapsed} s searching so far; it can take up to a minute and a half. Your data is already saved.`,
                       )}
                 </span>
               </p>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { cleanSupplier } from "../../utils/text";
 import { useNavigate, useLocation } from "react-router";
 import { priceIssue } from "../../utils/priceCheck";
 import {
@@ -102,7 +103,7 @@ export function CostBreakdown() {
   const { t, L } = useLanguage();
 
   // ── Read state ────────────────────────────────────────────────────────────
-  const originalSupplier = location.state?.supplier ?? null;
+  const originalSupplier = cleanSupplier(location.state?.supplier ?? null);
   // Atypical published prices (US$1, very wide ranges…) are not used until the
   // client confirms them or types the price they were quoted.
   const priceFlag = priceIssue(originalSupplier, [], String(location.state?.productType ?? ""));
@@ -138,7 +139,7 @@ export function CostBreakdown() {
   const requestedQty = parseInt(String(stateQuantity)) || 1000;
   // The price is per sale unit (piece, set, box…). When the title says how many
   // pieces a set holds, the client can say whether their quantity is in pieces.
-  const unitInfo = saleUnitInfo(stateSupplier);
+  const unitInfo = saleUnitInfo(stateSupplier, String(stateProductType));
   // What the client wrote decides by default ("500 lápices" = pieces); if it is
   // unclear, the estimate waits until they say whether the quantity is in sets or pieces.
   const intent = quantityIntent(String(location.state?.productDescription ?? ""));
@@ -299,7 +300,7 @@ export function CostBreakdown() {
           </div>
 
           {/* Right Side: action buttons */}
-          <div className="flex items-center gap-2 overflow-x-auto lg:overflow-visible lg:justify-end pb-1 lg:pb-0 -mx-1 px-1 lg:mx-0 lg:px-0 w-full">
+          <div className="flex flex-wrap items-center gap-2 lg:flex-nowrap lg:justify-end w-full">
             <button
               onClick={() => navigate(-1)}
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-slate-300 text-slate-700 rounded-xl hover:bg-slate-50 transition-all flex items-center gap-2 shadow-sm text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
@@ -495,10 +496,10 @@ export function CostBreakdown() {
                       style={{ backgroundColor: d.color }}
                     />
                     <span className="text-slate-700 flex-1 min-w-0 truncate">{d.name}</span>
-                    <span className="text-slate-500 tabular-nums w-12 text-right">
+                    <span className="text-slate-500 tabular-nums w-12 text-right shrink-0">
                       {pct < 1 ? "<1" : Math.round(pct)}%
                     </span>
-                    <span className="font-medium text-slate-800 tabular-nums w-24 text-right">
+                    <span className="font-medium text-slate-800 tabular-nums min-w-[6rem] text-right whitespace-nowrap shrink-0">
                       {Q(d.value)}
                     </span>
                   </li>
@@ -947,7 +948,7 @@ function SaleUnitNotice({
           )}
         </button>
         <button onClick={() => onMode("pieces")} className={btn(mode === "pieces")}>
-          {Lx(`${requested.toLocaleString()} piezas`, `${requested.toLocaleString()} pieces`)}
+          {Lx(`${requested.toLocaleString()} ${requested === 1 ? "pieza" : "piezas"}`, `${requested.toLocaleString()} ${requested === 1 ? "piece" : "pieces"}`)}
           <span className="block text-xs font-normal">
             {packSize > 1
               ? Lx(

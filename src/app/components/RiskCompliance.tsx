@@ -1,4 +1,5 @@
 import { useNavigate, useLocation } from "react-router";
+import { cleanSupplier } from "../../utils/text";
 import { ClipboardList, FileText, Info, ArrowRight, Building2, CheckCircle, Circle } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
@@ -264,7 +265,7 @@ export function RiskCompliance() {
   const location = useLocation();
   const { L } = useLanguage();
 
-  const supplier = location.state?.supplier ?? null;
+  const supplier = cleanSupplier(location.state?.supplier ?? null);
   const destination = location.state?.destination ?? "GT";
   const productType = location.state?.productType ?? "other";
   const productDescription = String(location.state?.productDescription ?? "");

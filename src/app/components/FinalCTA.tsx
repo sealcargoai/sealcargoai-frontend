@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { cleanSupplier } from "../../utils/text";
 import { clearDraft } from "../../utils/draft";
 import { useNavigate, useLocation } from "react-router";
 import {
@@ -102,7 +103,7 @@ export function FinalCTA() {
   const { t, L } = useLanguage();
 
   // ── Read state ────────────────────────────────────────────────────────────
-  const stateSupplier = location.state?.supplier ?? null;
+  const stateSupplier = cleanSupplier(location.state?.supplier ?? null);
   const stateQuantity = location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
@@ -131,7 +132,7 @@ export function FinalCTA() {
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
-  const saleUnit = saleUnitInfo(stateSupplier).unit;
+  const saleUnit = saleUnitInfo(stateSupplier, productType).unit;
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit }, rates);
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
   const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? Lx(" — estimación parcial, sin flete", " — partial estimate, without freight") : ""}`;

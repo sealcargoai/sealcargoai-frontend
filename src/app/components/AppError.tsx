@@ -1,4 +1,4 @@
-import { useRouteError, useNavigate } from "react-router";
+import { useRouteError, useNavigate, isRouteErrorResponse } from "react-router";
 import { AlertTriangle, RotateCcw, ArrowLeft, Phone } from "lucide-react";
 import { Lx } from "../../utils/lang";
 
@@ -6,9 +6,16 @@ import { Lx } from "../../utils/lang";
 // translation rewrote the page). What the client typed is kept in
 // sessionStorage by the qualification form, so nothing is lost.
 export function AppError() {
-  const error = useRouteError() as { message?: string } | undefined;
+  const raw = useRouteError();
   const navigate = useNavigate();
-  const message = String(error?.message || error || "");
+  if (isRouteErrorResponse(raw) && raw.status === 404) return <NotFound />;
+  const error = raw as { message?: string; statusText?: string } | undefined;
+  const message =
+    typeof raw === "string"
+      ? raw
+      : isRouteErrorResponse(raw)
+        ? `${raw.status} ${raw.statusText || ""}`.trim()
+        : String(error?.message || "");
   const looksLikeTranslation = /removeChild|insertBefore|not a child of this node/i.test(message);
 
   let hasDraft = false;
@@ -72,6 +79,27 @@ export function AppError() {
             <span>{Lx("Detalle técnico:", "Technical detail:")} {message.slice(0, 200)}</span>
           </p>
         )}
+      </div>
+    </div>
+  );
+}
+
+/** Unknown address: say so and offer the way back (no technical error screen). */
+export function NotFound() {
+  const navigate = useNavigate();
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 flex items-center justify-center px-4 py-12">
+      <div className="bg-white rounded-2xl shadow-lg border border-slate-200 p-6 sm:p-8 max-w-lg w-full text-center">
+        <h1 className="text-xl font-bold text-[#0B3C5D] mb-2">{Lx("No encontramos esta página", "We couldn't find this page")}</h1>
+        <p className="text-sm text-slate-600 mb-5">
+          {Lx("Puede que el enlace esté incompleto. Empieza una nueva orientación desde el inicio.", "The link may be incomplete. Start a new guidance from the home page.")}
+        </p>
+        <button
+          onClick={() => navigate("/")}
+          className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47]"
+        >
+          {Lx("Ir al inicio", "Go to home")}
+        </button>
       </div>
     </div>
   );

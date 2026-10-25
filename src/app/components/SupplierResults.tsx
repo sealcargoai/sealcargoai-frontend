@@ -27,6 +27,7 @@ import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCa
 import { Lx, plural } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
 import { flagPrices } from "../../utils/priceCheck";
+import { orderByUse, matchUse } from "../../utils/useMatch";
 import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
 import { descriptionIsDetailed } from "../../utils/descriptionCheck";
 import {
@@ -496,6 +497,37 @@ function rejectReason(r: string): string {
   return r;
 }
 
+function UseSummary({ description, list }: { description: string; list: { productName?: string }[] }) {
+  const first = list.length ? matchUse(description, list[0].productName) : null;
+  if (!first) return null;
+  let match = 0, other = 0, unknown = 0;
+  list.forEach((s) => {
+    const st = matchUse(description, s.productName)!.status;
+    if (st === "match") match++;
+    else if (st === "other") other++;
+    else unknown++;
+  });
+  const parts = [
+    match && `${match} ${plural(match, "indica ese uso", "indican ese uso", "states that use", "state that use")}`,
+    unknown && `${unknown} ${plural(unknown, "no dice para qué uso es", "no dicen para qué uso son", "doesn't say its use", "don't say their use")}`,
+    other && `${other} ${plural(other, "parece para otro uso", "parecen para otro uso", "seems meant for another use", "seem meant for another use")}`,
+  ].filter(Boolean);
+  return (
+    <div className={`rounded-lg border p-4 text-sm ${other && !match ? "bg-red-50 border-red-200 text-red-900" : "bg-white border-slate-200 text-slate-700"}`}>
+      <p>
+        <span className="font-semibold text-[#0B3C5D]">{Lx(`Uso pedido: ${first.asked}.`, `Requested use: ${first.asked}.`)}</span>{" "}
+        {parts.join(" · ")}.
+      </p>
+      <p className="text-xs text-slate-500 mt-1">
+        {Lx(
+          "Primero aparecen las que indican ese uso; las que parecen para otro uso quedan al final y no se escogen para el cálculo. El uso se lee del título publicado: confírmalo con el proveedor.",
+          "Listings stating that use come first; those that seem meant for another use go last and are not picked for the estimate. Use is read from the listing title: confirm it with the supplier.",
+        )}
+      </p>
+    </div>
+  );
+}
+
 function SpecSummary({ reqs, list }: { reqs: Spec[]; list: { productName?: string }[] }) {
   if (!reqs.length || !list.length) return null;
   let meets = 0, differs = 0, unknown = 0;
@@ -580,21 +612,10 @@ interface Supplier {
 
 // ─── Helper: get 3 product images ────────────────────────────────────────────
 function getProductImages(supplier: Supplier): string[] {
-  if (supplier.images && supplier.images.length >= 3) {
-    return supplier.images.slice(0, 3);
-  }
-  if (supplier.productImage) {
-    return [
-      supplier.productImage,
-      supplier.productImage,
-      supplier.productImage,
-    ];
-  }
-  return [
-    "https://images.unsplash.com/photo-1503602642458-232111445657?w=400&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1506439773649-6e0eb8cfb237?w=400&h=300&fit=crop",
-    "https://images.unsplash.com/photo-1519947486511-46149fa0a254?w=400&h=300&fit=crop",
-  ];
+  // Only the supplier's own photos: never stock images that could pass for the product
+  const imgs = (Array.isArray(supplier.images) ? supplier.images : []).filter(Boolean);
+  if (imgs.length) return imgs.slice(0, 3);
+  return supplier.productImage ? [supplier.productImage] : [];
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -609,16 +630,26 @@ export function SupplierResults() {
   // Only real results — no demo data
   const reqSpecs = requestedSpecs(String(location.state?.productDescription ?? ""));
   // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
-  const displaySuppliers: Supplier[] = flagPrices(orderBySpecs(
+  // Order: requested use first (a paint mill is not a corn mill), then specs, then the rest
+  const displaySuppliers: Supplier[] = flagPrices(orderByUse(orderBySpecs(
     (apiData?.topSuppliers ?? []).map((s: Supplier) => ({
       ...s,
       // Older results could carry 0 when the price text was "US$0.02-0.05": use the range midpoint
       price: s.price > 0 ? s.price : rangeMidpoint(s.priceRange),
+      // Incomplete records never break the page
+      id: s.id ?? Math.random(),
+      tags: Array.isArray(s.tags) ? s.tags : [],
+      images: Array.isArray(s.images) ? s.images : [],
+      rating: typeof s.rating === "number" ? s.rating : null,
+      reviews: Number(s.reviews) || 0,
+      moq: Number(s.moq) || 0,
+      yearsInBusiness: Number(s.yearsInBusiness) || 0,
+      location: s.location || "CN",
       name: decodeEntities(s.name),
       productName: s.productName ? decodeEntities(s.productName) : s.productName,
     })),
     reqSpecs,
-  ).slice(0, 9), String(location.state?.productType ?? ""));
+  ), String(location.state?.productDescription ?? "")).slice(0, 9), String(location.state?.productType ?? ""));
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
@@ -635,7 +666,13 @@ export function SupplierResults() {
   // ── State ─────────────────────────────────────────────────────────────────
   // Default: the first option whose price looks usable (atypical prices need confirmation)
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier>(
-    (displaySuppliers.find((s) => !s.priceFlag && s.price > 0) ??
+    (displaySuppliers.find(
+      (s) =>
+        !s.priceFlag &&
+        s.price > 0 &&
+        matchUse(String(location.state?.productDescription ?? ""), s.productName)?.status !== "other",
+    ) ??
+      displaySuppliers.find((s) => !s.priceFlag && s.price > 0) ??
       displaySuppliers.find((s) => s.price > 0) ??
       displaySuppliers[0]) as Supplier,
   );
@@ -907,6 +944,7 @@ export function SupplierResults() {
                 )}
               </div>
             )}
+            <UseSummary description={String(location.state?.productDescription ?? "")} list={displaySuppliers} />
             <SpecSummary reqs={reqSpecs} list={displaySuppliers} />
 
             {/* Sort Bar */}
@@ -1029,7 +1067,7 @@ export function SupplierResults() {
                               </div>
                               <div className="text-sm text-slate-600">
                                 {(() => {
-                                  const u = saleUnitInfo(supplier);
+                                  const u = saleUnitInfo(supplier, String(location.state?.productType ?? ""));
                                   return (
                                     <>
                                       {Lx("por", "per")} {unitWordFor(u.unit, 1)}
@@ -1095,9 +1133,9 @@ export function SupplierResults() {
                     </div>
 
                     {/* Tags */}
-                    {supplier.tags.length > 0 && (
+                    {(supplier.tags?.length ?? 0) > 0 && (
                       <div className="flex flex-wrap gap-2 mb-4">
-                        {supplier.tags.map((tag, i) => (
+                        {(supplier.tags ?? []).map((tag, i) => (
                           <span
                             key={i}
                             className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-medium rounded-full"
@@ -1109,6 +1147,11 @@ export function SupplierResults() {
                     )}
 
                     {/* ── Product Images — click opens lightbox ─────────── */}
+                    {images.length === 0 && (
+                      <div className="rounded-lg bg-slate-50 border border-dashed border-slate-300 text-xs text-slate-500 p-3 text-center">
+                        {Lx("La publicación no trae fotos. Revísalas en Alibaba.", "The listing has no photos. Check them on Alibaba.")}
+                      </div>
+                    )}
                     <div className="grid grid-cols-3 gap-3">
                       {images.map((img, i) => (
                         <div
@@ -1249,7 +1292,7 @@ export function SupplierResults() {
                   ) : (() => {
                     const est = calculateCosts(
                       {
-                        saleUnit: saleUnitInfo(selectedSupplier).unit,
+                        saleUnit: saleUnitInfo(selectedSupplier, String(location.state?.productType ?? "")).unit,
                         price: selectedSupplier.price || 0,
                         quantity: parseInt(navQuantity || "1000") || 1000,
                         volumeCbm: parseFloat(location.state?.volumeCbm) || 0,
@@ -1458,8 +1501,8 @@ export function SupplierResults() {
               alt={`${lightboxSupplier} - Image ${lightboxIndex + 1}`}
               className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl"
               onError={(e) => {
-                (e.target as HTMLImageElement).src =
-                  "https://images.unsplash.com/photo-1503602642458-232111445657?w=800&h=600&fit=crop";
+                // No stock photo in place of the real product
+                (e.target as HTMLImageElement).style.visibility = "hidden";
               }}
             />
 

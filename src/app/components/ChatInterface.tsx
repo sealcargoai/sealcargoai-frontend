@@ -83,7 +83,7 @@ export function ChatInterface() {
   };
 
   return (
-    <div className="h-screen flex bg-gradient-to-br from-slate-50 to-blue-50">
+    <div className="h-screen flex overflow-x-hidden bg-gradient-to-br from-slate-50 to-blue-50">
       {/* Sidebar */}
       {/* Mobile menu button */}
       <button
@@ -126,7 +126,7 @@ export function ChatInterface() {
       </div>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col">
+      <div className="flex-1 min-w-0 flex flex-col">
         {/* Header */}
         {/* Decreased vertical padding from py-5 to py-3 to shrink the header height */}
         <div className="bg-white/80 backdrop-blur-lg border-b border-slate-200 px-6 py-3 shadow-sm">

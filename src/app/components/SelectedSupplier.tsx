@@ -5,24 +5,49 @@ import { MapPin, Award, Star, Package, ExternalLink, AlertCircle, ArrowLeft, Sea
 import { formatUSD } from "../../utils/costCalculator";
 import { Lx } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, specLabel } from "../../utils/capacity";
+import { matchUse } from "../../utils/useMatch";
 
 const SPEC_TONE: Record<string, string> = {
   green: "bg-green-50 border-green-200 text-green-800",
   blue: "bg-blue-50 border-blue-200 text-blue-800",
   amber: "bg-amber-50 border-amber-200 text-amber-800",
   slate: "bg-slate-50 border-slate-200 text-slate-700",
+  red: "bg-red-50 border-red-300 text-red-800",
 };
 
 /** One tag per specification the client wrote (capacity, needles, heads), compared with the listing title. */
 export function SpecTags({ description, productName, warn = false }: { description: string; productName?: string; warn?: boolean }) {
   const reqs = requestedSpecs(description);
   const m = matchSpecs(reqs, productName);
-  if (!m) return null;
-  const differs = m.items.some((i) => i.status !== "meets");
+  const use = matchUse(description, productName);
+  if (!m && !use) return null;
+  const differs = !!m?.items.some((i) => i.status !== "meets");
+  const otherUse = use?.status === "other";
+  const useTag = use
+    ? use.status === "match"
+      ? { tone: "green", text: Lx(`Indica el uso pedido: ${use.asked}`, `States the requested use: ${use.asked}`), sub: "" }
+      : use.status === "other"
+        ? {
+            tone: "red",
+            text: Lx(`Parece para otro uso: ${use.listed}`, `Seems meant for another use: ${use.listed}`),
+            sub: Lx(`Pediste ${use.asked}`, `You asked for ${use.asked}`),
+          }
+        : {
+            tone: "slate",
+            text: Lx("La publicación no dice para qué uso es", "The listing doesn't say what it's for"),
+            sub: Lx(`Confirma que sirva para ${use.asked}`, `Confirm it works for ${use.asked}`),
+          }
+    : null;
   return (
     <div className="mb-3">
       <div className="flex flex-wrap gap-2">
-        {m.items.map((i, k) => {
+        {useTag && (
+          <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[useTag.tone]}`}>
+            <span className="font-semibold">{useTag.text}</span>
+            {useTag.sub && <span className="opacity-80"> · {useTag.sub}</span>}
+          </span>
+        )}
+        {m?.items.map((i, k) => {
           const l = specLabel(i);
           return (
             <span key={k} className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[l.tone]}`}>
@@ -32,7 +57,15 @@ export function SpecTags({ description, productName, warn = false }: { descripti
           );
         })}
       </div>
-      {warn && differs && (
+      {warn && otherUse && (
+        <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
+          {Lx(
+            `Ojo: esta publicación parece destinada a ${use!.listed}, no a ${use!.asked}. El escenario de costos puede no corresponder a lo que buscas; vuelve a la lista y escoge una opción para el uso que necesitas.`,
+            `Note: this listing seems meant for ${use!.listed}, not ${use!.asked}. The cost scenario may not match what you're looking for; go back to the list and choose an option for the use you need.`,
+          )}
+        </p>
+      )}
+      {warn && differs && !otherUse && (
         <p className="text-xs text-amber-800 mt-2">
           {Lx(
             "Este escenario usa una publicación que no confirma todo lo que pediste. Revisa las diferencias o vuelve a la lista y escoge otra opción.",
