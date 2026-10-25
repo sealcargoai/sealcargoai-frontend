@@ -108,7 +108,7 @@ const translations = {
     "qualification.material": "Material",
     "qualification.materialPlaceholder": "ej., Madera, Plástico, Metal",
     "qualification.productPlaceholder":
-      "Describa el producto con el mayor detalle posible: qué es, para qué se usa, material, medidas, capacidad o voltaje, colores, marca o modelo de referencia, certificaciones que necesita, empaque, etc.",
+      "Describe el producto con el mayor detalle posible: qué es, para qué se usa, material, medidas, capacidad o voltaje, colores, marca o modelo de referencia, certificaciones que necesitas, empaque, etc.",
     "qualification.productHelp":
       "Cuantos más detalles compartas, mejor podremos organizar las referencias y los supuestos de la estimación.",
     "qualification.quantity": "Cantidad (unidades)",
@@ -131,9 +131,9 @@ const translations = {
     "suppliers.qualityFilter": "Reputación",
     "suppliers.qualityDesc": "Calificación ≥ 4.0 cuando tiene 5 o más reseñas",
     "suppliers.trustFilter": "Verificación",
-    "suppliers.trustDesc": "Verified Supplier, o Gold Supplier con 3+ años",
+    "suppliers.trustDesc": "Proveedor verificado, o miembro Gold con 3+ años",
     "suppliers.experienceFilter": "Pedido mínimo",
-    "suppliers.experienceDesc": "Que usted pueda cumplir con su cantidad",
+    "suppliers.experienceDesc": "Que puedas cumplir con tu cantidad",
     "suppliers.aiScore": "Índice referencial",
     "suppliers.aiScoreDesc": "Con datos publicados por la plataforma · mínimo 50/100 · niveles A (80+), B (65+), C (50+)",
     "suppliers.filteredOut": "Proveedores que no pasaron los filtros",
@@ -149,7 +149,7 @@ const translations = {
     "suppliers.moq": "MOQ",
     "suppliers.experience": "Años",
     "suppliers.response": "Respuesta",
-    "suppliers.quality": "Trade Assurance",
+    "suppliers.quality": "Protección de pedidos",
     "suppliers.contact": "Contactar Proveedor",
     "suppliers.aiRanking": "Índice referencial del proveedor",
     "suppliers.qualityScore": "Puntuación de Calidad",
@@ -257,7 +257,7 @@ const translations = {
     "final.include4": "Insignias y certificaciones declaradas",
     "final.include5": "Pasos recomendados para cada lead",
     "final.downloadCSV": "Descargar CSV para Importar CRM",
-    "final.emailLeads": "Enviar Leads al Equipo por Email",
+    "final.emailLeads": "Enviar prospectos al equipo por correo",
     "final.close": "Cerrar",
     "final.sealTitle": "Continúa tu importación con SEAL",
     "final.sealSubtitle":
@@ -272,7 +272,7 @@ const translations = {
     "final.scheduleCall": "Programar Llamada",
     "final.exportTitle": "Exportar este Análisis",
     "final.downloadExcel": "Descargar como Excel",
-    "final.emailReport": "Enviar Informe por Email",
+    "final.emailReport": "Enviar informe por correo",
     "final.nextSteps": "Próximos Pasos",
     "final.step1": "Revisar los datos del proveedor y contactar las mejores opciones",
     "final.step2":
@@ -299,7 +299,7 @@ const translations = {
     "final.quoteModalTitle": "Solicitar Cotización",
     "final.quoteUnits": "unidades • Total estimado:",
     "final.quoteFullName": "Nombre completo *",
-    "final.quoteEmail": "Email *",
+    "final.quoteEmail": "Correo *",
     "final.quotePhone": "Teléfono",
     "final.quoteCompany": "Empresa",
     "final.quoteMessage": "Mensaje adicional (opcional)",
@@ -310,11 +310,11 @@ const translations = {
     "final.quoteError":
       "⚠️ No se pudo enviar. Por favor intenta de nuevo o contáctanos directamente.",
     // Email Modal
-    "final.emailModalTitle": "Enviar Informe por Email",
+    "final.emailModalTitle": "Enviar informe por correo",
     "final.emailModalDesc":
       "Te enviaremos el informe completo en PDF a tu correo.",
     "final.emailYourName": "Tu nombre",
-    "final.emailYourEmail": "tu@email.com *",
+    "final.emailYourEmail": "tu@correo.com *",
     "final.emailSubmit": "Enviar Informe",
     "final.emailSending": "Enviando...",
     "final.emailSuccess": "✅ ¡Informe enviado a tu correo!",
