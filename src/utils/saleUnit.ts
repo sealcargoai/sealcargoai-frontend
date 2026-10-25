@@ -64,7 +64,11 @@ export interface SaleUnitInfo {
   multi: boolean; // the unit is not a single piece (or holds several)
 }
 
-export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | null): SaleUnitInfo {
+// A machine, appliance or piece of furniture sold "per set" is one unit unless
+// the title says the set holds several pieces.
+const WHOLE_ITEM_TYPES = new Set(["machinery", "electronics", "furniture"]);
+
+export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | null, productType = ""): SaleUnitInfo {
   const fromMoq = (s?.saleUnit || "") as SaleUnit;
   let packSize = packSizeFromTitle(s?.productName);
   // The platform sells per set/box/pack and the title mentions "12 pcs" on its own:
@@ -74,6 +78,7 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
     const n = m ? parseInt(m[1], 10) : 0;
     if (n > 1 && n <= 5000) packSize = n;
   }
+  if (WHOLE_ITEM_TYPES.has(productType) && !(packSize > 1)) return { unit: "piece", packSize: 0, multi: false };
   let unit: SaleUnit = fromMoq;
   // "piece" from the MOQ text plus "set of 12" in the title: trust the platform's unit
   if (!unit && packSize > 1) unit = unitFromTitle(s?.productName) || "set";

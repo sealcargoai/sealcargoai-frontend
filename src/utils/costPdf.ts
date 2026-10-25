@@ -220,7 +220,17 @@ export function buildCostPdf(d: CostPdfInput): string {
 
   drawCompanyFooter(doc);
   if (d.saveFile !== false) {
-    doc.save(d.fileName);
+    // Plain letters only in the file name (accents or symbols get mangled by some systems)
+    const base = d.fileName.replace(/\.pdf$/i, "");
+    const fileName =
+      base
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/[^A-Za-z0-9_-]+/g, "_")
+        .replace(/_+/g, "_")
+        .slice(0, 90) + ".pdf";
+    d = { ...d, fileName };
+    doc.save(fileName);
     showNotice(
       Lx(
         `Informe descargado: ${d.fileName}. Búscalo en la carpeta de descargas de tu navegador.`,

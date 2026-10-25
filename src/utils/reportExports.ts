@@ -555,7 +555,16 @@ export async function generateBeautifulExcel(
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
-  link.download = `SEAL_${data.reportTitle.replace(/\s+/g, "_")}_${data.supplierName.replace(/\s+/g, "_")}_${Date.now()}.xlsx`;
+  // Plain letters only: some systems and messaging apps mangle accents or symbols in file names
+  const safe = (t: string) =>
+    String(t || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^A-Za-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 60);
+  link.download = `SEAL_${safe(data.reportTitle)}_${safe(data.supplierName)}_${Date.now()}.xlsx`;
+  link.rel = "noopener";
   document.body.appendChild(link);
   link.click();
   showNotice(
@@ -564,7 +573,8 @@ export async function generateBeautifulExcel(
       `Excel downloaded: ${link.download}. Look for it in your browser's downloads folder.`,
     ),
   );
-  document.body.removeChild(link);
+  // Removing the link right away makes some browsers lose the file name
+  setTimeout(() => link.remove(), 1500);
   // Revoking immediately cancels the download on iPhone/Safari — wait a bit
   setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
