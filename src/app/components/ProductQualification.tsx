@@ -18,9 +18,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { Lx, unitsWord } from "../../utils/lang";
 import {
-  canUserSearch,
   recordSearch,
-  getRemainingSearches,
   getSearchLimit,
 } from "../../utils/searchLimit";
 
@@ -194,14 +192,35 @@ export function ProductQualification() {
       setHelpSent("error");
     }
   };
-  const [remainingSearches, setRemainingSearches] = useState<number>(3);
+  // Free searches: the server's count is the only one shown. Until it answers
+  // nothing is announced; if it can't be checked, the form says so (no number).
+  const [remainingSearches, setRemainingSearches] = useState<number>(-1);
+  const [quotaState, setQuotaState] = useState<"checking" | "ok" | "unknown">("checking");
+  const [limitReason, setLimitReason] = useState<"email" | "ip" | "rate" | "">("");
+  const [retryMinutes, setRetryMinutes] = useState(0);
+  const [quotaLimit, setQuotaLimit] = useState(getSearchLimit());
 
   useEffect(() => {
-    if (userEmail) {
-      const remaining = getRemainingSearches(userEmail, userName);
-      setRemainingSearches(remaining);
-    }
-  }, [userEmail, userName]);
+    let cancelled = false;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    fetch(`${API}/api/suppliers/quota?email=${encodeURIComponent(userEmail || "")}`, { cache: "no-store", signal: controller.signal })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((q) => {
+        if (cancelled || typeof q?.remaining !== "number") throw new Error("bad quota");
+        setRemainingSearches(q.remaining);
+        if (Number(q.limit) > 0) setQuotaLimit(Number(q.limit));
+        setLimitReason(q.reason || "");
+        setQuotaState("ok");
+      })
+      .catch(() => !cancelled && setQuotaState("unknown"))
+      .finally(() => clearTimeout(timer));
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [userEmail]);
 
   // ── Submit: call backend then navigate ──────────────────────────────────────
   const handleSubmit = async (e: React.FormEvent) => {
@@ -209,8 +228,8 @@ export function ProductQualification() {
     // The search only runs from step 3 (review), never by moving between steps or pressing Enter earlier
     if (step !== 3 || isLoading) return;
 
-    // ── CHECK LIMIT FIRST ────────────────────────────────
-    if (userEmail && !canUserSearch(userEmail, userName)) {
+    // ── CHECK LIMIT FIRST (the server's count) ───────────
+    if (quotaState === "ok" && remainingSearches === 0) {
       setShowLimitModal(true);
       return;
     }
@@ -258,7 +277,16 @@ export function ProductQualification() {
 
       // Server-side limit reached → show the limit modal, no demo data
       if (response.status === 429) {
-        setRemainingSearches(0);
+        const info = await response.json().catch(() => ({}));
+        if (info?.rateLimited) {
+          // too many requests in a short time: not the free-search limit
+          setLimitReason("rate");
+          setRetryMinutes(Math.max(1, Math.ceil((Number(info.retryAfterSeconds) || 600) / 60)));
+        } else {
+          setLimitReason(info?.reason === "ip" ? "ip" : "email");
+          setRemainingSearches(0);
+          setQuotaState("ok");
+        }
         setShowLimitModal(true);
         return;
       }
@@ -283,19 +311,11 @@ export function ProductQualification() {
         !suppliers?.blocked &&
         !suppliers?.noRelevantMatches &&
         (suppliers?.topSuppliers?.length ?? 0) > 0;
-      if (userEmail && counted) {
-        recordSearch(
-          userEmail,
-          userName,
-          productCategory,
-          productDescription
-        );
-        const localRemaining = getRemainingSearches(userEmail, userName);
-        const serverRemaining =
-          typeof suppliers?.remainingSearches === "number"
-            ? suppliers.remainingSearches
-            : localRemaining;
-        setRemainingSearches(Math.min(localRemaining, serverRemaining));
+      if (userEmail && counted) recordSearch(userEmail, userName, productCategory, productDescription);
+      // the server says how many are left after this search
+      if (typeof suppliers?.remainingSearches === "number") {
+        setRemainingSearches(suppliers.remainingSearches);
+        setQuotaState("ok");
       }
 
       navigate("/suppliers", {
@@ -375,7 +395,18 @@ export function ProductQualification() {
           </div>
         </div>
         {/* Remaining searches indicator */}
-        {userEmail && remainingSearches <= getSearchLimit() && (
+        {quotaState === "checking" ? (
+          <div className="mb-4 px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 text-slate-600 border border-slate-200">
+            {L("Comprobando tus búsquedas disponibles…", "Checking your available searches…")}
+          </div>
+        ) : quotaState === "unknown" ? (
+          <div className="mb-4 px-4 py-2 rounded-lg text-sm font-medium bg-slate-100 text-slate-700 border border-slate-200">
+            {L(
+              "No pudimos comprobar tus búsquedas disponibles en este momento. El límite se revisa al consultar; si ya lo alcanzaste, te lo indicaremos.",
+              "We couldn't check your available searches right now. The limit is checked when you search; if you've reached it, we'll tell you.",
+            )}
+          </div>
+        ) : (
           <div className={`mb-4 px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 ${remainingSearches === 0
             ? "bg-red-100 text-red-700 border border-red-200"
             : remainingSearches === 1
@@ -384,10 +415,12 @@ export function ProductQualification() {
             }`}>
             <span>
               {remainingSearches === 0
-                ? L("🔒 Sin búsquedas disponibles", "🔒 No searches left")
+                ? limitReason === "ip"
+                  ? L("🔒 Esta conexión ya usó sus búsquedas gratuitas de hoy", "🔒 This connection has used today's free searches")
+                  : L("🔒 Sin búsquedas disponibles", "🔒 No searches left")
                 : L(
-                    `🔍 ${remainingSearches} búsqueda${remainingSearches !== 1 ? "s" : ""} restante${remainingSearches !== 1 ? "s" : ""} de ${getSearchLimit()}`,
-                    `🔍 ${remainingSearches} search${remainingSearches !== 1 ? "es" : ""} left of ${getSearchLimit()}`,
+                    `🔍 ${remainingSearches} búsqueda${remainingSearches !== 1 ? "s" : ""} restante${remainingSearches !== 1 ? "s" : ""} de ${quotaLimit}`,
+                    `🔍 ${remainingSearches} search${remainingSearches !== 1 ? "es" : ""} left of ${quotaLimit}`,
                   )
               }
             </span>
@@ -750,12 +783,24 @@ export function ProductQualification() {
 
             {/* Title */}
             <h2 className="text-2xl font-bold text-[#0B3C5D] mb-3">
-              {L("Límite de búsquedas alcanzado", "Search limit reached")}
+              {limitReason === "rate"
+                ? L("Demasiadas consultas seguidas", "Too many searches in a row")
+                : L("Límite de búsquedas alcanzado", "Search limit reached")}
             </h2>
 
-            {/* Description */}
+            {/* Description: the reason the server gave */}
             <p className="text-slate-600 mb-2">
-              {L("Has utilizado tus", "You have used your")} <strong>{getSearchLimit()} {L("búsquedas gratuitas", "free searches")}</strong>.
+              {limitReason === "rate"
+                ? L(
+                    `Recibimos muchas consultas desde esta conexión en poco tiempo. Intenta de nuevo en unos ${retryMinutes} minutos; esto no gasta tus búsquedas gratuitas.`,
+                    `We received many searches from this connection in a short time. Try again in about ${retryMinutes} minutes; this doesn't use your free searches.`,
+                  )
+                : limitReason === "ip"
+                  ? L(
+                      `Desde esta conexión ya se usaron las búsquedas gratuitas de hoy (puede pasar si varias personas comparten la misma red).`,
+                      `Today's free searches from this connection have been used (this can happen when several people share the same network).`,
+                    )
+                  : <>{L("Has utilizado tus", "You have used your")} <strong>{quotaLimit} {L("búsquedas gratuitas", "free searches")}</strong>.</>}
             </p>
             <p className="text-slate-600 mb-6">
               {L("Para continuar buscando proveedores, contacta al equipo de SEAL y obtén acceso completo.", "To keep searching for suppliers, contact the SEAL team to get full access.")}
