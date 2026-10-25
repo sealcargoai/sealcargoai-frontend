@@ -9,24 +9,27 @@ type Group = "food" | "feed" | "paint" | "pharma" | "mineral";
 // Each use concept: label in Spanish and English, the group it belongs to and
 // its words in both languages (lowercase, matched as word starts). Concepts let
 // the client rule out "carne" while still asking for "maíz" (both food).
-interface Concept { g: Group; es: string; en: string; w: string[] }
-const C = (g: Group, es: string, en: string, w: string[]): Concept => ({ g, es, en, w });
+// k: kind of material inside a group. A meat grinder is not a corn mill even
+// though both are "food"; "any" (food in general) goes with every kind.
+type Kind = "dry" | "meat" | "fresh" | "any";
+interface Concept { g: Group; es: string; en: string; w: string[]; k: Kind }
+const C = (g: Group, es: string, en: string, w: string[], k: Kind = "any"): Concept => ({ g, es, en, w, k });
 const CONCEPTS: Concept[] = [
-  C("food", "maíz", "corn", ["maíz", "maiz", "corn", "maize", "elote"]),
-  C("food", "especias", "spices", ["especia", "spice", "chile", "chili", "pimienta", "pepper", "condiment"]),
-  C("food", "granos", "grains", ["grano", "grain", "cereal"]),
-  C("food", "harina", "flour", ["harina", "flour", "trigo", "wheat"]),
-  C("food", "arroz", "rice", ["arroz", "rice"]),
-  C("food", "café", "coffee", ["café", "cafe", "coffee"]),
-  C("food", "cacao", "cocoa", ["cacao", "cocoa", "chocolate"]),
-  C("food", "azúcar", "sugar", ["azúcar", "azucar", "sugar"]),
-  C("food", "sal", "salt", ["sal ", "salt"]),
-  C("food", "frijol y soya", "beans and soy", ["frijol", "bean", "soya", "soy"]),
-  C("food", "nueces y semillas", "nuts and seeds", ["nuez", "nueces", "nut", "almendra", "almond", "maní", "mani ", "peanut", "semilla", "seed"]),
-  C("food", "hierbas y té", "herbs and tea", ["hierba", "herb", "té ", "tea "]),
-  C("food", "masa y panadería", "dough and bakery", ["masa", "tortilla", "panader", "bakery", "dough"]),
-  C("food", "carne", "meat", ["carne", "meat", "embutido", "sausage", "hueso", "bone"]),
-  C("food", "frutas y verduras", "fruit and vegetables", ["fruta", "fruit", "verdura", "vegetable", "hortaliza"]),
+  C("food", "maíz", "corn", ["maíz", "maiz", "corn", "maize", "elote"], "dry"),
+  C("food", "especias", "spices", ["especia", "spice", "chile", "chili", "pimienta", "pepper", "condiment"], "dry"),
+  C("food", "granos", "grains", ["grano", "grain", "cereal"], "dry"),
+  C("food", "harina", "flour", ["harina", "flour", "trigo", "wheat"], "dry"),
+  C("food", "arroz", "rice", ["arroz", "rice"], "dry"),
+  C("food", "café", "coffee", ["café", "cafe", "coffee"], "dry"),
+  C("food", "cacao", "cocoa", ["cacao", "cocoa", "chocolate"], "dry"),
+  C("food", "azúcar", "sugar", ["azúcar", "azucar", "sugar"], "dry"),
+  C("food", "sal", "salt", ["sal ", "salt"], "dry"),
+  C("food", "frijol y soya", "beans and soy", ["frijol", "bean", "soya", "soy"], "dry"),
+  C("food", "nueces y semillas", "nuts and seeds", ["nuez", "nueces", "nut", "almendra", "almond", "maní", "mani ", "peanut", "semilla", "seed"], "dry"),
+  C("food", "hierbas y té", "herbs and tea", ["hierba", "herb", "té ", "tea "], "dry"),
+  C("food", "masa y panadería", "dough and bakery", ["masa", "tortilla", "panader", "bakery", "dough"], "dry"),
+  C("food", "carne", "meat", ["carne", "meat", "embutido", "sausage", "hueso", "bone"], "meat"),
+  C("food", "frutas y verduras", "fruit and vegetables", ["fruta", "fruit", "verdura", "vegetable", "hortaliza"], "fresh"),
   C("food", "alimentos", "food", ["aliment", "food", "comida"]),
   C("feed", "alimento para animales", "animal feed", ["pienso", "forraje", "concentrado animal", "animal feed", "livestock", "poultry", "aves", "ganado", "fodder"]),
   C("paint", "pintura", "paint", ["pintura", "paint"]),
@@ -53,7 +56,7 @@ const groupsOf = (cs: Set<Concept>) => new Set([...cs].map((c) => c.g));
 // "not for paint or ink". The excluded part runs until the end of the clause
 // (punctuation, "sino", "pero", "solo", "but", "only") or a new "para"/"for".
 const NEG_START =
-  /\b(?:que\s+no\s+sea(?:\s+para)?|no\s+(?:es\s+|sea\s+|sirve\s+|lo\s+quiero\s+|apt[oa]s?\s+)?(?:para|de)\b|no(?=\s)|ni(?:\s+para)?|excepto(?:\s+para)?|salvo(?:\s+para)?|menos\s+para|excluyendo|not(?:\s+(?:for|suitable\s+for|used\s+for|meant\s+for))?|nor(?:\s+for)?|except(?:\s+for)?|other\s+than|excluding)\b/g;
+  /\b(?:sin\s+(?:usarl[oa]s?|usar|uso|utilizarl[oa]|emplearl[oa])(?:\s+(?:en|para|con))?|nada\s+de|evit(?:ar|ando|o|e)(?:\s+(?:usarlo\s+)?(?:en|para|con))?|nunca(?:\s+para)?|jam[aá]s(?:\s+para)?|avoid(?:ing)?|never(?:\s+for)?|without(?:\s+(?:using\s+it\s+)?(?:for|on|with))?|que\s+no\s+sea(?:\s+para)?|no\s+(?:es\s+|sea\s+|sirve\s+|lo\s+quiero\s+|apt[oa]s?\s+)?(?:para|de)\b|no(?=\s)|ni(?:\s+para)?|excepto(?:\s+para)?|salvo(?:\s+para)?|menos\s+para|excluyendo|not(?:\s+(?:for|suitable\s+for|used\s+for|meant\s+for))?|nor(?:\s+for)?|except(?:\s+for)?|other\s+than|excluding)\b/g;
 const NEG_END = /[.,;:!?()]|\b(?:sino|pero|solo|sólo|solamente|únicamente|unicamente|but|only|para|for)\b/;
 
 /** Splits a description into what the client wants and what they rule out. */
@@ -112,8 +115,12 @@ export function matchUse(description: string, productTitle?: string): UseMatch |
   // The listing names a use asked for (the concept itself, or its group when
   // that group was not partly ruled out)
   const excludedGroups = groupsOf(excludedC);
+  const sameKind = (c: Concept) =>
+    [...askedC].some((a) => a.g === c.g && (a.k === c.k || a.k === "any" || c.k === "any"));
   const shared = [...listedC].some(
-    (c) => askedC.has(c) || (asked.has(c.g) && !excludedC.has(c) && !(excludedGroups.has(c.g) && hit.length)),
+    (c) =>
+      askedC.has(c) ||
+      (asked.has(c.g) && sameKind(c) && !excludedC.has(c) && !(excludedGroups.has(c.g) && hit.length)),
   );
   const status: UseStatus = shared ? "match" : hit.length ? "other" : listed.size && asked.size ? "other" : "unknown";
   const conceptLabel = (cs: Concept[]) => cs.map((c) => Lx(c.es, c.en)).join(", ");

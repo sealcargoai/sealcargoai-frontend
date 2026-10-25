@@ -33,6 +33,7 @@ export interface CostPdfInput {
   priceNote?: string;
   costs: CostResult;
   topics?: { title: string }[];
+  notes?: string[]; // assumptions (pieces per set, price basis, minimum order…)
   disclaimer: string;
   reportId?: string;
   fileName: string;
@@ -109,6 +110,20 @@ export function buildCostPdf(d: CostPdfInput): string {
   text(desc, 58, y);
   y += 5 * desc.length + 4;
 
+  // Assumptions behind the quantity and price (same as on screen)
+  if (d.notes?.length) {
+    doc.setFont("helvetica", "bold");
+    text(`${Lx("Supuestos", "Assumptions")}:`, 14, y);
+    doc.setFont("helvetica", "normal");
+    for (const n of d.notes) {
+      const lines = wrap(`- ${n}`, W - 72);
+      ensure(5 * lines.length + 2);
+      text(lines, 58, y);
+      y += 5 * lines.length;
+    }
+    y += 4;
+  }
+
   // Costs table
   ensure(30);
   doc.setFont("helvetica", "bold");
@@ -124,8 +139,8 @@ export function buildCostPdf(d: CostPdfInput): string {
       return [
         l.label,
         pending ? Lx("Por cotizar", "To be quoted") : l.detail,
-        pending ? Lx("Por cotizar", "To be quoted") : formatQ(l.amount, fx),
-        `${((l.amount / d.costs.totalCost) * 100).toFixed(1)}%`,
+        pending ? Lx("Por cotizar", "To be quoted") : formatQ(l.amount, fx, 2),
+        pending || !(d.costs.totalCost > 0) ? "-" : `${((l.amount / d.costs.totalCost) * 100).toFixed(1)}%`,
       ];
     }),
     foot: [[
@@ -133,7 +148,7 @@ export function buildCostPdf(d: CostPdfInput): string {
         ? Lx("TOTAL PARCIAL, SIN FLETE", "PARTIAL TOTAL, WITHOUT FREIGHT")
         : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA"),
       `${d.quantity.toLocaleString("en-US")} ${unitWordFor(d.costs.saleUnit, d.quantity)}`,
-      formatQ(d.costs.totalCost, fx),
+      formatQ(d.costs.totalCost, fx, 2),
       "100%",
     ]],
     headStyles: { fillColor: [11, 60, 93], textColor: 255, fontStyle: "bold" },

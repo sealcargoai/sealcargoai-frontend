@@ -103,6 +103,7 @@ export interface ExcelExportData {
   };
   vatRate: number;
   insuranceRate: number;
+  notes?: string[]; // assumptions (pieces per set, price basis, minimum order…)
 }
 
 const DEFAULT_FX = 7.9;
@@ -374,8 +375,8 @@ export async function generateBeautifulExcel(
     };
     appliedRateCell.alignment = { vertical: "middle", horizontal: "center" };
 
-    amountCell.value = row.pending ? Lx("Por cotizar", "To be quoted") : Math.round(row.amount);
-    amountCell.numFmt = '"Q"#,##0';
+    amountCell.value = row.pending ? Lx("Por cotizar", "To be quoted") : Math.round(row.amount * 100) / 100;
+    amountCell.numFmt = '"Q"#,##0.00';
     amountCell.font = {
       name: "Arial",
       size: 10,
@@ -388,16 +389,10 @@ export async function generateBeautifulExcel(
       indent: 1,
     };
 
-    let percentDisplay: string;
-    if (row.concept === "IVA & Impuestos" || row.rateKey === "vat") {
-      percentDisplay = `${(data.vatRate * 100).toFixed(0)}%`; // 12%
-    } else if (row.concept === "Seguro de Carga" || row.rateKey === "insurance") {
-      percentDisplay = `${(data.insuranceRate * 100).toFixed(0)}%`; // 1%
-    } else if (row.concept === "Aranceles de Importación" || row.rateKey === "duties") {
-      percentDisplay = `${(data.costs.dutyRate * 100).toFixed(0)}%`;
-    } else {
-      percentDisplay = `${((row.amount / (data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX))) * 100).toFixed(1)}%`;
-    }
+    // Share of the total (the applied rate has its own column)
+    const totalQ = data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX);
+    const share = !row.pending && totalQ > 0 ? (row.amount / totalQ) * 100 : NaN;
+    const percentDisplay = Number.isFinite(share) ? (share > 0 && share < 0.1 ? "<0.1%" : `${share.toFixed(1)}%`) : "—";
     percentCell.value = percentDisplay;
     percentCell.font = { name: "Arial", size: 10, color: { argb: "FF64748B" } };
     percentCell.alignment = { vertical: "middle", horizontal: "center" };
@@ -446,8 +441,8 @@ export async function generateBeautifulExcel(
     : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA");
   totalDetailCell.value = `${data.quantity.toLocaleString()} ${unitWordFor(data.costs.saleUnit, data.quantity)}`;
   totalRateCell.value = "—";
-  totalAmountCell.value = Math.round(data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX));
-  totalAmountCell.numFmt = '"Q"#,##0';
+  totalAmountCell.value = Math.round(data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100;
+  totalAmountCell.numFmt = '"Q"#,##0.00';
   totalPctCell.value = "100%";
 
   [
@@ -519,9 +514,23 @@ export async function generateBeautifulExcel(
   });
   ws.getRow(perUnitRowNum).height = 24;
 
+  // ═══ ASSUMPTIONS (same as on screen) ══════════════════════════════════════
+  let notesEnd = perUnitRowNum;
+  (data.notes || []).forEach((n, i) => {
+    const r = perUnitRowNum + 2 + i;
+    ws.mergeCells(`A${r}:E${r}`);
+    const c = ws.getCell(`A${r}`);
+    c.value = `${i === 0 ? Lx("Supuestos: ", "Assumptions: ") : ""}${n}`;
+    c.font = { name: "Arial", size: 10, color: { argb: "FF7C2D12" }, bold: i === 0 };
+    c.alignment = { vertical: "middle", horizontal: "left", wrapText: true, indent: 1 };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF7ED" } };
+    ws.getRow(r).height = Math.max(18, Math.ceil(n.length / 95) * 15);
+    notesEnd = r;
+  });
+
   // ═══ FOOTER (after per-unit row) ══════════════════════════════════════════════════
-  const f1 = perUnitRowNum + 2;
-  const f2 = perUnitRowNum + 3;
+  const f1 = notesEnd + 2;
+  const f2 = notesEnd + 3;
   ws.mergeCells(`A${f1}:E${f1}`);
   const footerCell = ws.getCell(`A${f1}`);
   footerCell.value =

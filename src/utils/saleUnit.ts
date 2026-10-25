@@ -96,9 +96,10 @@ export function quantityIntent(description?: string): "piece" | "pack" | "" {
   const PACK = "(?:paquetes?|sets?|juegos?|cajas?|docenas?|estuches?|packs?|boxes|box|dozens?|cartons?|cartones?|kits?)";
   const MEASURE = "(?:kg|kgs|kilos?|g|gramos?|t|ton|toneladas?|l|lts?|litros?|ml|m|metros?|cm|mm|m2|m3|w|kw|v|hp|hz|agujas?|needles?|cabezal(?:es)?|heads?|%)";
   const num = "\\d[\\d.,]*";
-  const packHit = [...t.matchAll(new RegExp(`(\\bno\\s+)?${num}\\s*${PACK}\\b`, "g"))].filter((m) => !m[1]).length > 0;
+  const NEG = "(\\b(?:no|not|ni|nor|sin|without)\\s+(?:en\\s+|in\\s+)?)?";
+  const packHit = [...t.matchAll(new RegExp(`${NEG}${num}\\s*${PACK}\\b`, "g"))].filter((m) => !m[1]).length > 0;
   // a number followed by a word that is not packaging nor a measure: "500 lápices", "500 piezas"
-  const pieceHit = [...t.matchAll(new RegExp(`(\\bno\\s+)?${num}\\s+([a-záéíóúüñ]{3,})`, "g"))].some(
+  const pieceHit = [...t.matchAll(new RegExp(`${NEG}${num}\\s+([a-záéíóúüñ]{3,})`, "g"))].some(
     (m) => !m[1] && !new RegExp(`^${PACK}$`).test(m[2]) && !new RegExp(`^${MEASURE}$`).test(m[2]),
   );
   if (pieceHit && !packHit) return "piece";

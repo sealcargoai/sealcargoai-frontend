@@ -5,13 +5,18 @@
 import { Lx } from "./lang";
 
 type Family = "mass" | "volume" | "needles" | "heads";
+type Per = "h" | "d" | "";
 export interface Spec {
   min: number;
   max: number;
   family: Family;
-  rate: boolean; // per hour (mass/volume only)
+  rate: boolean; // has a time unit (mass/volume only)
+  per: Per; // "h" per hour, "d" per day, "" per batch / no time unit
   text: string;
+  at?: number; // position in the text
+  atLeast?: boolean; // the client asked for a minimum ("mínimo 100 kg/h")
 }
+const AT_LEAST = /(m[ií]nimo|m[ií]nima|al\s+menos|por\s+lo\s+menos|como\s+m[ií]nimo|no\s+menos\s+de|at\s+least|minimum|min\.?|>=|≥|más\s+de|mas\s+de|over|more\s+than)(\s+(de|of|una?|capacidad|producci[oó]n|capacity|output))*\s*$/i;
 /** Kept for older imports. */
 export type Capacity = Spec;
 
@@ -25,7 +30,17 @@ add("heads", 1, ["cabeza", "cabezas", "cabezal", "cabezales", "head", "heads"]);
 
 const UNIT =
   "(kgs?|kilos?|kilogramos?|toneladas?|tonnes?|tons?|t|litros?|liters?|litres?|lts?|l|agujas?|needles?|cabezal(?:es)?|cabezas?|heads?)";
-const RATE = "(\\s*\\/\\s*h(?:r|ora|our)?\\b|\\s*(?:por|per)\\s*(?:hora|hour)|\\s*ph\\b)?";
+// Time unit after the figure: per hour, per minute (converted to hours), per day.
+// "por lote" / "per batch" is the same as no time unit.
+const RATE =
+  "(\\s*\\/\\s*(?:h(?:r|rs|ora|oras|our|ours)?|min(?:uto|ute)?s?|d(?:ay|ía|ia)?|24\\s*h)\\b|\\s+(?:por|per|x|cada|a\\s+la|al|an|each|every|in\\s+an?|en\\s+una?|a)\\s+(?:hora|hour|h|minuto|minute|min|día|dia|day|jornada)\\b|\\s*ph\\b|\\s*(?:\\/|por|per|x)\\s*(?:lote|batch|carga|tanda)\\b)?";
+function perOf(r?: string): { per: Per; k: number } {
+  const t = String(r || "").toLowerCase();
+  if (!t.trim() || /lote|batch|carga|tanda/.test(t)) return { per: "", k: 1 };
+  if (/min/.test(t)) return { per: "h", k: 60 };
+  if (/24|d[ií]a|day|jornada|\/\s*d\b/.test(t)) return { per: "d", k: 1 };
+  return { per: "h", k: 1 };
+}
 const NUM = "(\\d+(?:[.,]\\d+)?)";
 const JOIN = "\\s*-?\\s*"; // "15 needles", "15-needle", "15needle"
 
@@ -47,7 +62,7 @@ function fmt(c: Spec) {
     return c.min === c.max ? `${c.min} ${countWord(c.family, c.min)}` : `${c.min}–${c.max} ${countWord(c.family, c.max)}`;
   }
   const unit = c.family === "mass" ? "kg" : "L";
-  const r = c.rate ? Lx("/hora", "/hour") : "";
+  const r = c.per === "h" ? Lx("/hora", "/hour") : c.per === "d" ? Lx("/día", "/day") : "";
   const n = (v: number) => (v >= 1000 && c.family === "mass" ? `${+(v / 1000).toFixed(2)} t` : `${+v.toFixed(2)} ${unit}`);
   if (c.min === c.max) return `${n(c.min)}${r}`;
   const sameScale = !(c.family === "mass" && (c.min >= 1000) !== (c.max >= 1000));
@@ -61,6 +76,8 @@ export function parseSpecs(text: string): Spec[] {
     .replace(/\b(?:single|one|un|una)\s*-?\s*(heads?|cabezal(?:es)?|cabezas?)\b/g, "1 $1")
     // "2tph", "500kgph" = per hour
     .replace(/(\d)\s*(t|kg)ph\b/g, "$1 $2/h")
+    .replace(/(\d)\s*(t|kg)h\b/g, "$1 $2/h")
+    .replace(/(\d)\s*(t|kg)pd\b/g, "$1 $2/d")
     .replace(/\b(?:double|two|dos)\s*-?\s*(heads?|cabezal(?:es)?|cabezas?)\b/g, "2 $1");
   const out: Spec[] = [];
   const used: [number, number][] = [];
@@ -70,12 +87,13 @@ export function parseSpecs(text: string): Spec[] {
     if (u === "t" || u === "l") return !/[a-záéíóúüñ]/.test(s[end] || " ");
     return true;
   };
-  const push = (vals: number[], u: string, rate: boolean) => {
+  const push = (vals: number[], u: string, rateText?: string, at = 0) => {
     const info = UNITS[u];
     if (!info) return;
-    const v = vals.map((x) => x * info.k).filter((x) => x > 0);
+    const pr = isCount(info.family) ? { per: "" as Per, k: 1 } : perOf(rateText);
+    const v = vals.map((x) => x * info.k * pr.k).filter((x) => x > 0);
     if (!v.length) return;
-    out.push({ min: Math.min(...v), max: Math.max(...v), family: info.family, rate: !isCount(info.family) && rate, text: "" });
+    out.push({ min: Math.min(...v), max: Math.max(...v), family: info.family, rate: pr.per !== "", per: pr.per, text: "", at });
   };
 
   // Lists: "12/15 needles", "6, 9, 12 agujas"
@@ -85,27 +103,40 @@ export function parseSpecs(text: string): Spec[] {
   while ((m = list.exec(s))) {
     if (!unitOk(m[3], m.index + m[0].length)) continue;
     const nums = [m[1], ...m[2].split(/[\/,]/).map((x) => x.trim()).filter(Boolean)].map(toNum);
-    nums.forEach((n) => push([n], m![3], !!m![4]));
+    nums.forEach((n) => push([n], m![3], m![4], m!.index));
     used.push([m.index, m.index + m[0].length]);
   }
   const range = new RegExp(`${NUM}\\s*(?:-|–|~|to|a|hasta)\\s*${NUM}${JOIN}${UNIT}\\b${RATE}`, "g");
   while ((m = range.exec(s))) {
     if (!free(m.index) || !unitOk(m[3], m.index + m[0].length)) continue;
-    push([toNum(m[1]), toNum(m[2])], m[3], !!m[4]);
+    push([toNum(m[1]), toNum(m[2])], m[3], m[4], m.index);
     used.push([m.index, m.index + m[0].length]);
   }
   const single = new RegExp(`${NUM}${JOIN}${UNIT}\\b${RATE}`, "g");
   while ((m = single.exec(s))) {
     if (!free(m.index) || !unitOk(m[2], m.index + m[0].length)) continue;
-    push([toNum(m[1])], m[2], !!m[3]);
+    push([toNum(m[1])], m[2], m[3], m.index);
   }
   return out.map((c) => ({ ...c, text: fmt(c) }));
 }
 
 /** The specifications the client wrote: the first one of each kind. */
 export function requestedSpecs(description: string): Spec[] {
-  const seen = new Set<Family>();
-  return parseSpecs(description).filter((c) => (seen.has(c.family) ? false : (seen.add(c.family), true)));
+  const all = parseSpecs(description);
+  const out: Spec[] = [];
+  const families = [...new Set(all.map((c) => c.family))];
+  // per family: a figure with a time unit ("100 kg/h") is the machine's
+  // capacity; "sacos de 50 kg" in the same sentence is not
+  families.forEach((f) => {
+    const of = all.filter((c) => c.family === f);
+    out.push(of.find((c) => c.rate) ?? of[0]);
+  });
+  // parseSpecs pads the text with one leading space
+  const low = ` ${String(description || "").toLowerCase()} `;
+  return out.map((c) => {
+    const before = low.slice(Math.max(0, (c.at ?? 0) - 40), c.at ?? 0);
+    return AT_LEAST.test(before) && !isCount(c.family) ? { ...c, atLeast: true, text: `${Lx("mínimo", "at least")} ${c.text}` } : c;
+  });
 }
 
 export type SpecStatus = "meets" | "higher" | "lower" | "unknown";
@@ -115,6 +146,7 @@ export interface SpecItem {
   found: string;
   closeness: number; // 1 = exact; lower = further away
   incomparable?: boolean; // the listing gives the same kind of figure with or without "per hour"
+  edge?: boolean; // a range that reaches the requested minimum only at its top
 }
 export interface SpecMatch {
   items: SpecItem[];
@@ -124,10 +156,10 @@ export interface SpecMatch {
 
 function matchOne(req: Spec, title: string): SpecItem {
   const family = parseSpecs(title).filter((c) => c.family === req.family);
-  // Per hour and per batch can't be compared: "30 t" is not "more than 100 kg/h"
-  const all = family.filter((c) => c.rate === req.rate);
+  // Per hour, per day and per batch can't be compared: "30 t" is not "more than 100 kg/h"
+  const all = family.filter((c) => c.per === req.per);
   if (!all.length) {
-    const other = family.filter((c) => c.rate !== req.rate);
+    const other = family.filter((c) => c.per !== req.per);
     const found = other.map((c) => c.text).filter((v, i, a) => a.indexOf(v) === i).join(", ");
     return { req, status: "unknown", found, closeness: 0, incomparable: other.length > 0 };
   }
@@ -135,6 +167,12 @@ function matchOne(req: Spec, title: string): SpecItem {
   const [lo, hi] = isCount(req.family) ? [1, 1] : [0.9, 1.1];
   const found = all.map((c) => c.text).filter((v, i, a) => a.indexOf(v) === i).join(", ");
   const closeness = Math.max(...all.map((c) => (c.max < target ? c.max / target : c.min > target ? target / c.min : 1)));
+  if (req.atLeast) {
+    // a minimum: anything that starts at or above it meets it
+    if (all.some((c) => c.min >= target * lo)) return { req, status: "meets", found, closeness: 1 };
+    if (all.some((c) => c.max >= target * lo)) return { req, status: "meets", found, closeness: 0.95, edge: true };
+    return { req, status: "lower", found, closeness };
+  }
   if (all.some((c) => c.min * lo <= target && target <= c.max * hi)) return { req, status: "meets", found, closeness: 1 };
   if (all.every((c) => c.max < target)) return { req, status: "lower", found, closeness };
   if (all.every((c) => c.min > target)) return { req, status: "higher", found, closeness };
@@ -161,7 +199,7 @@ export function orderBySpecs<T extends { productName?: string }>(list: T[], reqs
   return list
     .map((s, i) => {
       const m = matchSpecs(reqs, s.productName)!;
-      const meets = m.items.filter((x) => x.status === "meets").length;
+      const meets = m.items.filter((x) => x.status === "meets" && !x.edge).length;
       const close = m.items.reduce((a, x) => a + x.closeness, 0);
       return { s, i, rank: m.rank, meets, close };
     })
@@ -176,9 +214,17 @@ export function specLabel(i: SpecItem) {
   const { req } = i;
   switch (i.status) {
     case "meets":
+      if (i.edge)
+        return {
+          tone: "blue" as const,
+          text: Lx(`Coincide solo en su máximo: ${i.found}`, `Matches only at its maximum: ${i.found}`),
+          sub: Lx(`Pediste ${req.text}: confirma que la producción real llegue a esa cifra`, `You asked for ${req.text}: confirm the real output reaches that figure`),
+        };
       return {
         tone: "green" as const,
-        text: Lx(`Indica lo pedido: ${req.text}`, `States what you asked: ${req.text}`),
+        text: req.atLeast
+          ? Lx(`Cumple lo pedido: ${req.text}`, `Meets what you asked: ${req.text}`)
+          : Lx(`Indica lo pedido: ${req.text}`, `States what you asked: ${req.text}`),
         sub: Lx(`En la publicación: ${i.found}`, `In the listing: ${i.found}`),
       };
     case "higher":
@@ -197,10 +243,15 @@ export function specLabel(i: SpecItem) {
       if (i.incomparable) {
         return {
           tone: "slate" as const,
-          text: req.rate
-            ? Lx(`Capacidad no comparable: ${i.found} sin «por hora»`, `Capacity not comparable: ${i.found} without "per hour"`)
-            : Lx(`Capacidad no comparable: ${i.found}`, `Capacity not comparable: ${i.found}`),
-          sub: req.rate
+          text:
+            req.per === "h" && !/\/(hora|hour|día|day)/.test(i.found)
+              ? Lx(`Capacidad no comparable: ${i.found} sin «por hora»`, `Capacity not comparable: ${i.found} without "per hour"`)
+              : req.per === "d" && !/\/(hora|hour|día|day)/.test(i.found)
+                ? Lx(`Capacidad no comparable: ${i.found} sin «por día»`, `Capacity not comparable: ${i.found} without "per day"`)
+                : Lx(`Capacidad no comparable: ${i.found}`, `Capacity not comparable: ${i.found}`),
+          sub: req.per === "d"
+            ? Lx(`Pediste ${req.text}: confirma con el proveedor la producción por día y las horas de trabajo`, `You asked for ${req.text}: confirm the daily output and working hours with the supplier`)
+            : req.rate
             ? Lx(`Pediste ${req.text}: confirma con el proveedor la producción por hora`, `You asked for ${req.text}: confirm the hourly output with the supplier`)
             : Lx(`Pediste ${req.text}: confirma con el proveedor la capacidad por carga`, `You asked for ${req.text}: confirm the batch capacity with the supplier`),
         };
