@@ -33,10 +33,13 @@ export function packSizeFromTitle(title?: string): number {
   const t = String(title || "").toLowerCase();
   const rules: RegExp[] = [
     /(\d{1,4})\s*(?:pcs|pc|pieces?|piezas?|pzs|unidades|units?)\s*(?:\/|per|por|in\s+(?:a|one|1))\s*(?:set|box|pack|bag|caja|paquete|bolsa)/,
-    /(\d{1,4})\s*\/\s*(?:set|box|pack|bag|caja|paquete|bolsa)\b/,
-    /(?:set|box|pack|bag|caja|paquete|bolsa|kit)\s*(?:of|de|con|with)\s*(\d{1,4})\b/,
+    /(\d{1,4})\s*(?:pcs?|pieces?|piezas?)?\s*\/\s*(?:set|box|pack|bag|caja|paquete|bolsa)\b/,
+    // "set of 12", "box of 50 pens", "caja de 100 piezas"; not "backpack with 3 pockets"
+    // nor "kit with 2 batteries" (a feature, not the content)
+    /\b(?:set|box|pack|bag|caja|paquete|bolsa|kit)\s*(?:of|de)\s*(\d{1,4})\b/,
+    /\b(?:set|box|pack|bag|caja|paquete|bolsa|kit)\s*(?:con|with)\s*(\d{1,4})(?!\s*-?\s*(?:pockets?|bolsillos?|batter(?:y|ies)|bater[ií]as?|speeds?|velocidades?|layers?|capas?|compartments?|compartimentos?|drawers?|cajones?|wheels?|ruedas?|heads?|cabezal(?:es)?|needles?|agujas?|gears?|levels?|niveles?|modes?|modos?|ports?|puertos?|slots?|doors?|puertas?|burners?|quemadores?|holes?|years?|a[nñ]os?|months?|meses|hours?|horas?|w\b|v\b|kg\b|g\b|l\b|ml\b|mm\b|cm\b|m\b|inch|pulgadas?|"))/,
     /(\d{1,4})\s*-?\s*(?:pcs|pc|pieces?|piezas?|pzs)\s+(?:[\w-]+\s+){0,4}(?:set|box|pack|kit|caja|paquete|estuche)\b/,
-    /(?:set|box|pack|kit|caja|paquete|estuche)\b(?:\s+[\w-]+){0,3}\s+(\d{1,4})\s*-?\s*(?:pcs|pc|pieces?|piezas?|pzs)\b/,
+    /\b(?:set|box|pack|kit|caja|paquete|estuche)\b(?:\s+[\w-]+){0,3}\s+(\d{1,4})\s*-?\s*(?:pcs|pc|pieces?|piezas?|pzs)\b/,
     /(\d{1,4})\s*-?\s*(?:pack|pk|count|ct)\b/,
     /(\d{1,4})\s*(?:colou?rs?|colores)\b(?=.*\b(?:set|box|pack|caja|kit)\b)/,
     /\b(?:set|box|pack|caja|kit|estuche)\b.*?\b(\d{1,4})\s*(?:colou?rs?|colores)\b/,
@@ -92,8 +95,13 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
  * A negated mention ("no 500 paquetes") does not count. "" when it's unclear.
  */
 export function quantityIntent(description?: string): "piece" | "pack" | "" {
-  const t = ` ${String(description || "").toLowerCase()} `;
-  const PACK = "(?:paquetes?|sets?|juegos?|cajas?|docenas?|estuches?|packs?|boxes|box|dozens?|cartons?|cartones?|kits?)";
+  const PACK = "(?:paquetes?|sets?|juegos?|cajas?|docenas?|estuches?|packs?|boxes|box|dozens?|cartons?|cartones?|kits?|pares|par|pairs?|bolsas?|bags?|rollos?|rolls?)";
+  const t = ` ${String(description || "").toLowerCase()} `
+    // "5 mil cajas" = 5000 cajas
+    .replace(/(\d+(?:[.,]\d+)?)\s*(?:mil|thousand)\b/g, (_, n) => String(Math.round(parseFloat(n.replace(",", ".")) * 1000)))
+    .replace(/(\d+(?:[.,]\d+)?)\s*(?:mill[oó]n(?:es)?|millions?)\b/g, (_, n) => String(Math.round(parseFloat(n.replace(",", ".")) * 1e6)))
+    // the content of each pack is not the order quantity: "cajas de 100 piezas", "set of 12"
+    .replace(new RegExp(`(${PACK})\\s+(?:de|of|con|with|x)\\s+\\d[\\d.,]*(?:\\s*[a-záéíóúüñ]+)?`, "g"), "$1 ");
   const MEASURE = "(?:kg|kgs|kilos?|g|gramos?|t|ton|toneladas?|l|lts?|litros?|ml|m|metros?|cm|mm|m2|m3|w|kw|v|hp|hz|agujas?|needles?|cabezal(?:es)?|heads?|%)";
   const num = "\\d[\\d.,]*";
   const NEG = "(\\b(?:no|not|ni|nor|sin|without)\\s+(?:en\\s+|in\\s+)?)?";

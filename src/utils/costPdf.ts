@@ -52,8 +52,15 @@ export function buildCostPdf(d: CostPdfInput): string {
   let y = 0;
   const ensure = (h: number) => {
     if (y + h > BOTTOM) {
+      // the footer changes font and color: keep the ones in use for the next page
+      const size = doc.getFontSize();
+      const color = doc.getTextColor();
+      const font = doc.getFont();
       drawCompanyFooter(doc);
       doc.addPage();
+      doc.setFontSize(size);
+      doc.setTextColor(color);
+      doc.setFont(font.fontName, font.fontStyle);
       y = 16;
     }
   };
@@ -88,7 +95,7 @@ export function buildCostPdf(d: CostPdfInput): string {
     [Lx("Proveedor considerado", "Supplier considered"), d.supplierName],
     [Lx("Cantidad", "Quantity"), `${d.quantity.toLocaleString("en-US")} ${unitWordFor(d.costs.saleUnit, d.quantity)}`],
     [
-      Lx("Precio unitario", "Unit price"),
+      Lx(`Precio por ${unitWordFor(d.costs.saleUnit, 1)}`, `Price per ${unitWordFor(d.costs.saleUnit, 1)}`),
       `${formatUSD(Number(d.price), 2)} (${formatQ(Number(d.price), fx, 2)})${d.priceNote ? ` - ${d.priceNote}` : ""}`,
     ],
     [Lx("Destino", "Destination"), "Guatemala"],
@@ -163,10 +170,29 @@ export function buildCostPdf(d: CostPdfInput): string {
   });
   y = (doc as any).lastAutoTable.finalY + 6;
 
+  // Everything after the table is measured first, so the notice never ends
+  // up alone on an almost empty last page
+  const vars = scenarioVariables(d.costs, { priceIsMidpoint: /medio del rango|midpoint/.test(d.priceNote || "") });
+  doc.setFontSize(8.5);
+  const varLines = vars.map((v) => wrap(`- ${v}`, W - 28));
+  const topicLines = (d.topics || []).map((tp, i) => wrap(`${i + 1}. ${tp.title}`, W - 28));
+  doc.setFontSize(8);
+  const noteLines = [d.costs.fxNote, estimateNote()].filter(Boolean).map((n) => wrap(String(n), W - 28));
+  const disc = wrap(`${Lx("Aviso", "Notice")}: ${d.disclaimer}`, W - 28);
+  const sum = (ls: string[][], lh: number) => ls.reduce((a, l) => a + l.length * lh, 0);
+  const need = (lh: number, sh: number, gap: number) =>
+    sh + 5 + sum(varLines, lh) + gap + (topicLines.length ? 5 + sum(topicLines, lh) + gap : 0) + sum(noteLines, 3.8) + disc.length * 3.8 + 2;
+  // a small overflow is absorbed by tighter spacing instead of a new page
+  const over = need(4.2, 19, 3) - (BOTTOM - y);
+  const compact = over > 0 && over <= 30;
+  const LH = compact ? 3.6 : 4.2;
+  const GAP = compact ? 1.5 : 3;
+  const tailH = sum(noteLines, 3.8) + disc.length * 3.8 + 2;
+
   // Scenario summary
   ensure(16);
   doc.setFillColor(11, 60, 93);
-  doc.rect(14, y, W - 28, 13, "F");
+  doc.rect(14, y, W - 28, compact ? 11 : 13, "F");
   doc.setTextColor(255, 255, 255);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
@@ -175,59 +201,41 @@ export function buildCostPdf(d: CostPdfInput): string {
       `${d.costs.freightPending ? "Estimación parcial, sin flete" : "Escenario preliminar"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} por ${unitWordFor(d.costs.saleUnit, 1)}`,
       `${d.costs.freightPending ? "Partial estimate, without freight" : "Preliminary scenario"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} per ${unitWordFor(d.costs.saleUnit, 1)}`,
     ),
-    W / 2, y + 8.5, { align: "center" },
+    W / 2, y + (compact ? 7.5 : 8.5), { align: "center" },
   );
-  y += 19;
+  y += compact ? 15 : 19;
 
-  // Variables
-  const vars = scenarioVariables(d.costs, { priceIsMidpoint: !!d.priceNote });
-  ensure(10 + vars.length * 5);
-  doc.setTextColor(11, 60, 93);
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  text(Lx("Variables que pueden cambiar este escenario", "Variables that can change this scenario"), 14, y);
-  y += 5;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(8.5);
-  doc.setTextColor(30, 41, 59);
-  for (const v of vars) {
-    const lines = wrap(`- ${v}`, W - 28);
-    ensure(lines.length * 4.2);
-    text(lines, 14, y);
-    y += 4.2 * lines.length;
-  }
-  y += 3;
-
-  // Aspects to review (final report)
-  if (d.topics?.length) {
-    ensure(12);
+  // Lists: the last two lines of the last list travel with the notice
+  const list = (title: string, lines: string[][], isLast: boolean) => {
+    ensure(5 + (lines[0]?.length || 1) * LH);
     doc.setTextColor(11, 60, 93);
     doc.setFont("helvetica", "bold");
     doc.setFontSize(10);
-    text(Lx("Aspectos por revisar antes de importar", "Aspects to review before importing"), 14, y);
+    text(title, 14, y);
     y += 5;
     doc.setFont("helvetica", "normal");
     doc.setFontSize(8.5);
     doc.setTextColor(30, 41, 59);
-    d.topics.forEach((tp, i) => {
-      const lines = wrap(`${i + 1}. ${tp.title}`, W - 28);
-      ensure(lines.length * 4.2);
-      text(lines, 14, y);
-      y += 4.2 * lines.length;
+    lines.forEach((l, i) => {
+      const rest = isLast && i >= lines.length - 2 ? lines.slice(i).reduce((a, x) => a + x.length * LH, 0) + tailH : l.length * LH;
+      ensure(rest);
+      text(l, 14, y);
+      y += LH * l.length;
     });
-    y += 3;
-  }
+    y += GAP;
+  };
+  list(Lx("Variables que pueden cambiar este escenario", "Variables that can change this scenario"), varLines, !topicLines.length);
+  if (topicLines.length) list(Lx("Aspectos por revisar antes de importar", "Aspects to review before importing"), topicLines, true);
 
   // Notes and disclaimer
   doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
   doc.setTextColor(100, 116, 139);
-  for (const n of [d.costs.fxNote, estimateNote()]) {
-    const lines = wrap(n, W - 28);
+  for (const lines of noteLines) {
     ensure(lines.length * 3.8);
     text(lines, 14, y);
     y += 3.8 * lines.length;
   }
-  const disc = wrap(`${Lx("Aviso", "Notice")}: ${d.disclaimer}`, W - 28);
   ensure(disc.length * 3.8 + 2);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(146, 64, 14);

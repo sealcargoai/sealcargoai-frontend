@@ -73,9 +73,12 @@ export function scenarioVariables(costs: { freightPending: boolean; dutyRate: nu
 
 // Rates and costs are kept in USD; everything shown to the client is in quetzales
 export function formatQ(usdAmount: number, exchangeRate: number, decimals = 0): string {
-  return `Q${(usdAmount * exchangeRate).toLocaleString("en-US", {
+  const q = usdAmount * exchangeRate;
+  // Small unit amounts (Q0.0024) keep their decimals instead of showing Q0.00
+  const small = decimals > 0 && q > 0 && q < 1;
+  return `Q${q.toLocaleString("en-US", {
     minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    maximumFractionDigits: small ? 4 : decimals,
   })}`;
 }
 

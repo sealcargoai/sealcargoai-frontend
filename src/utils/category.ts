@@ -28,3 +28,6 @@ export function inferCategory(description: string): string {
   // 2) the whole text without its "para …" use phrases
   return find(head) || find(text.replace(USE_PHRASE, " ")) || "other";
 }
+
+// Machines whose description mentions food use get the food-contact topic
+export const FOOD_USE = /aliment|comida|\bfood|caf[eé](?![a-záéíóúñ])|coffee|panader|bakery|\bpan\b|bread|tortill|carne|\bmeat|l[aá]cte|leche|dairy|\bmilk|bebida|beverage|jugo|juice|snack|chocolate|cacao|az[uú]car|sugar|harina|flour|granos?\b|grain|ma[ií]z|\bcorn\b|frut|fruit|verdura|vegetable|cocina|kitchen|restaurante|restaurant/i;

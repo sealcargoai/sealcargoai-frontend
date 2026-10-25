@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
-import { estimateNote, scenarioVariables } from "./costCalculator";
+import { estimateNote, scenarioVariables, formatUSD, formatQ } from "./costCalculator";
 
 // ─── SEAL Company Info ────────────────────────────────────────────────────────
 export const SEAL_COMPANY = {
@@ -236,7 +236,7 @@ export async function generateBeautifulExcel(
     [Lx("Producto:", "Product:"), data.productType],
     [Lx("País de destino:", "Destination country:"), "Guatemala"],
     [Lx("Cantidad:", "Quantity:"), `${data.quantity.toLocaleString()} ${unitWordFor(data.costs.saleUnit, data.quantity)}`],
-    [Lx("Precio unitario:", "Unit price:"), `US$${Number(data.price).toFixed(2)} (Q${(Number(data.price) * (data.costs.exchangeRate || DEFAULT_FX)).toFixed(2)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
+    [Lx(`Precio por ${unitWordFor(data.costs.saleUnit, 1)}:`, `Price per ${unitWordFor(data.costs.saleUnit, 1)}:`), `${formatUSD(Number(data.price), 2)} (${formatQ(Number(data.price), data.costs.exchangeRate || DEFAULT_FX, 2)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
   ];
 
   orderRows.forEach((row, i) => {
@@ -484,7 +484,7 @@ export async function generateBeautifulExcel(
   const perUnitValue = ws.getCell(`D${perUnitRowNum}`);
   const perUnitEmpty = ws.getCell(`E${perUnitRowNum}`);
 
-  perUnitLabel.value = Lx("COSTO ESTIMADO POR UNIDAD", "ESTIMATED COST PER UNIT");
+  perUnitLabel.value = Lx(`COSTO ESTIMADO POR ${unitWordFor(data.costs.saleUnit, 1).toUpperCase()}`, `ESTIMATED COST PER ${unitWordFor(data.costs.saleUnit, 1).toUpperCase()}`);
   perUnitValue.value = Math.round(data.costs.perUnit * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100;
   perUnitValue.numFmt = '"Q"#,##0.00';
 
@@ -534,7 +534,7 @@ export async function generateBeautifulExcel(
   ws.mergeCells(`A${f1}:E${f1}`);
   const footerCell = ws.getCell(`A${f1}`);
   footerCell.value =
-    `${estimateNote()}${data.costs.fxNote ? "  " + data.costs.fxNote : ""}  ${Lx("Variables que pueden cambiar este escenario", "Variables that can change this scenario")}: ${scenarioVariables(data.costs as any, { priceIsMidpoint: !!data.priceNote }).join(" ")}  ${Lx("Aviso: SEAL no garantiza a los proveedores ni los resultados de esta búsqueda; SmartTrade AI es una herramienta para organizar y comparar proveedores. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.", "Notice: SEAL does not guarantee the suppliers or the results of this search; SmartTrade AI is a tool to organize and compare suppliers. To buy more safely, the specific supplier verification service in China is required.")}`;
+    `${estimateNote()}${data.costs.fxNote ? "  " + data.costs.fxNote : ""}  ${Lx("Variables que pueden cambiar este escenario", "Variables that can change this scenario")}: ${scenarioVariables(data.costs as any, { priceIsMidpoint: /medio del rango|midpoint/.test(data.priceNote || "") }).join(" ")}  ${Lx("Aviso: SEAL no garantiza a los proveedores ni los resultados de esta búsqueda; SmartTrade AI es una herramienta para organizar y comparar proveedores. Para comprar con más seguridad se requiere el servicio específico de verificación de proveedor en China.", "Notice: SEAL does not guarantee the suppliers or the results of this search; SmartTrade AI is a tool to organize and compare suppliers. To buy more safely, the specific supplier verification service in China is required.")}`;
   footerCell.font = {
     name: "Arial",
     size: 9,

@@ -3,12 +3,29 @@
 // so they are not used in the cost scenario without the client confirming them.
 import { formatUSD } from "./costCalculator";
 import { Lx } from "./lang";
+import { saleUnitInfo } from "./saleUnit";
 
 interface PricedSupplier {
   price?: number;
   priceRange?: string;
   priceSource?: string;
   priceFlag?: string;
+  priceNotComparable?: boolean;
+  saleUnit?: string;
+  productName?: string;
+}
+
+/**
+ * Price per piece, so a box of 100 is not compared with a single glove.
+ * null when the listing sells per box/set/pack and doesn't say how many pieces
+ * it holds: that price can't be compared until the packaging is confirmed.
+ */
+export function comparablePrice(s: PricedSupplier | null | undefined, productType = ""): number | null {
+  const price = Number(s?.price) || 0;
+  if (!s || price <= 0) return null;
+  const u = saleUnitInfo(s, productType);
+  if (u.multi) return u.packSize > 1 ? price / u.packSize : null;
+  return price;
 }
 
 function rangeNumbers(range?: string): number[] {
@@ -50,9 +67,12 @@ export function priceIssue(
 
   const peers = peerPrices.filter((p) => p > 0);
   const peerMedian = peers.length >= 2 ? median(peers) : 0;
+  // peers are compared per piece: the client's own price per sale unit
+  const own = comparablePrice(s, productType);
+  const perPiece = !!s.saleUnit && s.saleUnit !== "piece" ? Lx(" por pieza", " per piece") : "";
   // US$1 or less is normal for a pencil, not for a machine: flag it only for
   // costly product types, or when the other options cost far more
-  if ((price <= 1 || lo <= 1) && (COSTLY_TYPES.has(productType) || peerMedian >= 20)) {
+  if ((price <= 1 || lo <= 1) && (COSTLY_TYPES.has(productType) || (own !== null && own <= 1 && peerMedian >= 20))) {
     return Lx(
       `El precio publicado (${formatUSD(lo, 2)}) parece simbólico o inicial, no el precio real de la unidad.`,
       `The published price (${formatUSD(lo, 2)}) looks symbolic or a starting price, not the real unit price.`,
@@ -64,12 +84,12 @@ export function priceIssue(
       `The published range is very wide (${formatUSD(lo, 2)} – ${formatUSD(hi, 2)}); the minimum is usually an accessory or a different model.`,
     );
   }
-  if (peerMedian > 0) {
+  if (peerMedian > 0 && own !== null) {
     const m = peerMedian;
-    if (price < m * 0.2) {
+    if (own < m * 0.2) {
       return Lx(
-        `Está muy por debajo de las demás opciones de esta búsqueda (precio típico cercano a ${formatUSD(m, m < 10 ? 2 : 0)}).`,
-        `It is far below the other options in this search (typical price around ${formatUSD(m, m < 10 ? 2 : 0)}).`,
+        `Está muy por debajo de las demás opciones de esta búsqueda, comparando el precio por pieza (${formatUSD(own, 2)} contra un precio típico cercano a ${formatUSD(m, 2)}${perPiece || " por pieza"}).`,
+        `It is far below the other options in this search, comparing the price per piece (${formatUSD(own, 2)} against a typical price around ${formatUSD(m, 2)}${perPiece || " per piece"}).`,
       );
     }
   }
@@ -78,10 +98,13 @@ export function priceIssue(
 
 /** Adds `priceFlag` to each supplier, comparing it with the others in the list. */
 export function flagPrices<T extends PricedSupplier>(list: T[], productType = ""): T[] {
-  const prices = list.map((s) => s.price ?? 0);
+  // only prices in the same unit (per piece) are compared with each other
+  const perPiece = list.map((s) => comparablePrice(s, productType));
   return list.map((s, i) => {
-    const peers = prices.filter((_, k) => k !== i);
+    const peers = perPiece.filter((v, k) => k !== i && v !== null) as number[];
     const flag = priceIssue({ ...s, priceFlag: undefined }, peers, productType);
-    return flag ? { ...s, priceFlag: flag } : s;
+    const notComparable = perPiece[i] === null && Number(s.price) > 0;
+    const out = flag ? { ...s, priceFlag: flag } : { ...s };
+    return notComparable ? { ...out, priceNotComparable: true } : out;
   });
 }

@@ -39,6 +39,7 @@ const CONCEPTS: Concept[] = [
   C("paint", "resinas y adhesivos", "resins and adhesives", ["resina", "resin", "adhesiv", "glue", "pegamento"]),
   C("paint", "químicos", "chemicals", ["químic", "quimic", "chemical"]),
   C("pharma", "farmacéutico", "pharma", ["farmac", "pharma", "medicin"]),
+  C("pharma", "uso médico", "medical use", ["médic", "medic", "hospital", "clínic", "clinic", "examination", "exam ", "surgical", "quirúrg", "quirurg", "dental", "odontol", "paciente", "patient"]),
   C("pharma", "cosméticos", "cosmetics", ["cosmétic", "cosmetic"]),
   C("pharma", "laboratorio", "laboratory", ["laboratorio", "laboratory", "lab "]),
   C("mineral", "minerales", "minerals", ["roca", "rock", "mineral", "minería", "mineria", "mining", "arena", "sand", "carbón", "carbon ", "coal"]),

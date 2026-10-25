@@ -82,7 +82,15 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
       if (choices.priceBasis === "piece") {
         const perPiece = price;
         price = perPiece * piecesPerUnit;
-        supplier = { ...supplier, price };
+        supplier = {
+          ...supplier,
+          price,
+          priceRange: "",
+          priceBasisNote: Lx(
+            `precio publicado ${formatUSD(perPiece, 2)} por pieza × ${piecesPerUnit} piezas`,
+            `published price ${formatUSD(perPiece, 2)} per piece × ${piecesPerUnit} pieces`,
+          ),
+        };
         notes.push(
           Lx(
             `Precio publicado ${formatUSD(perPiece, 2)} tomado como precio por pieza, según indicaste: ${formatUSD(price, 2)} por ${one} de ${piecesPerUnit} piezas.`,
