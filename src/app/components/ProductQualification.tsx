@@ -314,8 +314,8 @@ export function ProductQualification() {
       setSearchFailed(true);
       setError(
         L(
-          "No pudimos completar la consulta en este momento. Puedes intentarlo nuevamente o pedir al equipo de SEAL que revise tu caso.",
-          "We couldn't complete the search right now. You can try again or ask the SEAL team to review your case.",
+          "La búsqueda no devolvió datos en este intento (a veces la plataforma tarda o no responde). Tus datos siguen aquí: puedes intentarlo de nuevo, probar con una descripción un poco más corta, o pedir al equipo de SEAL que revise tu caso.",
+          "The search returned no data on this attempt (sometimes the platform is slow or doesn't respond). Your data is still here: you can try again, try a slightly shorter description, or ask the SEAL team to review your case.",
         ),
       );
     } finally {

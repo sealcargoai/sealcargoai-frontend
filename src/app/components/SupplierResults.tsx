@@ -327,8 +327,8 @@ function NoResults({
                     `We analyzed ${totalAnalyzed} ${totalAnalyzed === 1 ? "supplier, but it did not meet" : "suppliers, but none met"} SEAL's verification, reputation and minimum-order criteria. We prefer not to show options that don't meet them.`,
                   )
                 : Lx(
-                    "En este momento la plataforma no nos devolvió resultados para tu producto. No te vamos a mostrar datos de ejemplo: un ejecutivo de SEAL puede hacer la búsqueda por ti y enviarte opciones para revisar con su costo estimado.",
-                    "Right now the platform didn't return results for your product. We won't show you sample data: a SEAL executive can do the search for you and send you options to review with their estimated cost.",
+                    "La plataforma no devolvió datos en este intento. Puedes volver al formulario e intentarlo de nuevo (tus datos se conservan), o usar una descripción un poco más corta. No te vamos a mostrar datos de ejemplo: un ejecutivo de SEAL puede hacer la búsqueda por ti y enviarte opciones para revisar con su costo estimado.",
+                    "The platform returned no data on this attempt. You can go back to the form and try again (your data is kept), or use a slightly shorter description. We won't show you sample data: a SEAL executive can do the search for you and send you options to review with their estimated cost.",
                   )}
           </p>
 
