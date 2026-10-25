@@ -8,7 +8,8 @@ import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { drawCompanyInfoBox, drawCompanyFooter } from "./reportExports";
 import { formatQ, formatUSD, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
-import { Lx, getLang, unitsWord } from "./lang";
+import { Lx, getLang } from "./lang";
+import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
 
 const MAP: Record<string, string> = {
@@ -84,7 +85,7 @@ export function buildCostPdf(d: CostPdfInput): string {
   doc.setTextColor(30, 41, 59);
   const rows: [string, string][] = [
     [Lx("Proveedor considerado", "Supplier considered"), d.supplierName],
-    [Lx("Cantidad", "Quantity"), `${d.quantity.toLocaleString("en-US")} ${unitsWord(d.quantity)}`],
+    [Lx("Cantidad", "Quantity"), `${d.quantity.toLocaleString("en-US")} ${unitWordFor(d.costs.saleUnit, d.quantity)}`],
     [
       Lx("Precio unitario", "Unit price"),
       `${formatUSD(Number(d.price), 2)} (${formatQ(Number(d.price), fx, 2)})${d.priceNote ? ` - ${d.priceNote}` : ""}`,
@@ -131,7 +132,7 @@ export function buildCostPdf(d: CostPdfInput): string {
       d.costs.freightPending
         ? Lx("TOTAL PARCIAL, SIN FLETE", "PARTIAL TOTAL, WITHOUT FREIGHT")
         : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA"),
-      `${d.quantity.toLocaleString("en-US")} ${unitsWord(d.quantity)}`,
+      `${d.quantity.toLocaleString("en-US")} ${unitWordFor(d.costs.saleUnit, d.quantity)}`,
       formatQ(d.costs.totalCost, fx),
       "100%",
     ]],
@@ -156,8 +157,8 @@ export function buildCostPdf(d: CostPdfInput): string {
   doc.setFontSize(10);
   text(
     Lx(
-      `${d.costs.freightPending ? "Estimación parcial, sin flete" : "Escenario preliminar"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} por unidad`,
-      `${d.costs.freightPending ? "Partial estimate, without freight" : "Preliminary scenario"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} per unit`,
+      `${d.costs.freightPending ? "Estimación parcial, sin flete" : "Escenario preliminar"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} por ${unitWordFor(d.costs.saleUnit, 1)}`,
+      `${d.costs.freightPending ? "Partial estimate, without freight" : "Preliminary scenario"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} per ${unitWordFor(d.costs.saleUnit, 1)}`,
     ),
     W / 2, y + 8.5, { align: "center" },
   );

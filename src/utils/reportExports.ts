@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
-import { Lx, getLang, unitsWord } from "./lang";
+import { Lx, getLang } from "./lang";
+import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
 import { estimateNote, scenarioVariables } from "./costCalculator";
 
@@ -97,6 +98,7 @@ export interface ExcelExportData {
     noVatNote?: string;
     freightPending?: boolean;
     exchangeRate?: number; // GTQ per USD — amounts are written in quetzales
+    saleUnit?: string;
     fxNote?: string;
   };
   vatRate: number;
@@ -232,7 +234,7 @@ export async function generateBeautifulExcel(
     [Lx("Proveedor considerado:", "Supplier considered:"), data.supplierName],
     [Lx("Producto:", "Product:"), data.productType],
     [Lx("País de destino:", "Destination country:"), "Guatemala"],
-    [Lx("Cantidad:", "Quantity:"), `${data.quantity.toLocaleString()} ${unitsWord(data.quantity)}`],
+    [Lx("Cantidad:", "Quantity:"), `${data.quantity.toLocaleString()} ${unitWordFor(data.costs.saleUnit, data.quantity)}`],
     [Lx("Precio unitario:", "Unit price:"), `US$${Number(data.price).toFixed(2)} (Q${(Number(data.price) * (data.costs.exchangeRate || DEFAULT_FX)).toFixed(2)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
   ];
 
@@ -442,7 +444,7 @@ export async function generateBeautifulExcel(
   totalConceptCell.value = data.costs.freightPending
     ? Lx("TOTAL PARCIAL, SIN FLETE", "PARTIAL TOTAL, WITHOUT FREIGHT")
     : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA");
-  totalDetailCell.value = `${data.quantity.toLocaleString()} ${unitsWord(data.quantity)}`;
+  totalDetailCell.value = `${data.quantity.toLocaleString()} ${unitWordFor(data.costs.saleUnit, data.quantity)}`;
   totalRateCell.value = "—";
   totalAmountCell.value = Math.round(data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX));
   totalAmountCell.numFmt = '"Q"#,##0';

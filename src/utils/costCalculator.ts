@@ -2,7 +2,8 @@
 // Single source of truth for the costs, PDF and Excel screens.
 // Rates come from the backend (/api/rates → Google Sheet) with these defaults.
 import { useEffect, useState } from "react";
-import { Lx, unitsWord } from "./lang";
+import { Lx } from "./lang";
+import { unitWordFor } from "./saleUnit";
 
 export interface Rates {
   container40: number;      // USD per 40' container, origin → Guatemala
@@ -148,6 +149,7 @@ export interface CostResult {
   noVatNote: string;
   exchangeRate: number;
   fxNote: string;
+  saleUnit: string; // unit the price is per ("" or "piece" = one unit)
 }
 
 
@@ -192,7 +194,7 @@ export function calculateFreight(
 }
 
 export function calculateCosts(
-  params: { price: number; quantity: number; volumeCbm?: number; weightKg?: number },
+  params: { price: number; quantity: number; volumeCbm?: number; weightKg?: number; saleUnit?: string },
   rates: Rates = DEFAULT_RATES,
 ): CostResult {
   const quantity = params.quantity || 1;
@@ -221,7 +223,7 @@ export function calculateCosts(
     {
       key: "product",
       label: Lx("Costo de producto (FOB)", "Product cost (FOB)"),
-      detail: `${quantity.toLocaleString("en-US")} ${unitsWord(quantity)} × ${formatUSD(Number(params.price), 2)} (${formatQ(Number(params.price), rates.exchangeRate, 2)} ${Lx("c/u", "each")})`,
+      detail: `${quantity.toLocaleString("en-US")} ${unitWordFor(params.saleUnit, quantity)} × ${formatUSD(Number(params.price), 2)} (${formatQ(Number(params.price), rates.exchangeRate, 2)} ${Lx("c/u", "each")})`,
       amount: productCost,
       color: "#0B3C5D",
     },
@@ -270,6 +272,7 @@ export function calculateCosts(
   ];
 
   return {
+    saleUnit: params.saleUnit || "",
     productCost,
     shipping,
     freightPending: !freight.mode,
