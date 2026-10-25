@@ -79,9 +79,11 @@ export function formatQ(usdAmount: number, exchangeRate: number, decimals = 0): 
 }
 
 export function formatUSD(usdAmount: number, decimals = 0): string {
+  // Small unit prices (US$0.035) keep their decimals instead of showing US$0.00
+  const small = decimals > 0 && usdAmount > 0 && usdAmount < 1;
   return `US$${usdAmount.toLocaleString("en-US", {
     minimumFractionDigits: decimals,
-    maximumFractionDigits: decimals,
+    maximumFractionDigits: small ? 4 : decimals,
   })}`;
 }
 

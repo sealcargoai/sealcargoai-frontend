@@ -49,7 +49,7 @@ export function priceIssue(
   const hi = nums.length ? Math.max(...nums) : price;
 
   const peers = peerPrices.filter((p) => p > 0);
-  const peerMedian = peers.length >= 3 ? median(peers) : 0;
+  const peerMedian = peers.length >= 2 ? median(peers) : 0;
   // US$1 or less is normal for a pencil, not for a machine: flag it only for
   // costly product types, or when the other options cost far more
   if ((price <= 1 || lo <= 1) && (COSTLY_TYPES.has(productType) || peerMedian >= 20)) {
