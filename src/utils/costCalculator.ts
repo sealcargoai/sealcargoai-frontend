@@ -223,7 +223,7 @@ export function calculateCosts(
     {
       key: "product",
       label: Lx("Costo de producto (FOB)", "Product cost (FOB)"),
-      detail: `${quantity.toLocaleString("en-US")} ${unitWordFor(params.saleUnit, quantity)} × ${formatUSD(Number(params.price), 2)} (${formatQ(Number(params.price), rates.exchangeRate, 2)} ${Lx("c/u", "each")})`,
+      detail: `${quantity.toLocaleString("en-US")} ${unitWordFor(params.saleUnit, quantity)} × ${formatUSD(Number(params.price), 2)} (${formatQ(Number(params.price), rates.exchangeRate, 2)} ${Lx("por", "per")} ${unitWordFor(params.saleUnit, 1)})`,
       amount: productCost,
       color: "#0B3C5D",
     },
