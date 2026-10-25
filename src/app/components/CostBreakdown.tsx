@@ -556,21 +556,27 @@ export function CostBreakdown() {
                 </span>
               </li>
               {budget > 0 && (() => {
-                const budgetPerUnit = budget / quantity;
-                const diff = budgetPerUnit - costs.perUnit;
+                // The budget is what the client plans to pay the supplier (FOB),
+                // so it is compared with the product cost, not with the landed total.
+                const diff = budget - costs.productCost;
+                const extra = costs.totalCost - costs.productCost;
                 return (
                   <li className="flex items-start gap-2">
                     <span className="text-green-500 mt-1">•</span>
                     <span>
-                      {L("Tu presupuesto equivale a", "Your budget is")} <b>{Q(budgetPerUnit, 2)}</b>{" "}
-                      {L("por unidad. En este escenario quedaría", "per unit. In this scenario it would be")}{" "}
-                      <b>{Q(Math.abs(diff), 2)}</b>{" "}
+                      {L("Compra al proveedor:", "Purchase from the supplier:")} <b>{formatUSD(costs.productCost, 2)}</b>{" "}
                       {diff >= 0
-                        ? L("por debajo de tu presupuesto", "below your budget")
-                        : L("por encima de tu presupuesto", "above your budget")}
+                        ? L(
+                            `queda dentro de tu presupuesto de compra de ${formatUSD(budget, 2)} (sobran ${formatUSD(diff, 2)}).`,
+                            `fits within your purchase budget of ${formatUSD(budget, 2)} (${formatUSD(diff, 2)} left).`,
+                          )
+                        : L(
+                            `supera tu presupuesto de compra de ${formatUSD(budget, 2)} por ${formatUSD(-diff, 2)}.`,
+                            `exceeds your purchase budget of ${formatUSD(budget, 2)} by ${formatUSD(-diff, 2)}.`,
+                          )}{" "}
                       {L(
-                        " por unidad. Confírmalo con una cotización antes de decidir.",
-                        " per unit. Confirm it with a quote before deciding.",
+                        `Aparte, traer la compra a Guatemala suma ${Q(extra)} en flete, seguro, impuestos y gastos${costs.freightPending ? " (sin contar el flete, por cotizar)" : ""}. Confírmalo con una cotización antes de decidir.`,
+                        `On top of that, bringing it to Guatemala adds ${Q(extra)} in freight, insurance, taxes and charges${costs.freightPending ? " (freight not included, to be quoted)" : ""}. Confirm it with a quote before deciding.`,
                       )}
                     </span>
                   </li>

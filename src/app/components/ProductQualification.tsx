@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS } from "../../utils/descriptionCheck";
+import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
 import { useNavigate, useLocation } from "react-router";
 import {
   Package,
@@ -229,7 +229,14 @@ export function ProductQualification() {
       return;
     }
 
-    const productDescription = formData.productType.trim();
+    // Sentences addressed to the tool ("garantiza que el proveedor es real")
+    // are left out of the search, the category and the reports.
+    const { text: productDescription, removed: descriptionCleaned } = cleanDescription(formData.productType);
+    if (!descriptionIsDetailed(productDescription)) {
+      setTouched((t) => ({ ...t, productType: true }));
+      setError(descriptionDetailMessage());
+      return;
+    }
     const productCategory = inferCategory(productDescription);
 
     setIsLoading(true);
@@ -304,6 +311,7 @@ export function ProductQualification() {
           ...formData,
           productType: productCategory,
           productDescription,
+          descriptionCleaned,
           suppliers,
         },
       });
@@ -482,7 +490,7 @@ export function ProductQualification() {
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="text-xs text-slate-500 mt-1">
-                    <span>{L(`Total de la compra en dólares, hasta US$${LIMITS.budgetMax.toLocaleString()}`, `Total purchase in dollars, up to US$${LIMITS.budgetMax.toLocaleString()}`)}</span>
+                    <span>{L(`Lo que piensas pagar al proveedor por toda la compra, sin flete ni impuestos (hasta US$${LIMITS.budgetMax.toLocaleString()})`, `What you plan to pay the supplier for the whole purchase, without freight or taxes (up to US$${LIMITS.budgetMax.toLocaleString()})`)}</span>
                   </p>
                   {showErr("budget")}
                 </div>

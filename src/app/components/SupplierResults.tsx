@@ -66,7 +66,10 @@ const PLATFORMS = [
   {
     name: "Global Sources",
     url: (kw: string) =>
-      `https://www.globalsources.com/searchList/products?keyWord=${encodeURIComponent(kw.trim())}`,
+      // Global Sources drops some queries with numbers ("15-needle"): search the product name
+      `https://www.globalsources.com/searchList/products?keyWord=${encodeURIComponent(
+        kw.replace(/\S*\d\S*/g, " ").replace(/\s+/g, " ").trim() || kw.trim(),
+      )}`,
   },
 ];
 
@@ -886,6 +889,14 @@ export function SupplierResults() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Left: Supplier Cards ──────────────────────────────────────── */}
           <div className="lg:col-span-2 space-y-4 min-w-0">
+            {location.state?.descriptionCleaned && (
+              <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-xs text-slate-600">
+                {Lx(
+                  "Dejamos fuera del análisis una parte del texto que no describe el producto (por ejemplo, pedirle a la herramienta que garantice algo). La herramienta no garantiza proveedores.",
+                  "We left out of the analysis part of the text that doesn't describe the product (for example, asking the tool to guarantee something). The tool does not guarantee suppliers.",
+                )}
+              </div>
+            )}
             <SpecSummary reqs={reqSpecs} list={displaySuppliers} />
 
             {/* Sort Bar */}
