@@ -28,7 +28,7 @@ import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCa
 import { Lx, plural } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
 import { flagPrices } from "../../utils/priceCheck";
-import { orderByUse, matchUse } from "../../utils/useMatch";
+import { orderByUse, matchUse, wantedText } from "../../utils/useMatch";
 import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
 import { descriptionIsDetailed } from "../../utils/descriptionCheck";
 import {
@@ -100,7 +100,8 @@ function MorePlatforms({
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
 
-  const kw = (keyword || productDescription || "").replace(/[,;:.]+/g, " ").replace(/\s+/g, " ").trim();
+  // what the client rules out ("no para carne ni pintura") is not searched for
+  const kw = (keyword || wantedText(productDescription) || "").replace(/[,;:.]+/g, " ").replace(/\s+/g, " ").trim();
   // No external searches for descriptions that don't name a product ("abc")
   if (!kw || !descriptionIsDetailed(productDescription || keyword)) return null;
 
@@ -539,17 +540,19 @@ function UseSummary({ description, list }: { description: string; list: { produc
 
 function SpecSummary({ reqs, list }: { reqs: Spec[]; list: { productName?: string }[] }) {
   if (!reqs.length || !list.length) return null;
-  let meets = 0, differs = 0, unknown = 0;
+  let meets = 0, differs = 0, unknown = 0, incomparable = 0;
   list.forEach((s) => {
     const m = matchSpecs(reqs, s.productName)!;
     if (m.items.every((x) => x.status === "meets")) meets++;
     else if (m.items.some((x) => x.status === "higher" || x.status === "lower")) differs++;
+    else if (m.items.some((x) => x.incomparable)) incomparable++;
     else unknown++;
   });
   const asked = reqs.map((r) => r.text).join(", ");
   const parts = [
     meets && `${meets} ${plural(meets, "indica lo pedido", "indican lo pedido", "states what you asked", "state what you asked")}`,
     differs && `${differs} ${plural(differs, "con diferencias", "con diferencias", "with differences", "with differences")}`,
+    incomparable && `${incomparable} ${plural(incomparable, "da una cifra que no se puede comparar", "dan una cifra que no se puede comparar", "gives a figure that can't be compared", "give a figure that can't be compared")}`,
     unknown && `${unknown} ${plural(unknown, "no lo indica en la publicación", "no lo indican en la publicación", "does not state it", "do not state it")}`,
   ].filter(Boolean);
   return (
