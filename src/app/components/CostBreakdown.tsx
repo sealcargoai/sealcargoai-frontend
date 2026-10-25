@@ -18,7 +18,8 @@ import {
   Tooltip,
 } from "recharts";
 import { buildCostPdf } from "../../utils/costPdf";
-import { Lx, unitsWord } from "../../utils/lang";
+import { Lx } from "../../utils/lang";
+import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
@@ -131,7 +132,13 @@ export function CostBreakdown() {
   const stateDestination = location.state?.destination ?? "GT";
   const stateProductType = location.state?.productType ?? "furniture";
 
-  const quantity = parseInt(String(stateQuantity)) || 1000;
+  const requestedQty = parseInt(String(stateQuantity)) || 1000;
+  // The price is per sale unit (piece, set, box…). When the title says how many
+  // pieces a set holds, the client can say whether their quantity is in pieces.
+  const unitInfo = saleUnitInfo(stateSupplier);
+  const [qtyInPieces, setQtyInPieces] = useState(false);
+  const quantity =
+    qtyInPieces && unitInfo.packSize > 1 ? Math.ceil(requestedQty / unitInfo.packSize) : requestedQty;
   // 0 = the client didn't give a budget (never invent one)
   const budget = parseFloat(String(stateBudget)) || 0;
   const destination = String(stateDestination);
@@ -163,7 +170,6 @@ export function CostBreakdown() {
           </button>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
           <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
-        <OwnPrice current={customPrice} onChange={(v) => setCustomPrice(v)} />
           <PriceDecision
             reason={priceFlag}
             published={priceInfo.published}
@@ -175,7 +181,7 @@ export function CostBreakdown() {
       </div>
     );
   }
-  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg }, rates);
+  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit: unitInfo.unit }, rates);
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
 
   // ── Chart data ────────────────────────────────────────────────────────────
@@ -279,7 +285,7 @@ export function CostBreakdown() {
                 navigate("/risk", {
                   state: {
                     supplier: stateSupplier,
-                    quantity: stateQuantity,
+                    quantity: String(quantity),
                     budget: stateBudget,
                     destination: stateDestination,
                     productType: stateProductType,
@@ -319,7 +325,7 @@ export function CostBreakdown() {
             {isLiveData ? (
               <span className="text-green-600">
                 ✅ {t("cost.dynamicCalc")} — {quantity.toLocaleString()}{" "}
-                {unitsWord(quantity)} × {formatUSD(Number(price), 2)} ({Q(Number(price), 2)}) →{" "}
+                {unitWordFor(unitInfo.unit, quantity)} × {formatUSD(Number(price), 2)} ({Q(Number(price), 2)}) →{" "}
                 {t("cost.destination")} Guatemala
               </span>
             ) : null}
@@ -327,6 +333,16 @@ export function CostBreakdown() {
         </div>
 
         <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+        <OwnPrice current={customPrice} onChange={(v) => setCustomPrice(v)} />
+        {unitInfo.multi && (
+          <SaleUnitNotice
+            unit={unitInfo.unit}
+            packSize={unitInfo.packSize}
+            requested={requestedQty}
+            inPieces={qtyInPieces}
+            onChange={setQtyInPieces}
+          />
+        )}
         <SupplierDisclaimer
           supplier={stateSupplier}
           productDescription={location.state?.productDescription ?? ""}
@@ -350,9 +366,9 @@ export function CostBreakdown() {
                 </div>
               )}
               <div className="text-blue-100 text-xs sm:text-base md:text-lg">
-                {quantity.toLocaleString()} {unitsWord(quantity)} •{" "}
+                {quantity.toLocaleString()} {unitWordFor(unitInfo.unit, quantity)} •{" "}
                 <span className="font-bold text-white">
-                  {Q(costs.perUnit, 2)} {t("cost.perUnitLabel")}
+                  {Q(costs.perUnit, 2)} {Lx("por", "per")} {unitWordFor(unitInfo.unit, 1)}
                 </span>
               </div>
               <div className="text-blue-200 text-xs sm:text-sm mt-1">
@@ -651,8 +667,8 @@ export function CostBreakdown() {
             <a
               href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
                 L(
-                  `Hola SEAL, quiero una cotización confirmada para ${quantity.toLocaleString()} ${quantity === 1 ? "unidad" : "unidades"}${productDescription ? ` de: ${productDescription.slice(0, 200)}` : ""} (escenario estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", sin flete" : ""}).`,
-                  `Hello SEAL, I'd like a confirmed quote for ${quantity.toLocaleString()} ${quantity === 1 ? "unit" : "units"}${productDescription ? ` of: ${productDescription.slice(0, 200)}` : ""} (estimated scenario ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", without freight" : ""}).`,
+                  `Hola SEAL, quiero una cotización confirmada para ${quantity.toLocaleString()} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` de: ${productDescription.slice(0, 200)}` : ""} (escenario estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", sin flete" : ""}).`,
+                  `Hello SEAL, I'd like a confirmed quote for ${quantity.toLocaleString()} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` of: ${productDescription.slice(0, 200)}` : ""} (estimated scenario ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", without freight" : ""}).`,
                 ),
               )}`}
               target="_blank"
@@ -798,5 +814,78 @@ function OwnPrice({ current, onChange }: { current: number; onChange: (v: number
         {Lx("Cancelar", "Cancel")}
       </button>
     </form>
+  );
+}
+
+/** The published price is per set/box/pack: say it, and let the client say what their quantity means. */
+function SaleUnitNotice({
+  unit,
+  packSize,
+  requested,
+  inPieces,
+  onChange,
+}: {
+  unit: string;
+  packSize: number;
+  requested: number;
+  inPieces: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  const one = unitWordFor(unit, 1);
+  const units = unitWordFor(unit, requested);
+  const sets = packSize > 1 ? Math.ceil(requested / packSize) : 0;
+  return (
+    <div className="mb-6 -mt-2 bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-900">
+      <p className="font-semibold mb-1">
+        {Lx(`El precio publicado es por ${one}`, `The published price is per ${one}`)}
+        {packSize > 1 ? Lx(` (${packSize} piezas según el título)`, ` (${packSize} pieces according to the title)`) : ""}
+      </p>
+      {packSize > 1 ? (
+        <>
+          <p className="mb-3">
+            {Lx(
+              `¿Tu cantidad de ${requested.toLocaleString()} es en ${unitWordFor(unit, 2)} o en piezas sueltas?`,
+              `Is your quantity of ${requested.toLocaleString()} in ${unitWordFor(unit, 2)} or in single pieces?`,
+            )}
+          </p>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <button
+              onClick={() => onChange(false)}
+              className={`px-3 py-2 rounded-lg border-2 text-left ${!inPieces ? "border-[#0B3C5D] bg-white font-semibold" : "border-amber-300"}`}
+            >
+              {Lx(`${requested.toLocaleString()} ${units}`, `${requested.toLocaleString()} ${units}`)}
+              <span className="block text-xs font-normal">
+                {Lx(`= ${(requested * packSize).toLocaleString()} piezas`, `= ${(requested * packSize).toLocaleString()} pieces`)}
+              </span>
+            </button>
+            <button
+              onClick={() => onChange(true)}
+              className={`px-3 py-2 rounded-lg border-2 text-left ${inPieces ? "border-[#0B3C5D] bg-white font-semibold" : "border-amber-300"}`}
+            >
+              {Lx(`${requested.toLocaleString()} piezas`, `${requested.toLocaleString()} pieces`)}
+              <span className="block text-xs font-normal">
+                {Lx(
+                  `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} piezas)`,
+                  `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} pieces)`,
+                )}
+              </span>
+            </button>
+          </div>
+          <p className="text-xs mt-2">
+            {Lx(
+              "El contenido se lee del título publicado: confírmalo con el proveedor antes de comprar.",
+              "The content is read from the listing title: confirm it with the supplier before buying.",
+            )}
+          </p>
+        </>
+      ) : (
+        <p>
+          {Lx(
+            `Calculamos con ${requested.toLocaleString()} ${units}. La publicación no dice cuántas piezas trae cada ${one}: confírmalo con el proveedor, porque cambia el costo por pieza.`,
+            `We calculated with ${requested.toLocaleString()} ${units}. The listing doesn't say how many pieces each ${one} holds: confirm it with the supplier, as it changes the cost per piece.`,
+          )}
+        </p>
+      )}
+    </div>
   );
 }

@@ -24,6 +24,7 @@ const CATEGORY_LABEL: Record<string, [string, string]> = {
   textiles: ["Textiles / calzado", "Textiles / footwear"],
   furniture: ["Muebles", "Furniture"],
   food: ["Alimentos / bebidas", "Food / beverages"],
+  stationery: ["Papelería / útiles escolares", "Stationery / school supplies"],
   other: ["Otro", "Other"],
 };
 
@@ -189,6 +190,36 @@ export function getReviewTopics(productType: string, supplier: any, description 
       action: T("Confirmar el tipo de madera y su tratamiento con el proveedor.", "Confirm the wood type and treatment with the supplier."),
       source: "MAGA",
     });
+  } else if (productType === "stationery") {
+    topics.push(
+      {
+        title: T("Presentación y contenido por unidad de venta", "Packaging and content per sale unit"),
+        why: T(
+          "Lápices, colores y útiles suelen venderse por caja, set o paquete. El precio y la factura deben indicar cuántas piezas trae cada uno.",
+          "Pencils, crayons and supplies are often sold per box, set or pack. The price and invoice should state how many pieces each one holds.",
+        ),
+        action: T("Pedir al proveedor el contenido exacto por caja o set y que la proforma lo indique.", "Ask the supplier for the exact content per box or set and have it on the proforma."),
+        source: T("Proveedor", "Supplier"),
+      },
+      {
+        title: T("Materiales si es para uso infantil", "Materials if intended for children"),
+        why: T(
+          "En pinturas, crayones y colores para niños conviene saber qué certificados de seguridad de materiales declara el fabricante.",
+          "For paints, crayons and colored pencils for children it is worth knowing which material safety certificates the manufacturer declares.",
+        ),
+        action: T("Pedir al proveedor los reportes de prueba o certificados que declare para los materiales.", "Ask the supplier for the test reports or certificates it declares for the materials."),
+        source: T("Proveedor", "Supplier"),
+      },
+      {
+        title: T("Etiquetas e instrucciones en español", "Labels and instructions in Spanish"),
+        why: T(
+          "Para la venta al consumidor, la información del producto debe poder leerse en español.",
+          "For sale to consumers, product information should be readable in Spanish.",
+        ),
+        action: T("Confirmar con el proveedor si puede etiquetar en español o planificar el etiquetado en Guatemala.", "Confirm whether the supplier can label in Spanish, or plan labeling in Guatemala."),
+        source: T("DIACO · Agente aduanero (SEAL)", "DIACO · Customs broker (SEAL)"),
+      },
+    );
   }
 
   // Supplier: only what the platform data says

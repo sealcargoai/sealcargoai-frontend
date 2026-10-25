@@ -27,6 +27,7 @@ import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCa
 import { Lx, plural } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
 import { flagPrices } from "../../utils/priceCheck";
+import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
 import { descriptionIsDetailed } from "../../utils/descriptionCheck";
 import {
   supplierPriceInfo,
@@ -146,7 +147,7 @@ function MorePlatforms({
       <p className="text-sm text-slate-600 mb-4">
         {Lx("Abrimos la búsqueda de", "We open the search for")}{" "}
         <span className="font-medium text-slate-800">"{kw}"</span>{" "}
-        {Lx("en cada plataforma para que compare.", "on each platform so you can compare.")}
+        {Lx("en cada plataforma para que compares.", "on each platform so you can compare.")}
       </p>
       <div className="flex flex-wrap gap-2">
         {PLATFORMS.map((p) => (
@@ -1027,7 +1028,19 @@ export function SupplierResults() {
                                 {pi.published}
                               </div>
                               <div className="text-sm text-slate-600">
-                                {t("suppliers.perUnit")}
+                                {(() => {
+                                  const u = saleUnitInfo(supplier);
+                                  return (
+                                    <>
+                                      {Lx("por", "per")} {unitWordFor(u.unit, 1)}
+                                      {u.packSize > 1 && (
+                                        <span className="block text-xs text-amber-700">
+                                          {Lx(`${u.packSize} piezas según el título`, `${u.packSize} pieces per the title`)}
+                                        </span>
+                                      )}
+                                    </>
+                                  );
+                                })()}
                               </div>
                               {pi.isRange && (
                                 <div className="text-xs text-slate-500">
@@ -1236,6 +1249,7 @@ export function SupplierResults() {
                   ) : (() => {
                     const est = calculateCosts(
                       {
+                        saleUnit: saleUnitInfo(selectedSupplier).unit,
                         price: selectedSupplier.price || 0,
                         quantity: parseInt(navQuantity || "1000") || 1000,
                         volumeCbm: parseFloat(location.state?.volumeCbm) || 0,

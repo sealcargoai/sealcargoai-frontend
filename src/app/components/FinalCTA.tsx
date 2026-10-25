@@ -22,7 +22,8 @@ import { LanguageToggle } from "./LanguageToggle";
 import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, sealDisclaimer, badgeText, TrustBadge, supplierPriceInfo } from "./SelectedSupplier";
 import { getReviewTopics } from "./RiskCompliance";
 import { buildCostPdf } from "../../utils/costPdf";
-import { Lx, unitsWord, plural } from "../../utils/lang";
+import { Lx, plural } from "../../utils/lang";
+import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
 import {
   SEAL_COMPANY,
   drawCompanyInfoBox,
@@ -130,7 +131,8 @@ export function FinalCTA() {
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
-  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg }, rates);
+  const saleUnit = saleUnitInfo(stateSupplier).unit;
+  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit }, rates);
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
   const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? Lx(" — estimación parcial, sin flete", " — partial estimate, without freight") : ""}`;
 
@@ -517,7 +519,7 @@ export function FinalCTA() {
                 </div>
               )}
               <div className="text-sm text-green-700">
-                {Q(costs.perUnit, 2)} {t("final.perUnit")}
+                {Q(costs.perUnit, 2)} {Lx("por", "per")} {unitWordFor(saleUnit, 1)}
               </div>
               <div className="text-xs text-green-800 mt-1">
                 <span>{L("Escenario estimado, no cotización", "Estimated scenario, not a quote")}</span>
@@ -718,7 +720,7 @@ export function FinalCTA() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-5 text-sm">
               <p className="font-semibold text-[#0B3C5D]">{supplierName}</p>
               <p className="text-slate-600 mt-1">
-                {quantity.toLocaleString()} {unitsWord(quantity)} • {costs.freightPending ? Lx("Total parcial:", "Partial total:") : Lx("Total estimado:", "Estimated total:")}{" "}
+                {quantity.toLocaleString()} {unitWordFor(saleUnit, quantity)} • {costs.freightPending ? Lx("Total parcial:", "Partial total:") : Lx("Total estimado:", "Estimated total:")}{" "}
                 {Q(costs.totalCost)}
                 {costs.freightPending ? Lx(" (sin flete)", " (without freight)") : ""}
               </p>
