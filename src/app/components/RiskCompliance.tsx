@@ -32,7 +32,10 @@ export function categoryLabel(c: string): string {
   return Lx(l[0], l[1]);
 }
 
-export function getReviewTopics(productType: string, supplier: any): ReviewTopic[] {
+// Machines whose description mentions food use get the food-contact topic
+const FOOD_USE = /aliment|comida|\bfood|caf[eé](?![a-záéíóúñ])|coffee|panader|bakery|\bpan\b|bread|tortill|carne|\bmeat|l[aá]cte|leche|dairy|\bmilk|bebida|beverage|jugo|juice|snack|chocolate|cacao|az[uú]car|sugar|harina|flour|granos?\b|grain|ma[ií]z|\bcorn\b|frut|fruit|verdura|vegetable|cocina|kitchen|restaurante|restaurant/i;
+
+export function getReviewTopics(productType: string, supplier: any, description = ""): ReviewTopic[] {
   const T = (es: string, en: string) => Lx(es, en);
   const topics: ReviewTopic[] = [
     {
@@ -117,19 +120,23 @@ export function getReviewTopics(productType: string, supplier: any): ReviewTopic
         ),
         source: T("Proveedor", "Supplier"),
       },
-      {
-        title: T("Si la máquina es para alimentos", "If the machine is for food"),
-        why: T(
-          "Las partes en contacto con alimentos deben ser de material apto (por ejemplo acero inoxidable de grado alimenticio).",
-          "Parts in contact with food must be food-grade material (for example food-grade stainless steel).",
-        ),
-        action: T(
-          "Pedir al proveedor la especificación del material y los certificados que declare.",
-          "Ask the supplier for the material specification and any certificates they declare.",
-        ),
-        source: T("Proveedor · MSPAS para la operación de tu planta", "Supplier · MSPAS for your plant's operation"),
-      },
     );
+    if (FOOD_USE.test(`${description} ${supplier?.productName ?? ""}`)) {
+      topics.push(
+        {
+          title: T("Partes en contacto con alimentos", "Parts in contact with food"),
+          why: T(
+            "Las partes en contacto con alimentos deben ser de material apto (por ejemplo acero inoxidable de grado alimenticio).",
+            "Parts in contact with food must be food-grade material (for example food-grade stainless steel).",
+          ),
+          action: T(
+            "Pedir al proveedor la especificación del material y los certificados que declare.",
+            "Ask the supplier for the material specification and any certificates they declare.",
+          ),
+          source: T("Proveedor · MSPAS para la operación de tu planta", "Supplier · MSPAS for your plant's operation"),
+        },
+      );
+    }
   } else if (productType === "food") {
     topics.push({
       title: T("Permisos sanitarios y fitosanitarios", "Sanitary and phytosanitary permits"),
@@ -235,7 +242,7 @@ export function RiskCompliance() {
 
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!supplier?.name} />;
 
-  const topics = getReviewTopics(productType, supplier);
+  const topics = getReviewTopics(productType, supplier, productDescription);
 
   const goToReport = () => {
     navigate("/report", {

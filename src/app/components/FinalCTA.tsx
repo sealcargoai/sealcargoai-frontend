@@ -61,7 +61,7 @@ function generateReportPDF(data: {
     price: data.price,
     priceNote: data.priceNote,
     costs: data.costs,
-    topics: getReviewTopics(data.productType, data.supplier),
+    topics: getReviewTopics(data.productType, data.supplier, data.productDescription),
     disclaimer: sealDisclaimer(),
     reportId: data.reportId,
     fileName: `SEAL_Informe_${data.supplierName.replace(/\s+/g, "_")}_${Date.now()}.pdf`,
@@ -111,7 +111,7 @@ export function FinalCTA() {
   const destination = String(stateDestination);
   const productType = String(stateProductType);
   const productDescription = String(location.state?.productDescription ?? "");
-  const reviewTopics = getReviewTopics(productType, stateSupplier);
+  const reviewTopics = getReviewTopics(productType, stateSupplier, productDescription);
 
   // Real supplier only: no demo name or price (see NoSupplierNotice below)
   const price = stateSupplier?.price > 0 ? stateSupplier.price : 0;
@@ -139,6 +139,15 @@ export function FinalCTA() {
           filtered: num(stateSuppliersData?.filteredCount),
           qualified: stateSuppliersData.qualifiedCount as number,
           shown: num(stateSuppliersData?.shownCount),
+          // Listings from a supplier already counted (same company twice)
+          duplicates:
+            num(stateSuppliersData?.duplicateCount) ??
+            Math.max(
+              0,
+              (stateSuppliersData.totalAnalyzed as number) -
+                (stateSuppliersData.qualifiedCount as number) -
+                (num(stateSuppliersData?.filteredCount) ?? 0),
+            ),
         }
       : null;
 
@@ -366,9 +375,16 @@ export function FinalCTA() {
           </div>
           {leadStats && (
             <p className="text-xs mt-2">
-              {Lx("La herramienta revisó", "The tool reviewed")} {leadStats.totalAnalyzed}{" "}
-              {plural(leadStats.totalAnalyzed, "proveedor", "proveedores", "supplier", "suppliers")} → {leadStats.qualified}{" "}
-              {plural(leadStats.qualified, "pasó los filtros", "pasaron los filtros", "passed the filters", "passed the filters")}
+              {(() => {
+                const parts = [
+                  `${leadStats.qualified} ${plural(leadStats.qualified, "pasó los filtros", "pasaron los filtros", "passed the filters", "passed the filters")}`,
+                  leadStats.filtered !== null ? `${leadStats.filtered} ${plural(leadStats.filtered, "no pasó", "no pasaron", "did not pass", "did not pass")}` : "",
+                  leadStats.duplicates > 0 ? `${leadStats.duplicates} ${plural(leadStats.duplicates, "era una publicación repetida de un proveedor ya contado", "eran publicaciones repetidas de proveedores ya contados", "was a repeat listing from a supplier already counted", "were repeat listings from suppliers already counted")}` : "",
+                ].filter(Boolean);
+                const and = Lx(" y ", " and ");
+                const list = parts.length > 1 ? `${parts.slice(0, -1).join(", ")}${and}${parts[parts.length - 1]}` : parts[0];
+                return `${Lx("La herramienta revisó", "The tool reviewed")} ${leadStats.totalAnalyzed} ${plural(leadStats.totalAnalyzed, "publicación", "publicaciones", "listing", "listings")}: ${list}.`;
+              })()}
             </p>
           )}
           <p className="text-xs mt-2">
@@ -382,14 +398,15 @@ export function FinalCTA() {
 
         {/* Dynamic Stats — only real counts from the search */}
         {leadStats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <>
+        <div className={`grid grid-cols-2 ${leadStats.duplicates > 0 ? "md:grid-cols-5" : "md:grid-cols-4"} gap-4 mb-2`}>
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
             <Users className="w-8 h-8 text-blue-600 mx-auto mb-2" />
             <div className="text-3xl font-bold text-[#0B3C5D] mb-1">
               {leadStats.totalAnalyzed}
             </div>
             <div className="text-sm text-slate-600">
-              {plural(leadStats.totalAnalyzed, "Proveedor analizado", "Proveedores analizados", "Supplier analyzed", "Suppliers analyzed")}
+              {plural(leadStats.totalAnalyzed, "Publicación revisada", "Publicaciones revisadas", "Listing reviewed", "Listings reviewed")}
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
@@ -408,6 +425,15 @@ export function FinalCTA() {
             </div>
             <div className="text-sm text-slate-600">{plural(leadStats.qualified, "Pasó los filtros", "Pasaron los filtros", "Qualified", "Qualified")}</div>
           </div>
+          {leadStats.duplicates > 0 && (
+            <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
+              <Users className="w-8 h-8 text-slate-500 mx-auto mb-2" />
+              <div className="text-3xl font-bold text-slate-600 mb-1">{leadStats.duplicates}</div>
+              <div className="text-sm text-slate-600">
+                {plural(leadStats.duplicates, "Repetida (mismo proveedor)", "Repetidas (mismo proveedor)", "Repeat (same supplier)", "Repeats (same supplier)")}
+              </div>
+            </div>
+          )}
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
             <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
             <div className="text-3xl font-bold text-purple-600 mb-1">
@@ -416,6 +442,13 @@ export function FinalCTA() {
             <div className="text-sm text-slate-600">{plural(leadStats.shown ?? 0, "Mostrado en resultados", "Mostrados en resultados", "Shown in results", "Shown in results")}</div>
           </div>
         </div>
+        <p className="text-xs text-slate-500 mb-8">
+          {Lx(
+            `Las publicaciones repetidas de un mismo proveedor se cuentan una sola vez.${leadStats.shown !== null && leadStats.shown < leadStats.qualified ? ` De los ${leadStats.qualified} que pasaron los filtros se muestran los ${leadStats.shown} mejor ubicados.` : ""}`,
+            `Repeat listings from the same supplier are counted once.${leadStats.shown !== null && leadStats.shown < leadStats.qualified ? ` Of the ${leadStats.qualified} that passed the filters, the top ${leadStats.shown} are shown.` : ""}`,
+          )}
+        </p>
+        </>
         )}
 
         <SupplierDisclaimer

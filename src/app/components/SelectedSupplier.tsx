@@ -3,6 +3,45 @@ import { useNavigate } from "react-router";
 import { MapPin, Award, Star, Package, ExternalLink, AlertCircle, ArrowLeft, Search, ShieldCheck } from "lucide-react";
 import { formatUSD } from "../../utils/costCalculator";
 import { Lx } from "../../utils/lang";
+import { requestedSpecs, matchSpecs, specLabel } from "../../utils/capacity";
+
+const SPEC_TONE: Record<string, string> = {
+  green: "bg-green-50 border-green-200 text-green-800",
+  blue: "bg-blue-50 border-blue-200 text-blue-800",
+  amber: "bg-amber-50 border-amber-200 text-amber-800",
+  slate: "bg-slate-50 border-slate-200 text-slate-700",
+};
+
+/** One tag per specification the client wrote (capacity, needles, heads), compared with the listing title. */
+export function SpecTags({ description, productName, warn = false }: { description: string; productName?: string; warn?: boolean }) {
+  const reqs = requestedSpecs(description);
+  const m = matchSpecs(reqs, productName);
+  if (!m) return null;
+  const differs = m.items.some((i) => i.status !== "meets");
+  return (
+    <div className="mb-3">
+      <div className="flex flex-wrap gap-2">
+        {m.items.map((i, k) => {
+          const l = specLabel(i);
+          return (
+            <span key={k} className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[l.tone]}`}>
+              <span className="font-semibold">{l.text}</span>
+              <span className="opacity-80"> · {l.sub}</span>
+            </span>
+          );
+        })}
+      </div>
+      {warn && differs && (
+        <p className="text-xs text-amber-800 mt-2">
+          {Lx(
+            "Este escenario usa una publicación que no confirma todo lo que pediste. Revisa las diferencias o vuelve a la lista y escoge otra opción.",
+            "This scenario uses a listing that does not confirm everything you asked for. Review the differences or go back to the list and choose another option.",
+          )}
+        </p>
+      )}
+    </div>
+  );
+}
 
 // Supplier as it arrives from the suppliers screen (real Alibaba data only)
 export interface SelectedSupplierData {
@@ -176,7 +215,7 @@ export function hasUsableSupplier(s?: SelectedSupplierData | null): boolean {
   return !!s && !!s.name && (s.price ?? 0) > 0;
 }
 
-export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierData }) {
+export function SelectedSupplierCard({ supplier, description = "" }: { supplier: SelectedSupplierData; description?: string }) {
   const { used, isRange, published } = supplierPriceInfo(supplier);
   const link = supplier.productUrl || supplier.storeUrl;
   const gold = supplier.verifiedSupplier === true || supplier.goldSupplier || supplier.verified;
@@ -202,6 +241,11 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
           )}
           {supplier.productName && (
             <p className="text-sm text-slate-600 mt-1 break-words">{supplier.productName}</p>
+          )}
+          {description && (
+            <div className="mt-2">
+              <SpecTags description={description} productName={supplier.productName} warn />
+            </div>
           )}
           <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-sm text-slate-700">
             <span className="inline-flex items-center gap-1.5">

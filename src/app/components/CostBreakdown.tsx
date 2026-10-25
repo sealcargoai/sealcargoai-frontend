@@ -276,7 +276,7 @@ export function CostBreakdown() {
           </p>
         </div>
 
-        <SelectedSupplierCard supplier={stateSupplier} />
+        <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
         <SupplierDisclaimer
           supplier={stateSupplier}
           productDescription={location.state?.productDescription ?? ""}

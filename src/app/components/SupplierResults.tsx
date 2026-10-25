@@ -25,7 +25,7 @@ import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
 import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
 import { Lx, plural } from "../../utils/lang";
-import { requestedCapacity, matchCapacity, orderByCapacity, capacityLabel, type Capacity } from "../../utils/capacity";
+import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
 import {
   supplierPriceInfo,
   SupplierDisclaimer,
@@ -35,6 +35,7 @@ import {
   trustDetail,
   trustInfo,
   badgeText,
+  SpecTags,
 } from "./SelectedSupplier";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -483,46 +484,32 @@ function rejectReason(r: string): string {
   return r;
 }
 
-const CAP_TONE: Record<string, string> = {
-  green: "bg-green-50 border-green-200 text-green-800",
-  blue: "bg-blue-50 border-blue-200 text-blue-800",
-  amber: "bg-amber-50 border-amber-200 text-amber-800",
-  slate: "bg-slate-50 border-slate-200 text-slate-700",
-};
-
-function CapacityTag({ req, productName }: { req: Capacity | null; productName?: string }) {
-  const m = matchCapacity(req, productName);
-  if (!req || !m) return null;
-  const l = capacityLabel(req, m);
-  return (
-    <div className={`inline-block border rounded-lg px-2.5 py-1 mb-3 text-xs ${CAP_TONE[l.tone]}`}>
-      <span className="font-semibold">{l.text}</span>
-      <span className="opacity-80"> · {l.sub}</span>
-    </div>
-  );
-}
-
-function CapacitySummary({ req, list }: { req: Capacity | null; list: { productName?: string }[] }) {
-  if (!req || !list.length) return null;
-  const count = { meets: 0, higher: 0, lower: 0, unknown: 0 } as Record<string, number>;
-  list.forEach((s) => count[matchCapacity(req, s.productName)!.status]++);
+function SpecSummary({ reqs, list }: { reqs: Spec[]; list: { productName?: string }[] }) {
+  if (!reqs.length || !list.length) return null;
+  let meets = 0, differs = 0, unknown = 0;
+  list.forEach((s) => {
+    const m = matchSpecs(reqs, s.productName)!;
+    if (m.items.every((x) => x.status === "meets")) meets++;
+    else if (m.items.some((x) => x.status === "higher" || x.status === "lower")) differs++;
+    else unknown++;
+  });
+  const asked = reqs.map((r) => r.text).join(", ");
   const parts = [
-    count.meets && Lx(`${count.meets} indica${count.meets > 1 ? "n" : ""} la capacidad pedida`, `${count.meets} state${count.meets > 1 ? "" : "s"} the requested capacity`),
-    count.higher && Lx(`${count.higher} de mayor capacidad`, `${count.higher} higher capacity`),
-    count.lower && Lx(`${count.lower} de menor capacidad`, `${count.lower} lower capacity`),
-    count.unknown && Lx(`${count.unknown} sin capacidad clara en la publicación`, `${count.unknown} without a clear capacity in the listing`),
+    meets && `${meets} ${plural(meets, "indica lo pedido", "indican lo pedido", "states what you asked", "state what you asked")}`,
+    differs && `${differs} ${plural(differs, "con diferencias", "con diferencias", "with differences", "with differences")}`,
+    unknown && `${unknown} ${plural(unknown, "no lo indica en la publicación", "no lo indican en la publicación", "does not state it", "do not state it")}`,
   ].filter(Boolean);
   return (
     <div className="bg-white rounded-lg border border-slate-200 p-4 text-sm text-slate-700">
       <p>
-        <span className="font-semibold text-[#0B3C5D]">{Lx(`Capacidad pedida: ${req.text}.`, `Requested capacity: ${req.text}.`)}</span>{" "}
+        <span className="font-semibold text-[#0B3C5D]">{Lx(`Pediste: ${asked}.`, `You asked for: ${asked}.`)}</span>{" "}
         {parts.join(" · ")}.
       </p>
       <p className="text-xs text-slate-500 mt-1">
-        {count.meets
-          ? Lx("Primero aparecen las que indican esa capacidad; las demás son alternativas. ", "Options stating that capacity come first; the rest are alternatives. ")
-          : Lx("Ninguna publicación indica exactamente esa capacidad; las opciones son alternativas. ", "No listing states exactly that capacity; the options are alternatives. ")}
-        {Lx("La capacidad se lee del título publicado: confírmala con el proveedor.", "Capacity is read from the listing title: confirm it with the supplier.")}
+        {meets
+          ? Lx("Primero aparecen las que indican lo pedido; las demás son alternativas y se marcan sus diferencias. ", "Listings stating what you asked come first; the rest are alternatives with their differences marked. ")
+          : Lx("Ninguna publicación indica exactamente lo pedido; las opciones son alternativas, con sus diferencias marcadas. ", "No listing states exactly what you asked; the options are alternatives, with their differences marked. ")}
+        {Lx("Los datos se leen del título publicado: confírmalos con el proveedor.", "Data is read from the listing title: confirm it with the supplier.")}
       </p>
     </div>
   );
@@ -606,16 +593,16 @@ export function SupplierResults() {
   const apiData = location.state?.suppliers;
 
   // Only real results — no demo data
-  const reqCap = requestedCapacity(String(location.state?.productDescription ?? ""));
+  const reqSpecs = requestedSpecs(String(location.state?.productDescription ?? ""));
   // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
-  const displaySuppliers: Supplier[] = orderByCapacity(
+  const displaySuppliers: Supplier[] = orderBySpecs(
     (apiData?.topSuppliers ?? []).map((s: Supplier) => ({
       ...s,
       name: decodeEntities(s.name),
       productName: s.productName ? decodeEntities(s.productName) : s.productName,
     })),
-    reqCap,
-  );
+    reqSpecs,
+  ).slice(0, 9);
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
@@ -691,6 +678,7 @@ export function SupplierResults() {
           qualifiedCount: apiData?.qualifiedCount,
           filteredCount: apiData?.filteredCount ?? apiData?.filteredOut?.length,
           shownCount: displaySuppliers.length,
+          duplicateCount: apiData?.duplicateCount,
         },
       },
     });
@@ -892,7 +880,7 @@ export function SupplierResults() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* ── Left: Supplier Cards ──────────────────────────────────────── */}
           <div className="lg:col-span-2 space-y-4 min-w-0">
-            <CapacitySummary req={reqCap} list={displaySuppliers} />
+            <SpecSummary reqs={reqSpecs} list={displaySuppliers} />
 
             {/* Sort Bar */}
             <div className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4">
@@ -962,7 +950,7 @@ export function SupplierResults() {
                             {supplier.productName}
                           </p>
                         )}
-                        <CapacityTag req={reqCap} productName={supplier.productName} />
+                        <SpecTags description={String(location.state?.productDescription ?? "")} productName={supplier.productName} />
 
                         {/* Índice de Confianza SEAL */}
                         <div className="mb-3">
@@ -1176,8 +1164,8 @@ export function SupplierResults() {
                 <div className="font-medium text-[#0B3C5D] mb-1">{Lx("Cómo ordenamos", "How we order")}</div>
                 <p>
                   {Lx(
-                    "Solo mostramos productos relacionados con tu descripción. Primero van los que indican la capacidad pedida, cuando la escribiste. Luego ordenamos por el nivel del índice referencial (A alto, B medio, C básico) y, dentro de cada nivel, por cercanía a tu producto y menor precio. El índice se calcula con información que publica la plataforma; no es una evaluación ni un aval de SEAL, y el precio no forma parte de él.",
-                    "We only show products related to your description. Options stating the requested capacity come first, when you gave one. Then we order by reference index level (A high, B medium, C basic) and, within each level, by closeness to your product and lowest price. The index is calculated from information the platform publishes; it is not an assessment or endorsement by SEAL, and price is not part of it.",
+                    "Solo mostramos productos relacionados con tu descripción. Primero van los que indican lo que pediste (capacidad, agujas, cabezales), cuando lo escribiste; los demás se marcan con sus diferencias. Luego ordenamos por el nivel del índice referencial (A alto, B medio, C básico) y, dentro de cada nivel, por cercanía a tu producto y menor precio. El índice se calcula con información que publica la plataforma; no es una evaluación ni un aval de SEAL, y el precio no forma parte de él.",
+                    "We only show products related to your description. Listings stating what you asked (capacity, needles, heads) come first, when you gave it; the rest are marked with their differences. Then we order by reference index level (A high, B medium, C basic) and, within each level, by closeness to your product and lowest price. The index is calculated from information the platform publishes; it is not an assessment or endorsement by SEAL, and price is not part of it.",
                   )}
                 </p>
               </div>
