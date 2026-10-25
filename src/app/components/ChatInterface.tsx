@@ -40,6 +40,10 @@ export function ChatInterface() {
       "No puedo confirmar si un proveedor es real o confiable: la herramienta solo organiza lo que publica la plataforma (insignias, años, reseñas) y no lo verifica. Siguiente paso: continúa con el formulario para ver opciones ordenadas por índice referencial y, si vas a comprar, pide a SEAL la verificación del proveedor en China (servicio adicional).",
       "I can't confirm whether a supplier is real or reliable: the tool only organizes what the platform publishes (badges, years, reviews) and doesn't verify it. Next step: continue with the form to see options sorted by reference index and, if you're going to buy, ask SEAL for the supplier verification in China (additional service).",
     ),
+    certificate: L(
+      "No puedo validar certificados desde la herramienta: solo muestro las certificaciones que el proveedor declara en la plataforma. Antes de comprar, pide copia del certificado y confirma que corresponda al modelo exacto y al fabricante (número, fecha y organismo que lo emitió). Además, una marca como CE no demuestra por sí sola que la máquina sea apta para alimentos: revisa por separado los materiales que tocan el alimento (por ejemplo, acero inoxidable de grado alimenticio) y pide al proveedor su especificación o reporte de prueba.",
+      "I can't validate certificates from the tool: I only show the certifications the supplier declares on the platform. Before buying, ask for a copy of the certificate and confirm it matches the exact model and manufacturer (number, date and issuing body). Also, a mark like CE does not by itself show the machine is suitable for food: check separately the materials that touch the food (for example, food-grade stainless steel) and ask the supplier for their specification or test report.",
+    ),
     guarantee: L(
       "Tampoco puedo garantizar que la importación sea autorizada ni que pase la aduana sin observaciones: eso depende de la partida arancelaria, de los permisos que esa partida pida y de que la documentación del embarque coincida. Dato a confirmar: la ficha técnica del producto, para que SEAL revise la partida y los permisos antes de comprar.",
       "I also can't guarantee the import will be authorized or clear customs without remarks: that depends on the tariff heading, the permits it requires and the shipping documents matching. Data to confirm: the product's technical sheet, so SEAL can review the heading and permits before you buy.",
@@ -62,8 +66,12 @@ export function ChatInterface() {
   const replyKind = (text: string) => {
     const t = text.toLowerCase();
     const kinds: string[] = [];
+    if (/certificad|certificaci|certificate|certification|\bce\b|\bfda\b|\biso\b|\bul\b|\brohs\b|\bsgs\b|grado alimenticio|food[- ]grade|apto para alimentos|suitable for food/.test(t)) kinds.push("certificate");
     if (/proveedor|supplier|seller|vendedor|f[aá]brica|factory|confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verified|legit/.test(t)) kinds.push("supplier");
-    if (/garantiz|garant[ií]a de que|asegur|autoriz|permiso|aprobad|aprobaci|liberaci|que pase|sin problema|guarantee|authoriz|permit|approv|clear customs/.test(t)) kinds.push("guarantee");
+    // "Guarantee" goes to customs authorization only when the question is about the import itself
+    const customsCtx = /importaci|aduana|autoriz|permiso|aprobad|aprobaci|liberaci|despacho|que pase|customs|import|authoriz|permit|approv/.test(t);
+    const guaranteeWord = /garantiz|garant[ií]a de que|asegur|sin problema|guarantee/.test(t);
+    if (customsCtx || (guaranteeWord && !kinds.includes("certificate"))) kinds.push("guarantee");
     if (/\bdai\b|arancel|partida|impuesto|\biva\b|tributo|tariff|duty|duties|\btax/.test(t)) kinds.push("dai");
     if (/precio|costo|cu[aá]nto|cotiz|price|cost|quote|how much/.test(t)) kinds.push("cost");
     return kinds.length ? kinds.join(",") : "general";
