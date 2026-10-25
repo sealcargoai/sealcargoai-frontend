@@ -33,9 +33,9 @@ export interface SelectedSupplierData {
 
 // ─── Índice de Confianza SEAL (computed in the backend) ─────────────────────
 export const TRUST_LEVELS: Record<string, { label: string; labelEs: string; labelEn: string; short: string; badge: string; text: string; bar: string }> = {
-  A: { label: "", labelEs: "Confianza alta", labelEn: "High trust", short: "A", badge: "bg-green-100 text-green-800 border-green-300", text: "text-green-700", bar: "bg-green-500" },
-  B: { label: "", labelEs: "Confianza buena", labelEn: "Good trust", short: "B", badge: "bg-blue-100 text-blue-800 border-blue-300", text: "text-blue-700", bar: "bg-blue-500" },
-  C: { label: "", labelEs: "Confianza media · se recomienda verificación", labelEn: "Medium trust · verification recommended", short: "C", badge: "bg-amber-100 text-amber-800 border-amber-300", text: "text-amber-700", bar: "bg-amber-500" },
+  A: { label: "", labelEs: "Referencia alta", labelEn: "High reference", short: "A", badge: "bg-green-100 text-green-800 border-green-300", text: "text-green-700", bar: "bg-green-500" },
+  B: { label: "", labelEs: "Referencia media", labelEn: "Medium reference", short: "B", badge: "bg-blue-100 text-blue-800 border-blue-300", text: "text-blue-700", bar: "bg-blue-500" },
+  C: { label: "", labelEs: "Referencia básica · se recomienda verificación", labelEn: "Basic reference · verification recommended", short: "C", badge: "bg-amber-100 text-amber-800 border-amber-300", text: "text-amber-700", bar: "bg-amber-500" },
 };
 
 export function trustInfo(s?: SelectedSupplierData | null) {
@@ -67,7 +67,7 @@ export function TrustBadge({ supplier, size = "md" }: { supplier: SelectedSuppli
       className={`inline-flex items-center gap-1.5 border rounded-full font-semibold ${ti.style.badge} ${
         size === "sm" ? "px-2 py-0.5 text-xs" : "px-3 py-1 text-sm"
       }`}
-      title={Lx("Índice de Confianza SEAL", "SEAL Trust Index")}
+      title={Lx("Índice referencial, calculado con información publicada por la plataforma. No es una evaluación ni un aval de SEAL.", "Reference index, calculated from information published by the platform. It is not an assessment or endorsement by SEAL.")}
     >
       <ShieldCheck className={size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4"} />
       <span>{Lx("Nivel", "Level")} {ti.level} · {ti.score}/100</span>
@@ -94,6 +94,12 @@ export function TrustBreakdown({ supplier }: { supplier: SelectedSupplierData })
   if (!ti.breakdown.length) return null;
   return (
     <div className="space-y-3">
+      <p className="text-xs text-slate-500">
+        {Lx(
+          "Índice referencial calculado con la información que publica la plataforma (Alibaba). No es una evaluación ni un aval de SEAL.",
+          "Reference index calculated from the information the platform (Alibaba) publishes. It is not an assessment or endorsement by SEAL.",
+        )}
+      </p>
       {ti.breakdown.map((b) => (
         <div key={b.key}>
           <div className="flex items-baseline justify-between gap-2 text-sm">

@@ -337,7 +337,7 @@ function NoResults({
                 {filteredOut.map((s, i) => (
                   <li key={i} className="text-slate-700">
                     <span className="font-medium">{s.name}</span>{" "}
-                    <span className="text-red-600">— {s.reason}</span>
+                    <span className="text-red-600">— {rejectReason(s.reason)}</span>
                   </li>
                 ))}
               </ul>
@@ -450,6 +450,23 @@ function NoResults({
 // ─── Types ────────────────────────────────────────────────────────────────────
 // Order options for the results list. "seal" keeps the backend order
 // (trust level first, then lowest price inside each level).
+// Filter reasons come from the backend in Spanish
+function rejectReason(r: string): string {
+  if (!r || Lx("es", "en") === "es") return r;
+  const rules: [RegExp, (m: RegExpMatchArray) => string][] = [
+    [/^Sin verificación/, () => "No verification (not Verified or Gold Supplier)"],
+    [/^Gold Supplier con menos de (\d+) años/, (m) => `Gold Supplier with less than ${m[1]} years`],
+    [/^Calificación ([\d.]+) por debajo de ([\d.]+)/, (m) => `Rating ${m[1]} below ${m[2]}`],
+    [/^Pedido mínimo de ([\d,]+) unidades/, (m) => `Minimum order of ${m[1]} units, above your quantity`],
+    [/^Índice (?:referencial|de Confianza) (\d+)\/100, debajo del mínimo de (\d+)/, (m) => `Reference index ${m[1]}/100, below the minimum of ${m[2]}`],
+  ];
+  for (const [re, f] of rules) {
+    const m = r.match(re);
+    if (m) return f(m);
+  }
+  return r;
+}
+
 const CAP_TONE: Record<string, string> = {
   green: "bg-green-50 border-green-200 text-green-800",
   blue: "bg-blue-50 border-blue-200 text-blue-800",
@@ -835,7 +852,7 @@ export function SupplierResults() {
                   <div>
                     <span className="font-medium text-slate-700">{s.name}</span>
                     <span className="text-sm text-red-600 ml-3">
-                      ⚠️ {s.reason}
+                      ⚠️ {rejectReason(s.reason)}
                     </span>
                   </div>
                   <span className="text-xs text-slate-500">
@@ -1135,8 +1152,8 @@ export function SupplierResults() {
                 <div className="font-medium text-[#0B3C5D] mb-1">{Lx("Cómo ordenamos", "How we order")}</div>
                 <p>
                   {Lx(
-                    "Solo mostramos productos relacionados con su descripción. Luego ordenamos por nivel de confianza (A alta, B buena, C media) y, dentro de cada nivel, por cercanía a su producto y menor precio. El precio no forma parte del Índice de Confianza.",
-                    "We only show products related to your description. Then we order by trust level (A high, B good, C medium) and, within each level, by closeness to your product and lowest price. Price is not part of the Trust Index.",
+                    "Solo mostramos productos relacionados con tu descripción. Primero van los que indican la capacidad pedida, cuando la escribiste. Luego ordenamos por el nivel del índice referencial (A alto, B medio, C básico) y, dentro de cada nivel, por cercanía a tu producto y menor precio. El índice se calcula con información que publica la plataforma; no es una evaluación ni un aval de SEAL, y el precio no forma parte de él.",
+                    "We only show products related to your description. Options stating the requested capacity come first, when you gave one. Then we order by reference index level (A high, B medium, C basic) and, within each level, by closeness to your product and lowest price. The index is calculated from information the platform publishes; it is not an assessment or endorsement by SEAL, and price is not part of it.",
                   )}
                 </p>
               </div>
@@ -1274,7 +1291,7 @@ export function SupplierResults() {
                   <div className="flex items-center gap-2 mt-2">
                     <Award className="w-4 h-4 text-green-600" />
                     <span className="font-semibold text-green-600">
-                      {Lx("Índice de Confianza SEAL", "SEAL Trust Index")}: {trustInfo(selectedSupplier).score}/100 ({Lx("nivel", "level")} {trustInfo(selectedSupplier).level})
+                      {Lx("Índice referencial", "Reference index")}: {trustInfo(selectedSupplier).score}/100 ({Lx("nivel", "level")} {trustInfo(selectedSupplier).level})
                     </span>
                   </div>
                 </div>
