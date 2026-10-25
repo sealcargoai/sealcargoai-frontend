@@ -366,9 +366,9 @@ export function FinalCTA() {
           </div>
           {leadStats && (
             <p className="text-xs mt-2">
-              {t("final.analyzed")} {leadStats.totalAnalyzed}{" "}
-              {t("final.suppliers")} {leadStats.qualified}{" "}
-              {t("final.qualifiedLeads")}
+              {Lx("La herramienta revisó", "The tool reviewed")} {leadStats.totalAnalyzed}{" "}
+              {plural(leadStats.totalAnalyzed, "proveedor", "proveedores", "supplier", "suppliers")} → {leadStats.qualified}{" "}
+              {plural(leadStats.qualified, "pasó los filtros", "pasaron los filtros", "passed the filters", "passed the filters")}
             </p>
           )}
           <p className="text-xs mt-2">
@@ -389,7 +389,7 @@ export function FinalCTA() {
               {leadStats.totalAnalyzed}
             </div>
             <div className="text-sm text-slate-600">
-              {t("final.suppliersAnalyzed")}
+              {plural(leadStats.totalAnalyzed, "Proveedor analizado", "Proveedores analizados", "Supplier analyzed", "Suppliers analyzed")}
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
@@ -398,7 +398,7 @@ export function FinalCTA() {
               {leadStats.filtered ?? "N/D"}
             </div>
             <div className="text-sm text-slate-600">
-              {t("final.filteredOut")}
+              {plural(leadStats.filtered ?? 0, "No pasó los filtros", "No pasaron los filtros", "Filtered out", "Filtered out")}
             </div>
           </div>
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
@@ -406,14 +406,14 @@ export function FinalCTA() {
             <div className="text-3xl font-bold text-green-600 mb-1">
               {leadStats.qualified}
             </div>
-            <div className="text-sm text-slate-600">{t("final.qualified")}</div>
+            <div className="text-sm text-slate-600">{plural(leadStats.qualified, "Pasó los filtros", "Pasaron los filtros", "Qualified", "Qualified")}</div>
           </div>
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
             <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
             <div className="text-3xl font-bold text-purple-600 mb-1">
               {leadStats.shown ?? "N/D"}
             </div>
-            <div className="text-sm text-slate-600">{t("final.topPicks")}</div>
+            <div className="text-sm text-slate-600">{plural(leadStats.shown ?? 0, "Mostrado en resultados", "Mostrados en resultados", "Shown in results", "Shown in results")}</div>
           </div>
         </div>
         )}

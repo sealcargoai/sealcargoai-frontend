@@ -1035,7 +1035,7 @@ export function SupplierResults() {
                           {t("suppliers.experience")}
                         </div>
                         <div className="font-semibold text-[#0B3C5D] text-sm">
-                          {supplier.yearsInBusiness ? `${supplier.yearsInBusiness}${Lx("a", "y")}` : Lx("N/D", "N/A")}
+                          {supplier.yearsInBusiness ? `${supplier.yearsInBusiness} ${plural(supplier.yearsInBusiness, "año", "años", "year", "years")}` : Lx("N/D", "N/A")}
                         </div>
                       </div>
                       <div className="bg-slate-50 rounded-lg p-3">
