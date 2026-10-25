@@ -24,7 +24,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
 import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
-import { Lx } from "../../utils/lang";
+import { Lx, plural } from "../../utils/lang";
 import { requestedCapacity, matchCapacity, orderByCapacity, capacityLabel, type Capacity } from "../../utils/capacity";
 import {
   supplierPriceInfo,
@@ -319,8 +319,8 @@ function NoResults({
                 )
               : allFiltered
                 ? Lx(
-                    `Analizamos ${totalAnalyzed} proveedores, pero ninguno cumplió los criterios de verificación, reputación y pedido mínimo de SEAL. Preferimos no mostrarte opciones que no los cumplen.`,
-                    `We analyzed ${totalAnalyzed} suppliers, but none met SEAL's verification, reputation and minimum-order criteria. We prefer not to show options that don't meet them.`,
+                    `Analizamos ${totalAnalyzed} ${totalAnalyzed === 1 ? "proveedor, pero no cumplió" : "proveedores, pero ninguno cumplió"} los criterios de verificación, reputación y pedido mínimo de SEAL. Preferimos no mostrarte opciones que no los cumplen.`,
+                    `We analyzed ${totalAnalyzed} ${totalAnalyzed === 1 ? "supplier, but it did not meet" : "suppliers, but none met"} SEAL's verification, reputation and minimum-order criteria. We prefer not to show options that don't meet them.`,
                   )
                 : Lx(
                     "En este momento la plataforma no nos devolvió resultados para tu producto. No te vamos a mostrar datos de ejemplo: un ejecutivo de SEAL puede hacer la búsqueda por ti y enviarte opciones para revisar con su costo estimado.",
@@ -791,8 +791,8 @@ export function SupplierResults() {
             {t("suppliers.title")}
           </h1>
           <p className="text-slate-600">
-            {displaySuppliers.length} {t("suppliers.found")} •{" "}
-            {filteredOutList.length} {t("suppliers.filtered")}
+            {displaySuppliers.length} {plural(displaySuppliers.length, "proveedor mejor clasificado", "proveedores mejor clasificados", "top-ranked supplier", "top-ranked suppliers")} •{" "}
+            {filteredOutList.length} {plural(filteredOutList.length, "filtrado", "filtrados", "filtered out", "filtered out")}
             <button
               onClick={() => setShowFiltered(!showFiltered)}
               className="ml-2 text-blue-600 hover:underline text-sm"
@@ -865,7 +865,7 @@ export function SupplierResults() {
           <div className="bg-red-50 border-2 border-red-200 rounded-xl p-6 mb-6">
             <h3 className="font-semibold text-red-900 mb-4 flex items-center gap-2">
               <X className="w-5 h-5" />
-              {filteredOutList.length} {t("suppliers.filteredOut")}
+              {filteredOutList.length} {plural(filteredOutList.length, "proveedor que no pasó los filtros", "proveedores que no pasaron los filtros", "supplier that did not pass the filters", "suppliers that did not pass the filters")}
             </h3>
             <div className="space-y-2">
               {filteredOutList.map((s: any, i: number) => (
@@ -909,7 +909,7 @@ export function SupplierResults() {
                 <option value="moq">{t("suppliers.lowestMOQ")}</option>
               </select>
               <span className="text-sm text-slate-500">
-                {displaySuppliers.length} {t("suppliers.results")}
+                {displaySuppliers.length} {plural(displaySuppliers.length, "resultado", "resultados", "result", "results")}
               </span>
             </div>
 

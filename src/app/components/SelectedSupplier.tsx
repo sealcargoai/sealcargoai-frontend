@@ -215,7 +215,7 @@ export function SelectedSupplierCard({ supplier }: { supplier: SelectedSupplierD
             <span className="inline-flex items-center gap-1.5">
               <Star className="w-4 h-4 text-slate-400" />
               {supplier.rating
-                ? `${supplier.rating.toFixed(1)}${supplier.reviews ? ` (${supplier.reviews} ${Lx("reseñas", "reviews")})` : ""}`
+                ? `${supplier.rating.toFixed(1)}${supplier.reviews ? ` (${supplier.reviews} ${supplier.reviews === 1 ? Lx("reseña", "review") : Lx("reseñas", "reviews")})` : ""}`
                 : Lx("Sin reseñas", "No reviews")}
             </span>
             <span className="inline-flex items-center gap-1.5">
@@ -329,7 +329,7 @@ export function trustDetail(d: string): string {
     .replace("Gold Supplier (membresía, sin auditoría en planta)", "Gold Supplier (membership, no on-site audit)")
     .replace("Sin insignia de verificación", "No verification badge")
     .replace(/(\d+) años? en Alibaba/, (_m, n) => `${n} year${n === "1" ? "" : "s"} on Alibaba`)
-    .replace(/ con (\d+) reseñas \(ajustado/, " with $1 reviews (adjusted")
+    .replace(/ con (\d+) reseñas? \(ajustado/, (_m, n) => ` with ${n} review${n === "1" ? "" : "s"} (adjusted`)
     .replace("servicio del proveedor", "supplier service")
     .replace("Sin reseñas", "No reviews")
     .replace("entregas a tiempo", "on-time delivery")

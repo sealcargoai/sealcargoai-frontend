@@ -21,7 +21,7 @@ import { LanguageToggle } from "./LanguageToggle";
 import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, sealDisclaimer, badgeText, TrustBadge, supplierPriceInfo } from "./SelectedSupplier";
 import { getReviewTopics } from "./RiskCompliance";
 import { buildCostPdf } from "../../utils/costPdf";
-import { Lx, unitsWord } from "../../utils/lang";
+import { Lx, unitsWord, plural } from "../../utils/lang";
 import {
   SEAL_COMPANY,
   drawCompanyInfoBox,
@@ -488,7 +488,7 @@ export function FinalCTA() {
                 {L("Aspectos por revisar", "Aspects to review")}
               </div>
               <div className="font-bold text-xl text-[#0B3C5D] mb-1">
-                {L(`${reviewTopics.length} temas`, `${reviewTopics.length} topics`)}
+                {reviewTopics.length} {plural(reviewTopics.length, "tema", "temas", "topic", "topics")}
               </div>
               <div className="text-sm text-purple-700">
                 {L("Antes de comprar e importar", "Before buying and importing")}
