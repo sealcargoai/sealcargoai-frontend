@@ -1,4 +1,5 @@
 import { supplierKey, loadCostChoices, saveCostChoices } from "../../utils/draft";
+import { resolveScenario, type CostChoices } from "../../utils/scenario";
 import { useEffect, useState } from "react";
 import { cleanSupplier } from "../../utils/text";
 import { useNavigate, useLocation } from "react-router";
@@ -60,8 +61,10 @@ function exportToPDF(
   price: number,
   productDescription: string,
   priceNote = "",
+  notes: string[] = [],
 ) {
   buildCostPdf({
+    notes,
     title: Lx("Escenario estimado de costos de importación (no es cotización)", "Estimated import cost scenario (not a quote)"),
     supplierName,
     productDescription,
@@ -82,8 +85,10 @@ async function exportToExcel(
   destination: string,
   productType: string,
   priceNote = "",
+  notes: string[] = [],
 ) {
   await generateBeautifulExcel({
+    notes,
     reportTitle: Lx("Escenario estimado de costos de importación", "Estimated import cost scenario"),
     supplierName,
     productType,
@@ -107,65 +112,29 @@ export function CostBreakdown() {
   const originalSupplier = cleanSupplier(location.state?.supplier ?? null);
   // Atypical published prices (US$1, very wide ranges…) are not used until the
   // client confirms them or types the price they were quoted.
-  const priceFlag = priceIssue(originalSupplier, [], String(location.state?.productType ?? ""));
   // Choices for this supplier: from this page's history entry, or from an
   // earlier visit (back to the list and forward again creates a new entry)
   const choiceKey = supplierKey(originalSupplier, String(location.state?.productDescription ?? ""));
-  const storedChoices = (location.state?.costChoices ?? loadCostChoices(choiceKey) ?? {}) as {
-    customPrice?: number;
-    usePublished?: boolean;
-    qtyMode?: "sets" | "pieces";
-    customPack?: number;
-  };
-  const [customPrice, setCustomPrice] = useState<number>(
-    originalSupplier?.priceSource === "client"
-      ? Number(originalSupplier.price) || 0
-      : Number(storedChoices.customPrice) || 0,
-  );
-  const savedPrice = storedChoices;
-  const [usePublished, setUsePublished] = useState<boolean>(!!originalSupplier?.priceConfirmed || !!savedPrice.usePublished);
-  const stateSupplier =
-    originalSupplier && customPrice > 0 && originalSupplier.priceSource !== "client"
-      ? {
-          ...originalSupplier,
-          price: customPrice,
-          priceRange: "",
-          priceSource: "client",
-          priceFlag: undefined,
-          priceConfirmed: undefined,
-          publishedPrice: supplierPriceInfo(originalSupplier).published,
-        }
-      : originalSupplier && customPrice > 0
-        ? { ...originalSupplier, price: customPrice }
-        : originalSupplier && usePublished && priceFlag
-          ? { ...originalSupplier, priceConfirmed: true }
-          : originalSupplier;
-  const needsPriceDecision = !!priceFlag && !usePublished && !(customPrice > 0);
+  const storedChoices = (location.state?.costChoices ?? loadCostChoices(choiceKey) ?? {}) as CostChoices;
+  const [customPrice, setCustomPrice] = useState<number>(Number(storedChoices.customPrice) || 0);
+  const [usePublished, setUsePublished] = useState<boolean>(!!storedChoices.usePublished);
+  const [qtyModeChoice, setQtyMode] = useState<"sets" | "pieces" | undefined>(storedChoices.qtyMode);
+  const [customPack, setCustomPack] = useState(Number(storedChoices.customPack) || 0);
+  const [priceBasis, setPriceBasis] = useState<"unit" | "piece" | undefined>(storedChoices.priceBasis);
   const stateQuantity = location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
   const stateProductType = location.state?.productType ?? "furniture";
-
   const requestedQty = parseInt(String(stateQuantity)) || 1000;
-  // The price is per sale unit (piece, set, box…). When the title says how many
-  // pieces a set holds, the client can say whether their quantity is in pieces.
-  const unitInfo = saleUnitInfo(stateSupplier, String(stateProductType));
-  // What the client wrote decides by default ("500 lápices" = pieces); if it is
-  // unclear, the estimate waits until they say whether the quantity is in sets or pieces.
-  const intent = quantityIntent(String(location.state?.productDescription ?? ""));
-  // Choices are kept in this page's history entry, so coming back from
-  // "Aspectos por revisar" or the report does not ask for them again.
-  const saved = storedChoices;
-  const [qtyMode, setQtyMode] = useState<"sets" | "pieces" | null>(
-    saved.qtyMode ?? (intent === "piece" ? "pieces" : intent === "pack" ? "sets" : null),
+  // Price, sale unit, pieces per set, price basis and minimum order: one
+  // scenario shared with the supplier list and the reports (utils/scenario)
+  const sc = resolveScenario(
+    originalSupplier,
+    { customPrice, usePublished, qtyMode: qtyModeChoice, customPack, priceBasis },
+    { requestedQty, productType: String(stateProductType), description: String(location.state?.productDescription ?? "") },
   );
-  const [customPack, setCustomPack] = useState(saved.customPack ?? 0);
-  const packSize = unitInfo.packSize > 1 ? unitInfo.packSize : customPack;
-  const piecesPerUnit = unitInfo.multi && qtyMode !== null && packSize > 1 ? packSize : 0;
-  const needsUnitDecision =
-    unitInfo.multi && (qtyMode === null || (qtyMode === "pieces" && !(packSize > 1)));
-  const quantity =
-    unitInfo.multi && qtyMode === "pieces" && packSize > 1 ? Math.ceil(requestedQty / packSize) : requestedQty;
+  const { priceFlag, needsPriceDecision, needsUnitDecision, needsBasisDecision, unitInfo, intent, qtyMode, packSize, piecesPerUnit, quantity } = sc;
+  const stateSupplier = sc.supplier;
   // 0 = the client didn't give a budget (never invent one)
   const budget = parseFloat(String(stateBudget)) || 0;
   const destination = String(stateDestination);
@@ -185,12 +154,12 @@ export function CostBreakdown() {
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
   useEffect(() => {
-    const choices = { qtyMode: qtyMode ?? undefined, customPack, customPrice, usePublished };
+    const choices: CostChoices = { qtyMode: qtyMode ?? undefined, customPack, customPrice, usePublished, priceBasis };
     saveCostChoices(choiceKey, choices);
     if (JSON.stringify(location.state?.costChoices ?? {}) === JSON.stringify(choices)) return;
     navigate(location.pathname, { replace: true, state: { ...(location.state ?? {}), costChoices: choices } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qtyMode, customPack, customPrice, usePublished]);
+  }, [qtyMode, customPack, customPrice, usePublished, priceBasis]);
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
   if (!needsPriceDecision && needsUnitDecision) {
     return (
@@ -212,6 +181,38 @@ export function CostBreakdown() {
             onPack={setCustomPack}
             blocking
           />
+        </div>
+      </div>
+    );
+  }
+  if (!needsPriceDecision && !needsUnitDecision && needsBasisDecision) {
+    const one = unitWordFor(unitInfo.unit, 1);
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          <button onClick={() => navigate(-1)} className="mb-4 text-sm text-slate-600 hover:text-[#0B3C5D]">
+            ← {L("Volver a proveedores", "Back to suppliers")}
+          </button>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
+          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+          <div role="alert" className="bg-amber-50 border border-amber-300 rounded-xl p-5 text-amber-900 mb-6">
+            <p className="font-semibold mb-2">{L("Confirma a qué corresponde el precio publicado", "Confirm what the published price refers to")}</p>
+            <p className="text-sm mb-4">
+              {L(
+                `El precio publicado es ${formatUSD(sc.price, 2)}. Si fuera por ${one} de ${piecesPerUnit} piezas, cada pieza costaría unos ${formatUSD(sc.publishedPerPiece, 4)}, una cifra poco realista. Antes de calcular, indica a qué corresponde ese precio o escribe el que te cotizaron.`,
+                `The published price is ${formatUSD(sc.price, 2)}. If it were per ${one} of ${piecesPerUnit} pieces, each piece would cost about ${formatUSD(sc.publishedPerPiece, 4)}, an unrealistic figure. Before calculating, say what that price refers to or enter the one you were quoted.`,
+              )}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => setPriceBasis("piece")} className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold">
+                {L(`Es por pieza (${formatUSD(sc.price * piecesPerUnit, 2)} por ${one})`, `It's per piece (${formatUSD(sc.price * piecesPerUnit, 2)} per ${one})`)}
+              </button>
+              <button onClick={() => setPriceBasis("unit")} className="px-4 py-2 rounded-lg border border-amber-400 bg-white text-sm font-semibold">
+                {L(`Es por ${one} de ${piecesPerUnit} piezas`, `It's per ${one} of ${piecesPerUnit} pieces`)}
+              </button>
+            </div>
+          </div>
+          <OwnPrice current={customPrice} onChange={(v) => setCustomPrice(v)} />
         </div>
       </div>
     );
@@ -241,6 +242,19 @@ export function CostBreakdown() {
   }
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit: unitInfo.unit }, rates);
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
+  // Assumptions shown on screen that the PDF and Excel must keep
+  const reportNotes = [
+    ...sc.notes,
+    ...(piecesPerUnit > 1
+      ? [
+          L(
+            `Equivalente por pieza: unos ${Q(costs.perUnit / piecesPerUnit, 2)} por pieza (${Q(costs.perUnit, 2)} por ${unitWordFor(unitInfo.unit, 1)} de ${piecesPerUnit} piezas).`,
+            `Per-piece equivalent: about ${Q(costs.perUnit / piecesPerUnit, 2)} per piece (${Q(costs.perUnit, 2)} per ${unitWordFor(unitInfo.unit, 1)} of ${piecesPerUnit} pieces).`,
+          ),
+        ]
+      : []),
+    ...(sc.ownPrice ? [L("Precio usado: el que indicaste tú, no el publicado.", "Price used: the one you entered, not the published one.")] : []),
+  ];
 
   // ── Chart data ────────────────────────────────────────────────────────────
   const costData = costs.lines
@@ -320,7 +334,7 @@ export function CostBreakdown() {
             </button>
             <button
               onClick={() =>
-                exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote)
+                exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote, reportNotes)
               }
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-red-300 text-red-700 rounded-xl hover:bg-red-50 transition-all flex items-center gap-2 shadow-sm hover:shadow-md text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
             >
@@ -330,7 +344,7 @@ export function CostBreakdown() {
             </button>
             <button
               onClick={() =>
-                exportToExcel(costs, supplierName, quantity, price, destination, productDescription || productType, priceNote)
+                exportToExcel(costs, supplierName, quantity, price, destination, productDescription || productType, priceNote, reportNotes)
               }
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-green-300 text-green-700 rounded-xl hover:bg-green-50 transition-all flex items-center gap-2 shadow-sm hover:shadow-md text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
             >
@@ -345,6 +359,7 @@ export function CostBreakdown() {
                     supplier: stateSupplier,
                     quantity: String(quantity),
                     piecesPerUnit,
+                    reportNotes,
                     budget: stateBudget,
                     destination: stateDestination,
                     productType: stateProductType,
@@ -404,6 +419,12 @@ export function CostBreakdown() {
             onMode={setQtyMode}
             onPack={setCustomPack}
           />
+        )}
+        {sc.moqNote && (
+          <div role="note" className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-900 mb-6">
+            <span className="font-semibold">{L("Pedido mínimo: ", "Minimum order: ")}</span>
+            {sc.moqNote}
+          </div>
         )}
         <SupplierDisclaimer
           supplier={stateSupplier}
@@ -764,7 +785,7 @@ export function CostBreakdown() {
         <div className="mt-8 flex justify-center">
           <button
             onClick={() =>
-              exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote)
+              exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote, reportNotes)
             }
             className="px-10 py-4 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-2xl hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center gap-3 shadow-xl hover:shadow-2xl text-lg font-semibold"
           >

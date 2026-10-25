@@ -55,6 +55,7 @@ function generateReportPDF(data: {
   costs: Costs;
   reportId: string;
   saveFile?: boolean;
+  notes?: string[];
 }): string {
   return buildCostPdf({
     title: Lx("Informe de orientación para tu importación · costos estimados", "Guidance report for your import · estimated costs"),
@@ -64,6 +65,7 @@ function generateReportPDF(data: {
     price: data.price,
     priceNote: data.priceNote,
     costs: data.costs,
+    notes: data.notes,
     topics: getReviewTopics(data.productType, data.supplier, data.productDescription),
     disclaimer: sealDisclaimer(),
     reportId: data.reportId,
@@ -81,8 +83,10 @@ async function exportToExcel(data: {
   destination: string;
   productType: string;
   costs: Costs;
+  notes?: string[];
 }) {
   await generateBeautifulExcel({
+    notes: data.notes,
     reportTitle: Lx("Informe de orientación · costos estimados", "Guidance report · estimated costs"),
     priceNote: data.priceNote,
     supplierName: data.supplierName,
@@ -134,6 +138,8 @@ export function FinalCTA() {
   const rates = useRates();
   const saleUnit = saleUnitInfo(stateSupplier, productType).unit;
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit }, rates);
+  // Assumptions from the costs page (pieces per set, price basis, minimum order…)
+  const reportNotes: string[] = Array.isArray(location.state?.reportNotes) ? location.state.reportNotes.map(String) : [];
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
   const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? Lx(" — estimación parcial, sin flete", " — partial estimate, without freight") : ""}`;
 
@@ -193,6 +199,7 @@ export function FinalCTA() {
   // ── Action: Download Full Report ──────────────────────────────────────────
   const handleDownloadReport = () => {
     generateReportPDF({
+        notes: reportNotes,
       supplierName,
       quantity,
       price,
@@ -209,6 +216,7 @@ export function FinalCTA() {
   // ── Action: Excel Export ──────────────────────────────────────────────────
   const handleExcelExport = async () => {
     await exportToExcel({
+      notes: reportNotes,
       supplierName,
       quantity,
       price,
@@ -267,6 +275,7 @@ export function FinalCTA() {
   const downloadReportNow = () => {
     try {
       generateReportPDF({
+        notes: reportNotes,
         supplierName,
         quantity,
         price,
@@ -289,6 +298,7 @@ export function FinalCTA() {
     setSubmitting(true);
     try {
       const pdfBase64 = generateReportPDF({
+        notes: reportNotes,
         supplierName,
         quantity,
         price,

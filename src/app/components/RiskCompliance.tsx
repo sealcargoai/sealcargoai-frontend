@@ -27,6 +27,7 @@ const CATEGORY_LABEL: Record<string, [string, string]> = {
   furniture: ["Muebles", "Furniture"],
   food: ["Alimentos / bebidas", "Food / beverages"],
   stationery: ["Papelería / útiles escolares", "Stationery / school supplies"],
+  ppe: ["Equipo de protección (guantes, mascarillas…)", "Protective equipment (gloves, masks…)"],
   other: ["Otro", "Other"],
 };
 
@@ -192,6 +193,35 @@ export function getReviewTopics(productType: string, supplier: any, description 
       action: T("Confirmar el tipo de madera y su tratamiento con el proveedor.", "Confirm the wood type and treatment with the supplier."),
       source: "MAGA",
     });
+  } else if (productType === "ppe") {
+    const wanted = wantedText(description || "");
+    topics.push(
+      {
+        title: T("Material y especificación del producto", "Product material and specification"),
+        why: T(
+          "En guantes y equipo de protección, el material (por ejemplo nitrilo, látex o vinilo), el grosor, la talla y si traen polvo cambian el producto, el precio y la partida arancelaria.",
+          "For gloves and protective equipment, the material (for example nitrile, latex or vinyl), thickness, size and whether they are powdered change the product, the price and the tariff heading.",
+        ),
+        action: T("Pedir al proveedor la ficha técnica y que la proforma indique material, talla, grosor y contenido por caja.", "Ask the supplier for the technical sheet and have the proforma state material, size, thickness and content per box."),
+        source: T("Proveedor · agente aduanero (SEAL)", "Supplier · customs broker (SEAL)"),
+      },
+      {
+        title: T("Uso declarado y documentos que lo respaldan", "Declared use and supporting documents"),
+        why: FOOD_USE.test(wanted)
+          ? T(
+              "Si los usarás para manipular alimentos, el fabricante debe declarar que el material es apto para contacto con alimentos. Esa declaración la emite el fabricante; la herramienta no la valida.",
+              "If you will use them to handle food, the manufacturer must declare the material suitable for food contact. That declaration comes from the manufacturer; the tool does not validate it.",
+            )
+          : T(
+              "El uso que se declare (industrial, alimentos, médico) puede cambiar los documentos que se piden. Conviene definirlo antes de comprar.",
+              "The declared use (industrial, food, medical) can change the documents required. It is worth defining it before buying.",
+            ),
+        action: FOOD_USE.test(wanted)
+          ? T("Pedir al proveedor la declaración o reporte de prueba de contacto con alimentos del modelo exacto, y confirmar con SEAL qué documentos pedirá la importación según el uso declarado.", "Ask the supplier for the food-contact declaration or test report for the exact model, and confirm with SEAL which documents the import will need for the declared use.")
+          : T("Confirmar con SEAL qué documentos pedirá la importación según el uso que vas a declarar.", "Confirm with SEAL which documents the import will need for the use you will declare."),
+        source: T("Proveedor · agente aduanero (SEAL)", "Supplier · customs broker (SEAL)"),
+      },
+    );
   } else if (productType === "stationery") {
     topics.push(
       {
@@ -291,6 +321,7 @@ export function RiskCompliance() {
         weightKg: location.state?.weightKg,
         productDescription,
         piecesPerUnit: location.state?.piecesPerUnit,
+        reportNotes: location.state?.reportNotes,
       },
     });
   };

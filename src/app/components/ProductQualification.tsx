@@ -1,4 +1,4 @@
-import { wantedText } from "../../utils/useMatch";
+import { inferCategory } from "../../utils/category";
 import { useState, useEffect } from "react";
 import { DRAFT_KEY } from "../../utils/draft";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
@@ -27,14 +27,6 @@ import {
 // category key, so we infer one from the description.
 // Order matters: machinery first (machines mention electrical specs). Short
 // words use \b so e.g. "aplicables" doesn't match "cable".
-const CATEGORY_KEYWORDS: Record<string, RegExp> = {
-  machinery: /m[aá]quina|machine|bordador(a|as)?\b|embroider|cosedora|sewing|overlock|remalladora|tejedora|knitting|\btelar|\bloom\b|cortadora l[aá]ser|laser cutt|tostador(a|es|as)?\b|roast(er|ing)|molino|\bmill\b|grinder|moledora|\bhornos?\b|\boven|mezcladora|\bmixer|batidora|procesadora|processor|despulpadora|secadora|dryer|extrusora|extruder|\bprensa\b|selladora|sealer|embotelladora|llenadora|filling|cortadora|cutter|freidora|fryer|caldera|boiler|congelador|freezer|refrigerador|enfriador|chiller|maquinaria|maquinaria|machinery|equipo industrial|industrial equipment|\bmotor(es)?\b|\bbomba|\bpump|compresor|compressor|generador|generator|\btorno|\blathe|\bcnc\b|montacarga|forklift|excavadora|excavator|envasadora|empacadora|packing machine|horno industrial/i,
-  stationery: /l[aá]pi(z|ces)\b|\bpencils?\b|bol[ií]grafos?|\bpens?\b|cuadernos?|papeler[ií]a|stationery|crayon(es|s)?|marcadores?|markers?|borradores?|erasers?|sacapuntas|sharpeners?|[uú]tiles escolares|school supplies|resaltadores?|highlighters?/i,
-  electronics: /electr[oó]nic|electronic|celular|tel[eé]fono|\bphone|laptop|computador|tablet|cargador|charger|bater[ií]a|battery|\bleds?\b|\bcables?\b|aud[ií]fono|headphone|bocina|speaker|c[aá]mara|camera|\bmonitor|televisor|\btv\b|\bchips?\b|circuit/i,
-  food: /\balimentos?\b|\bcomida\b|\bfood\b|\bsnacks?\b|\bbebidas?\b|\bbeverages?\b|\bcaf[eé](?![a-záéíóúñ])|\bcoffee\b|\bt[eé](?![a-záéíóúñ])|\btea\b|\bdulces?\b|\bcandy\b|\bgalletas?\b|\bcookies?\b|\bsalsa|\bespecias\b|\bspices?\b|\bharina\b|\bflour\b|\bconservas?\b/i,
-  textiles: /textil|\btela|fabric|\bropa\b|clothing|camis|shirt|pantal[oó]n|\bpants\b|vestido|\bdress|algod[oó]n|cotton|poli[eé]ster|polyester|uniforme|uniform|toalla|towel|zapato|\bshoe|calzado|\bbotas?\b|\bboots?\b|\bgorras?\b|\bcaps?\b/i,
-  furniture: /mueble|furniture|\bsillas?\b|\bchairs?\b|\bmesas?\b|\btables?\b|escritorio|\bdesk|sof[aá]|sill[oó]n|\bcamas?\b|\bbeds?\b|colch[oó]n|mattress|gabinete|cabinet|estanter|\bshelf|closet|ropero/i,
-};
 
 // Field limits (shown to the client next to each field)
 export const LIMITS = {
@@ -93,13 +85,6 @@ function fieldError(name: string, value: string): string {
   return "";
 }
 
-function inferCategory(description: string): string {
-  for (const [category, regex] of Object.entries(CATEGORY_KEYWORDS)) {
-    // uses the client rules out ("no para alimentos") don't decide the category
-    if (regex.test(wantedText(description))) return category;
-  }
-  return "other";
-}
 
 export function ProductQualification() {
   const navigate = useNavigate();

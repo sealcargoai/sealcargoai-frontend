@@ -1,3 +1,4 @@
+import { unitWordFor, packSizeFromTitle } from "../../utils/saleUnit";
 import { useState } from "react";
 import { clearDraft } from "../../utils/draft";
 import { useNavigate } from "react-router";
@@ -321,7 +322,16 @@ export function SelectedSupplierCard({ supplier, description = "" }: { supplier:
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Package className="w-4 h-4 text-slate-400" />
-              {Lx("Pedido mínimo:", "Minimum order:")} {supplier.moq ? (/^\s*[\d.,]+\s*$/.test(String(supplier.moq)) ? `${supplier.moq.toLocaleString()} ${Number(supplier.moq) === 1 ? Lx("unidad", "unit") : Lx("uds.", "units")}` : String(supplier.moq)) : Lx("N/D", "N/A")}
+              {Lx("Pedido mínimo:", "Minimum order:")}{" "}
+              {supplier.moq
+                ? /^\s*[\d.,]+\s*$/.test(String(supplier.moq))
+                  ? supplier.saleUnit
+                    ? `${supplier.moq.toLocaleString()} ${unitWordFor(supplier.saleUnit, Number(supplier.moq))}`
+                    : packSizeFromTitle(supplier.productName) > 1
+                      ? `${supplier.moq.toLocaleString()} ${Lx("(sin indicar si son piezas o sets)", "(not stated whether pieces or sets)")}`
+                      : `${supplier.moq.toLocaleString()} ${unitWordFor("piece", Number(supplier.moq))}`
+                  : String(supplier.moq)
+                : Lx("N/D", "N/A")}
             </span>
             {supplier.storeRating ? (
               <span className="inline-flex items-center gap-1.5">

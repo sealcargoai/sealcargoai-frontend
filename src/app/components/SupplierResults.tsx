@@ -1,4 +1,5 @@
-import { supplierKey } from "../../utils/draft";
+import { supplierKey, loadCostChoices } from "../../utils/draft";
+import { resolveScenario, type CostChoices } from "../../utils/scenario";
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import {
@@ -540,10 +541,11 @@ function UseSummary({ description, list }: { description: string; list: { produc
 
 function SpecSummary({ reqs, list }: { reqs: Spec[]; list: { productName?: string }[] }) {
   if (!reqs.length || !list.length) return null;
-  let meets = 0, differs = 0, unknown = 0, incomparable = 0;
+  let meets = 0, differs = 0, unknown = 0, incomparable = 0, edge = 0;
   list.forEach((s) => {
     const m = matchSpecs(reqs, s.productName)!;
-    if (m.items.every((x) => x.status === "meets")) meets++;
+    if (m.items.every((x) => x.status === "meets" && !x.edge)) meets++;
+    else if (m.items.every((x) => x.status === "meets")) edge++;
     else if (m.items.some((x) => x.status === "higher" || x.status === "lower")) differs++;
     else if (m.items.some((x) => x.incomparable)) incomparable++;
     else unknown++;
@@ -551,6 +553,7 @@ function SpecSummary({ reqs, list }: { reqs: Spec[]; list: { productName?: strin
   const asked = reqs.map((r) => r.text).join(", ");
   const parts = [
     meets && `${meets} ${plural(meets, "indica lo pedido", "indican lo pedido", "states what you asked", "state what you asked")}`,
+    edge && `${edge} ${plural(edge, "llega a lo pedido solo en su máximo", "llegan a lo pedido solo en su máximo", "reaches what you asked only at its maximum", "reach what you asked only at their maximum")}`,
     differs && `${differs} ${plural(differs, "con diferencias", "con diferencias", "with differences", "with differences")}`,
     incomparable && `${incomparable} ${plural(incomparable, "da una cifra que no se puede comparar", "dan una cifra que no se puede comparar", "gives a figure that can't be compared", "give a figure that can't be compared")}`,
     unknown && `${unknown} ${plural(unknown, "no lo indica en la publicación", "no lo indican en la publicación", "does not state it", "do not state it")}`,
@@ -685,7 +688,12 @@ export function SupplierResults() {
   const keyOf = (s: Supplier) => supplierKey(s, descriptionText);
   const first = displaySuppliers[0];
   const firstUsable =
-    !!first && !first.priceFlag && first.price > 0 && matchUse(descriptionText, first.productName)?.status !== "other";
+    !!first &&
+    !first.priceFlag &&
+    first.price > 0 &&
+    matchUse(descriptionText, first.productName)?.status !== "other" &&
+    // when the client gave specs, only an option that states them is taken on its own
+    (!reqSpecs.length || matchSpecs(reqSpecs, first.productName)!.items.every((x) => x.status === "meets" && !x.edge));
   const [chosen, setChosen] = useState<Supplier | null>(
     () =>
       displaySuppliers.find((s) => keyOf(s) === location.state?.selectedKey) ??
@@ -983,10 +991,20 @@ export function SupplierResults() {
                 }`}
               >
                 <span className="font-semibold">{Lx("Elige una opción para calcular costos. ", "Choose an option to estimate costs. ")}</span>
-                {Lx(
-                  "La primera de la lista tiene un precio por confirmar, no publica precio o parece para otro uso, así que no escogemos otra por ti. Toca la opción que quieres revisar.",
-                  "The first one on the list has a price to confirm, no published price, or seems meant for another use, so we don't pick another one for you. Tap the option you want to review.",
-                )}
+                {(() => {
+                  if (!first) return "";
+                  const why = !(first.price > 0)
+                    ? Lx("no publica precio", "has no published price")
+                    : first.priceFlag
+                      ? Lx("tiene un precio por confirmar", "has a price to confirm")
+                      : matchUse(descriptionText, first.productName)?.status === "other"
+                        ? Lx("parece para otro uso", "seems meant for another use")
+                        : Lx("no indica todo lo que pediste", "doesn't state everything you asked for");
+                  return Lx(
+                    `La primera de la lista ${why}, así que no escogemos una por ti. Toca la opción que quieres revisar.`,
+                    `The first one on the list ${why}, so we don't pick one for you. Tap the option you want to review.`,
+                  );
+                })()}
               </div>
             )}
 
@@ -1319,9 +1337,17 @@ export function SupplierResults() {
                   {t("suppliers.selectedSupplier")}
                 </h3>
                 <div className="text-sm text-slate-600 space-y-2">
-                  {!hasChoice ? (
-                    <p className="text-slate-600">{Lx("Elige una opción de la lista.", "Choose an option from the list.")}</p>
-                  ) : !(selectedSupplier.price > 0) ? (
+                  {(() => {
+                    if (!hasChoice) return <p className="text-slate-600">{Lx("Elige una opción de la lista.", "Choose an option from the list.")}</p>;
+                    // The same scenario the costs page uses for this supplier
+                    // (price the client typed, sets or pieces, price basis)
+                    const sc = resolveScenario(
+                      selectedSupplier,
+                      (loadCostChoices(supplierKey(selectedSupplier, descriptionText)) ?? {}) as CostChoices,
+                      { requestedQty: parseInt(navQuantity || "1000") || 1000, productType: String(location.state?.productType ?? ""), description: descriptionText },
+                    );
+                    if (!(sc.price > 0))
+                      return (
                     <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-700">
                       <p className="font-semibold mb-1">{Lx("Sin precio publicado", "No published price")}</p>
                       <p>
@@ -1331,22 +1357,30 @@ export function SupplierResults() {
                         )}
                       </p>
                     </div>
-                  ) : selectedSupplier.priceFlag ? (
+                      );
+                    if (sc.needsPriceDecision || sc.needsUnitDecision || sc.needsBasisDecision)
+                      return (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900">
-                      <p className="font-semibold mb-1">{Lx("Precio por confirmar", "Price to be confirmed")}</p>
+                      <p className="font-semibold mb-1">
+                        {sc.needsPriceDecision ? Lx("Precio por confirmar", "Price to be confirmed") : Lx("Falta un dato para calcular", "One detail missing to calculate")}
+                      </p>
                       <p>
-                        {Lx(
-                          "No calculamos la estimación con este precio publicado. En el desglose de costos podrás escribir el precio que te coticen o confirmarlo.",
-                          "We don't estimate with this published price. In the cost breakdown you can enter the price you're quoted or confirm it.",
-                        )}
+                        {sc.needsPriceDecision
+                          ? Lx(
+                              "No calculamos la estimación con este precio publicado. En el desglose de costos podrás escribir el precio que te coticen o confirmarlo.",
+                              "We don't estimate with this published price. In the cost breakdown you can enter the price you're quoted or confirm it.",
+                            )
+                          : sc.needsUnitDecision
+                            ? Lx("En el desglose de costos indica si tu cantidad está en piezas o en sets; luego verás aquí el mismo escenario.", "In the cost breakdown, say whether your quantity is in pieces or sets; then you'll see the same scenario here.")
+                            : Lx("En el desglose de costos confirma si el precio publicado es por pieza o por caja; luego verás aquí el mismo escenario.", "In the cost breakdown, confirm whether the published price is per piece or per box; then you'll see the same scenario here.")}
                       </p>
                     </div>
-                  ) : (() => {
+                      );
                     const est = calculateCosts(
                       {
-                        saleUnit: saleUnitInfo(selectedSupplier, String(location.state?.productType ?? "")).unit,
-                        price: selectedSupplier.price || 0,
-                        quantity: parseInt(navQuantity || "1000") || 1000,
+                        saleUnit: sc.unitInfo.unit,
+                        price: sc.price,
+                        quantity: sc.quantity,
                         volumeCbm: parseFloat(location.state?.volumeCbm) || 0,
                         weightKg: parseFloat(location.state?.weightKg) || 0,
                       },
@@ -1354,6 +1388,15 @@ export function SupplierResults() {
                     );
                     return (
                       <>
+                        {(sc.ownPrice || sc.notes.length > 0) && (
+                          <p className="text-xs text-slate-500">
+                            {[
+                              sc.ownPrice ? Lx("Con el precio que indicaste", "With the price you entered") : "",
+                              `${sc.quantity.toLocaleString()} ${unitWordFor(sc.unitInfo.unit, sc.quantity)}`,
+                            ].filter(Boolean).join(" · ")}
+                            {Lx(" (mismo escenario del desglose)", " (same scenario as the breakdown)")}
+                          </p>
+                        )}
                         <div className="flex items-center justify-between">
                           <span>{t("suppliers.baseCost")}</span>
                           <span className="font-medium">{formatQ(est.productCost, est.exchangeRate)}</span>
