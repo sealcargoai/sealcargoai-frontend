@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { Lx, getLang, unitsWord } from "./lang";
+import { showNotice } from "./notice";
 import { estimateNote, scenarioVariables } from "./costCalculator";
 
 // ─── SEAL Company Info ────────────────────────────────────────────────────────
@@ -555,6 +556,12 @@ export async function generateBeautifulExcel(
   link.download = `SEAL_${data.reportTitle.replace(/\s+/g, "_")}_${data.supplierName.replace(/\s+/g, "_")}_${Date.now()}.xlsx`;
   document.body.appendChild(link);
   link.click();
+  showNotice(
+    Lx(
+      `Excel descargado: ${link.download}. Búscalo en la carpeta de descargas de tu navegador.`,
+      `Excel downloaded: ${link.download}. Look for it in your browser's downloads folder.`,
+    ),
+  );
   document.body.removeChild(link);
   // Revoking immediately cancels the download on iPhone/Safari — wait a bit
   setTimeout(() => URL.revokeObjectURL(url), 30000);

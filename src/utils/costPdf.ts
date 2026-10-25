@@ -9,6 +9,7 @@ import autoTable from "jspdf-autotable";
 import { drawCompanyInfoBox, drawCompanyFooter } from "./reportExports";
 import { formatQ, formatUSD, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
 import { Lx, getLang, unitsWord } from "./lang";
+import { showNotice } from "./notice";
 
 const MAP: Record<string, string> = {
   "•": "-", "–": "-", "—": "-", "→": "->", "←": "<-", "≥": ">=", "≤": "<=",
@@ -217,6 +218,14 @@ export function buildCostPdf(d: CostPdfInput): string {
   text(disc, 14, y + 1);
 
   drawCompanyFooter(doc);
-  if (d.saveFile !== false) doc.save(d.fileName);
+  if (d.saveFile !== false) {
+    doc.save(d.fileName);
+    showNotice(
+      Lx(
+        `Informe descargado: ${d.fileName}. Búscalo en la carpeta de descargas de tu navegador.`,
+        `Report downloaded: ${d.fileName}. Look for it in your browser's downloads folder.`,
+      ),
+    );
+  }
   return doc.output("datauristring").split(",")[1];
 }
