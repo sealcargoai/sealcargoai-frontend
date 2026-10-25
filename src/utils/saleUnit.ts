@@ -66,7 +66,14 @@ export interface SaleUnitInfo {
 
 export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | null): SaleUnitInfo {
   const fromMoq = (s?.saleUnit || "") as SaleUnit;
-  const packSize = packSizeFromTitle(s?.productName);
+  let packSize = packSizeFromTitle(s?.productName);
+  // The platform sells per set/box/pack and the title mentions "12 pcs" on its own:
+  // take it as the content of each unit (shown as an assumption to confirm)
+  if (!packSize && fromMoq && fromMoq !== "piece") {
+    const m = String(s?.productName || "").toLowerCase().match(/\b(\d{1,4})\s*-?\s*(?:pcs|pc|pieces?|piezas?|pzs|count|ct)\b/);
+    const n = m ? parseInt(m[1], 10) : 0;
+    if (n > 1 && n <= 5000) packSize = n;
+  }
   let unit: SaleUnit = fromMoq;
   // "piece" from the MOQ text plus "set of 12" in the title: trust the platform's unit
   if (!unit && packSize > 1) unit = unitFromTitle(s?.productName) || "set";
