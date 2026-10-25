@@ -40,9 +40,13 @@ export function ChatInterface() {
       "No puedo confirmar si un proveedor es real o confiable: la herramienta solo organiza lo que publica la plataforma (insignias, años, reseñas) y no lo verifica. Siguiente paso: continúa con el formulario para ver opciones ordenadas por índice referencial y, si vas a comprar, pide a SEAL la verificación del proveedor en China (servicio adicional).",
       "I can't confirm whether a supplier is real or reliable: the tool only organizes what the platform publishes (badges, years, reviews) and doesn't verify it. Next step: continue with the form to see options sorted by reference index and, if you're going to buy, ask SEAL for the supplier verification in China (additional service).",
     ),
+    guarantee: L(
+      "Tampoco puedo garantizar que la importación sea autorizada ni que pase la aduana sin observaciones: eso depende de la partida arancelaria, de los permisos que esa partida pida y de que la documentación del embarque coincida. Dato a confirmar: la ficha técnica del producto, para que SEAL revise la partida y los permisos antes de comprar.",
+      "I also can't guarantee the import will be authorized or clear customs without remarks: that depends on the tariff heading, the permits it requires and the shipping documents matching. Data to confirm: the product's technical sheet, so SEAL can review the heading and permits before you buy.",
+    ),
     dai: L(
-      "No puedo confirmar el DAI de tu producto: depende de la partida arancelaria, que se define con la ficha técnica. En la estimación usamos 15% como referencia y el IVA de 12% sobre CIF + DAI. Siguiente paso: completa el formulario para ver el escenario y, para la partida exacta, un agente aduanero de SEAL puede clasificar tu producto (WhatsApp +502 5996 4664).",
-      "I can't confirm the DAI duty for your product: it depends on the tariff heading, which is set from the technical sheet. The estimate uses 15% as reference and 12% IVA on CIF + DAI. Next step: complete the form to see the scenario and, for the exact heading, a SEAL customs broker can classify your product (WhatsApp +502 5996 4664).",
+      "No puedo dar el impuesto exacto sin la ficha técnica: el DAI depende de la partida arancelaria, y la partida se define con lo que dice esa ficha (qué es el producto, material, uso). En la estimación usamos 15% de DAI como referencia y el IVA de 12% sobre CIF + DAI. Siguiente paso: completa el formulario para ver el escenario y, para la partida exacta, comparte la ficha técnica con un agente aduanero de SEAL (WhatsApp +502 5996 4664).",
+      "I can't give the exact tax without the technical sheet: the DAI depends on the tariff heading, and the heading is set from that sheet (what the product is, material, use). The estimate uses 15% DAI as reference and 12% IVA on CIF + DAI. Next step: complete the form to see the scenario and, for the exact heading, share the technical sheet with a SEAL customs broker (WhatsApp +502 5996 4664).",
     ),
     cost: L(
       "Puedo prepararte una estimación preliminar con los datos del formulario (producto, cantidad y, si lo tienes, volumen o peso). Un costo confirmado solo lo da una cotización de SEAL. Siguiente paso: continúa con el formulario.",
@@ -53,12 +57,16 @@ export function ChatInterface() {
       "Thanks. For now I don't answer open questions in this chat. To guide you, continue with the form: there we organize your data and prepare the references and estimates. If you'd rather talk to a person, message SEAL on WhatsApp +502 5996 4664.",
     ),
   };
+  // A question can touch several topics ("verified supplier, guaranteed import, exact tax"):
+  // every one gets its answer, in this order.
   const replyKind = (text: string) => {
     const t = text.toLowerCase();
-    if (/proveedor|supplier|confiable|reliable|\breal\b|estafa|fraude|scam|verific|garantiz|guarantee|legit/.test(t)) return "supplier";
-    if (/\bdai\b|arancel|partida|impuesto|\biva\b|tariff|duty|duties|\btax|\bsac\b/.test(t)) return "dai";
-    if (/precio|costo|cu[aá]nto|cotiz|price|cost|quote|how much/.test(t)) return "cost";
-    return "general";
+    const kinds: string[] = [];
+    if (/proveedor|supplier|seller|vendedor|f[aá]brica|factory|confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verified|legit/.test(t)) kinds.push("supplier");
+    if (/garantiz|garant[ií]a de que|asegur|autoriz|permiso|aprobad|aprobaci|liberaci|que pase|sin problema|guarantee|authoriz|permit|approv|clear customs/.test(t)) kinds.push("guarantee");
+    if (/\bdai\b|arancel|partida|impuesto|\biva\b|tributo|tariff|duty|duties|\btax/.test(t)) kinds.push("dai");
+    if (/precio|costo|cu[aá]nto|cotiz|price|cost|quote|how much/.test(t)) kinds.push("cost");
+    return kinds.length ? kinds.join(",") : "general";
   };
   // "ai" entries in state hold the reply kind; the text is resolved at render (ES / EN)
   const [messages, setMessages] = useState<Message[]>([]);
@@ -139,7 +147,16 @@ export function ChatInterface() {
 
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {[...intro, ...messages.map((m) => (m.role === "ai" ? { ...m, content: REPLIES[m.content] ?? REPLIES.general } : m))].map((msg, i) => (
+          {[...intro, ...messages.map((m) => (m.role === "ai"
+            ? { ...m, content: m.content
+                  .split(",")
+                  .map((k, i) => {
+                    const r = REPLIES[k] ?? REPLIES.general;
+                    // "Tampoco…" only reads well after another answer
+                    return i === 0 ? r.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't") : r;
+                  })
+                  .join("\n\n") }
+            : m))].map((msg, i) => (
             <div
               key={i}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
@@ -161,7 +178,7 @@ export function ChatInterface() {
                 )}
                 <p
                   className={
-                    msg.role === "user" ? "text-white" : "text-slate-700"
+                    `whitespace-pre-line ${msg.role === "user" ? "text-white" : "text-slate-700"}`
                   }
                 >
                   {msg.content}
