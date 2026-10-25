@@ -7,7 +7,8 @@ import { formatUSD } from "../../utils/costCalculator";
 import { Lx } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, specLabel } from "../../utils/capacity";
 import { matchUse } from "../../utils/useMatch";
-import { matchMaterial } from "../../utils/materialMatch";
+import { matchMaterial, partMaterialIssue } from "../../utils/materialMatch";
+import { componentText, type ComponentFlag } from "../../utils/componentMatch";
 
 const SPEC_TONE: Record<string, string> = {
   green: "bg-green-50 border-green-200 text-green-800",
@@ -18,12 +19,14 @@ const SPEC_TONE: Record<string, string> = {
 };
 
 /** One tag per specification the client wrote (capacity, needles, heads), compared with the listing title. */
-export function SpecTags({ description, productName, warn = false }: { description: string; productName?: string; warn?: boolean }) {
+export function SpecTags({ description, productName, warn = false, component }: { description: string; productName?: string; warn?: boolean; component?: ComponentFlag }) {
   const reqs = requestedSpecs(description);
   const m = matchSpecs(reqs, productName);
   const use = matchUse(description, productName);
   const mat = matchMaterial(description, productName);
-  if (!m && !use && !mat) return null;
+  const partIssue = partMaterialIssue(description, productName);
+  if (!m && !use && !mat && !component && !partIssue) return null;
+  const comp = component ? componentText(component) : null;
   const differs = !!m?.items.some((i) => i.status !== "meets");
   const otherUse = use?.status === "other";
   const useTag = use
@@ -64,6 +67,16 @@ export function SpecTags({ description, productName, warn = false }: { descripti
             {useTag.sub && <span className="opacity-80"> · {useTag.sub}</span>}
           </span>
         )}
+        {comp && (
+          <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[component!.status === "part" ? "red" : "amber"]}`}>
+            <span className="font-semibold">{comp.tag}</span>
+          </span>
+        )}
+        {partIssue && (
+          <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE.red}`}>
+            <span className="font-semibold">{partIssue.text}</span>
+          </span>
+        )}
         {mat && (
           <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[mat.status === "match" ? "green" : "red"]}`}>
             <span className="font-semibold">
@@ -97,6 +110,14 @@ export function SpecTags({ description, productName, warn = false }: { descripti
                 `Note: this listing seems meant for ${use!.listed}, not ${use!.asked}. The cost scenario may not match what you're looking for; go back to the list and choose an option for the use you need.`,
               )}
         </p>
+      )}
+      {warn && partIssue && (
+        <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
+          {Lx(`Ojo: ${partIssue.text.charAt(0).toLowerCase() + partIssue.text.slice(1)}. Confírmalo con el proveedor o escoge otra opción.`, `Note: ${partIssue.text.charAt(0).toLowerCase() + partIssue.text.slice(1)}. Confirm it with the supplier or choose another option.`)}
+        </p>
+      )}
+      {warn && comp && (
+        <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">{comp.warn}</p>
       )}
       {warn && mat?.status === "other" && (
         <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
@@ -330,7 +351,7 @@ export function SelectedSupplierCard({ supplier, description = "" }: { supplier:
           )}
           {description && (
             <div className="mt-2">
-              <SpecTags description={description} productName={supplier.productName} warn />
+              <SpecTags description={description} productName={supplier.productName} warn component={supplier.componentFlag} />
             </div>
           )}
           <div className="flex flex-wrap gap-x-4 gap-y-2 mt-3 text-sm text-slate-700">

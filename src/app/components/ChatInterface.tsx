@@ -4,7 +4,7 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { buildReply, productFromMessage, replyKinds, foodAdvice, type ReplySpec } from "../../utils/chatReply";
+import { buildReply, productFromMessage, productMention, replyKinds, foodAdvice, type ReplySpec } from "../../utils/chatReply";
 
 interface Message {
   role: "user" | "ai";
@@ -40,17 +40,21 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const specs = messages.filter((m) => m.role === "ai").map((m) => JSON.parse(m.content) as ReplySpec);
-  const currentProduct = [...specs].reverse().find((x) => x.newProduct)?.newProduct || String(query || "").trim();
+  const lastNamed = [...specs].reverse().find((x) => x.newProduct || x.mentioned);
+  const currentProduct = lastNamed?.newProduct || lastNamed?.mentioned || String(query || "").trim();
 
   const handleSend = () => {
     if (!input.trim()) return;
     const text = input.trim();
     const newProduct = productFromMessage(text) || undefined;
+    // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
+    const mentioned = !newProduct ? productMention(text) || undefined : undefined;
     const lastCert = [...specs].reverse().find((x) => replyKinds(x.text).includes("certificate") || (x.reask && replyKinds(x.reask).includes("certificate")));
     const spec: ReplySpec = {
       text,
-      product: newProduct || currentProduct,
+      product: newProduct || mentioned || currentProduct,
       newProduct,
+      mentioned,
       previous: currentProduct,
       reask: lastCert ? (replyKinds(lastCert.text).includes("certificate") ? lastCert.text : lastCert.reask) : undefined,
       earlierFood: specs.some((x) => (replyKinds(x.text).includes("certificate") || !!x.reask) && foodAdvice(x.product)),

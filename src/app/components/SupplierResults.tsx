@@ -30,7 +30,8 @@ import { Lx, plural } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
 import { flagPrices, comparablePrice } from "../../utils/priceCheck";
 import { orderByUse, matchUse, wantedText } from "../../utils/useMatch";
-import { orderByMaterial, matchMaterial } from "../../utils/materialMatch";
+import { orderByMaterial, matchMaterial, partMaterialIssue } from "../../utils/materialMatch";
+import { flagComponents, orderByComponent, type ComponentFlag } from "../../utils/componentMatch";
 import { saleUnitInfo, unitWordFor, packSizeFromTitle } from "../../utils/saleUnit";
 import { descriptionIsDetailed } from "../../utils/descriptionCheck";
 import {
@@ -600,6 +601,7 @@ interface Supplier {
   priceFlag?: string;
   priceNotComparable?: boolean;
   saleUnit?: string;
+  componentFlag?: ComponentFlag;
   rating: number | null;
   reviews: number;
   moq: number;
@@ -652,7 +654,8 @@ export function SupplierResults() {
   const reqSpecs = requestedSpecs(String(location.state?.productDescription ?? ""));
   // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
   // Order: requested use first (a paint mill is not a corn mill), then specs, then the rest
-  const displaySuppliers: Supplier[] = flagPrices(orderByUse(orderByMaterial(orderBySpecs(
+  // Order: parts/accessories last, then requested use, material and specs
+  const displaySuppliers: Supplier[] = flagPrices(orderByComponent(flagComponents(orderByUse(orderByMaterial(orderBySpecs(
     (apiData?.topSuppliers ?? []).map((s: Supplier, idx: number) => ({
       ...s,
       // Older results could carry 0 when the price text was "US$0.02-0.05": use the range midpoint
@@ -671,7 +674,7 @@ export function SupplierResults() {
       productName: s.productName ? decodeEntities(s.productName) : s.productName,
     })),
     reqSpecs,
-  ), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")).slice(0, 9), String(location.state?.productType ?? ""));
+  ), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? ""), String(location.state?.productType ?? ""))).slice(0, 9), String(location.state?.productType ?? ""));
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
@@ -713,9 +716,11 @@ export function SupplierResults() {
   const firstUsable =
     !!first &&
     !first.priceFlag &&
+    !first.componentFlag &&
     first.price > 0 &&
     matchUse(descriptionText, first.productName)?.status !== "other" &&
     matchMaterial(descriptionText, first.productName)?.status !== "other" &&
+    !partMaterialIssue(descriptionText, first.productName) &&
     // an option whose minimum order is above the client's order is not taken on its own
     !scenarioFor(first).moqNote &&
     // when the client gave specs, only an option that states them is taken on its own
@@ -1028,9 +1033,13 @@ export function SupplierResults() {
                     ? Lx("no publica precio", "has no published price")
                     : first.priceFlag
                       ? Lx("tiene un precio por confirmar", "has a price to confirm")
+                      : first.componentFlag
+                        ? first.componentFlag.status === "part"
+                          ? Lx("parece un componente o accesorio, no el producto completo", "looks like a part or accessory, not the complete product")
+                          : Lx("no deja claro si es el producto completo", "doesn't make clear whether it is the complete product")
                       : matchUse(descriptionText, first.productName)?.status === "other"
                         ? Lx("parece para otro uso", "seems meant for another use")
-                        : matchMaterial(descriptionText, first.productName)?.status === "other"
+                        : matchMaterial(descriptionText, first.productName)?.status === "other" || partMaterialIssue(descriptionText, first.productName)
                           ? Lx("indica otro material", "names another material")
                         : scenarioFor(first).moqNote
                           ? /sin indicar|without saying/.test(scenarioFor(first).moqNote)
@@ -1113,7 +1122,7 @@ export function SupplierResults() {
                             {supplier.productName}
                           </p>
                         )}
-                        <SpecTags description={String(location.state?.productDescription ?? "")} productName={supplier.productName} />
+                        <SpecTags description={String(location.state?.productDescription ?? "")} productName={supplier.productName} component={supplier.componentFlag} />
                         {supplier.priceFlag && (
                           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-3">
                             <span className="font-semibold">{Lx("Precio atípico:", "Atypical price:")}</span> {supplier.priceFlag}{" "}
@@ -1169,7 +1178,7 @@ export function SupplierResults() {
                                   return (
                                     <>
                                       {Lx("por", "per")} {unitWordFor(u.unit, 1)}
-                                      {u.packSize > 1 && (
+                                      {u.packSize > 1 && u.unit !== "pair" && (
                                         <span className="block text-xs text-amber-700">
                                           {Lx(`${u.packSize} piezas según el título`, `${u.packSize} pieces per the title`)}
                                         </span>

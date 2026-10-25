@@ -121,6 +121,9 @@ export function CostBreakdown() {
   const [qtyModeChoice, setQtyMode] = useState<"sets" | "pieces" | undefined>(storedChoices.qtyMode);
   const [customPack, setCustomPack] = useState(Number(storedChoices.customPack) || 0);
   const [priceBasis, setPriceBasis] = useState<"unit" | "piece" | undefined>(storedChoices.priceBasis);
+  const [confirmedPack, setConfirmedPack] = useState<number | undefined>(storedChoices.confirmedPack);
+  const [completeConfirmed, setCompleteConfirmed] = useState<boolean>(!!storedChoices.completeConfirmed);
+  const [packChanged, setPackChanged] = useState(false);
   const stateQuantity = location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
@@ -130,11 +133,27 @@ export function CostBreakdown() {
   // scenario shared with the supplier list and the reports (utils/scenario)
   const sc = resolveScenario(
     originalSupplier,
-    { customPrice, usePublished, qtyMode: qtyModeChoice, customPack, priceBasis },
+    { customPrice, usePublished, qtyMode: qtyModeChoice, customPack, priceBasis, confirmedPack, completeConfirmed },
     { requestedQty, productType: String(stateProductType), description: String(location.state?.productDescription ?? "") },
   );
   const { priceFlag, needsPriceDecision, needsUnitDecision, needsBasisDecision, unitInfo, intent, qtyMode, packSize, piecesPerUnit, quantity } = sc;
   const stateSupplier = sc.supplier;
+  // confirm the price for the pack content in use; changing it asks again
+  const confirmPublished = () => { setUsePublished(true); setConfirmedPack(sc.packSize); };
+  const confirmBasis = (b: "unit" | "piece") => { setPriceBasis(b); setConfirmedPack(sc.packSize); };
+  // a confirmation made before the pack content was known now refers to that content
+  useEffect(() => {
+    if ((usePublished || priceBasis) && !confirmedPack && sc.packSize > 0) setConfirmedPack(sc.packSize);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sc.packSize]);
+  useEffect(() => {
+    if (!sc.confirmationReset) return;
+    setUsePublished(false);
+    setPriceBasis(undefined);
+    setConfirmedPack(undefined);
+    setPackChanged(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sc.confirmationReset]);
   // 0 = the client didn't give a budget (never invent one)
   const budget = parseFloat(String(stateBudget)) || 0;
   const destination = String(stateDestination);
@@ -159,13 +178,59 @@ export function CostBreakdown() {
   const rates = useRates();
   useEffect(() => {
     // only what the client chose; the default read from the description is recomputed
-    const choices: CostChoices = { qtyMode: qtyModeChoice, customPack, customPrice, usePublished, priceBasis };
+    const choices: CostChoices = { qtyMode: qtyModeChoice, customPack, customPrice, usePublished, priceBasis, confirmedPack, completeConfirmed: completeConfirmed || undefined };
     saveCostChoices(choiceKey, choices);
     if (JSON.stringify(location.state?.costChoices ?? {}) === JSON.stringify(choices)) return;
     navigate(location.pathname, { replace: true, state: { ...(location.state ?? {}), costChoices: choices } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qtyModeChoice, customPack, customPrice, usePublished, priceBasis]);
+  }, [qtyModeChoice, customPack, customPrice, usePublished, priceBasis, confirmedPack, completeConfirmed]);
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
+  const packChangedNote = packChanged ? (
+    <div role="alert" className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-900 mb-4">
+      {L(
+        "Cambiaste el contenido del empaque, así que el precio por pieza cambió: vuelve a confirmar a qué corresponde el precio.",
+        "You changed the pack content, so the price per piece changed: confirm again what the price refers to.",
+      )}
+    </div>
+  ) : null;
+  if (sc.needsCompleteDecision) {
+    const f = originalSupplier.componentFlag as { status: string; part: string };
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          <button onClick={() => navigate(-1)} className="mb-4 text-sm text-slate-600 hover:text-[#0B3C5D]">
+            ← {L("Volver a proveedores", "Back to suppliers")}
+          </button>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
+          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+          <div role="alert" className="bg-amber-50 border border-amber-300 rounded-xl p-5 text-amber-900 mb-6">
+            <p className="font-semibold mb-2">
+              {L("Antes de calcular: ¿esta publicación es el producto completo?", "Before calculating: is this listing the complete product?")}
+            </p>
+            <p className="text-sm mb-4">
+              {f.status === "part"
+                ? L(
+                    `El título indica «${f.part}» y parece ser solo esa pieza o un accesorio, no ${productDescription ? `«${productDescription.length > 60 ? productDescription.slice(0, 57).trim() + "…" : productDescription}»` : "el producto completo"}. Si calculamos con su precio, el escenario no correspondería a lo que buscas.`,
+                    `The title says "${f.part}" and it seems to be only that part or an accessory, not ${productDescription ? `"${productDescription.length > 60 ? productDescription.slice(0, 57).trim() + "…" : productDescription}"` : "the complete product"}. Calculating with its price would not match what you're looking for.`,
+                  )
+                : L(
+                    `El título menciona «${f.part}» y no queda claro si el precio es del producto completo o solo de esa pieza. Revisa las fotos de la publicación o pregúntale al proveedor.`,
+                    `The title mentions "${f.part}" and it's not clear whether the price is for the complete product or only that part. Check the listing photos or ask the supplier.`,
+                  )}
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button onClick={() => navigate(-1)} className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold">
+                {L("Escoger otra opción", "Choose another option")}
+              </button>
+              <button onClick={() => setCompleteConfirmed(true)} className="px-4 py-2 rounded-lg border border-amber-400 bg-white text-sm font-semibold">
+                {L("Confirmé que es el producto completo", "I confirmed it is the complete product")}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (!needsPriceDecision && needsUnitDecision) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
@@ -200,6 +265,7 @@ export function CostBreakdown() {
           </button>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
           <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+          {packChangedNote}
           <div role="alert" className="bg-amber-50 border border-amber-300 rounded-xl p-5 text-amber-900 mb-6">
             <p className="font-semibold mb-2">{L("Confirma a qué corresponde el precio publicado", "Confirm what the published price refers to")}</p>
             <p className="text-sm mb-4">
@@ -209,10 +275,10 @@ export function CostBreakdown() {
               )}
             </p>
             <div className="flex flex-wrap gap-2">
-              <button onClick={() => setPriceBasis("piece")} className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold">
+              <button onClick={() => confirmBasis("piece")} className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold">
                 {L(`Es por pieza (${formatUSD(sc.price * piecesPerUnit, 2)} por ${one})`, `It's per piece (${formatUSD(sc.price * piecesPerUnit, 2)} per ${one})`)}
               </button>
-              <button onClick={() => setPriceBasis("unit")} className="px-4 py-2 rounded-lg border border-amber-400 bg-white text-sm font-semibold">
+              <button onClick={() => confirmBasis("unit")} className="px-4 py-2 rounded-lg border border-amber-400 bg-white text-sm font-semibold">
                 {L(`Es por ${one} de ${piecesPerUnit} piezas`, `It's per ${one} of ${piecesPerUnit} pieces`)}
               </button>
             </div>
@@ -234,12 +300,13 @@ export function CostBreakdown() {
           </button>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
           <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+          {packChangedNote}
           <PriceDecision
             unit={unitInfo.unit}
             reason={priceFlag}
             published={priceInfo.published}
             onCustom={(v) => setCustomPrice(v)}
-            onUsePublished={() => setUsePublished(true)}
+            onUsePublished={confirmPublished}
             onBack={() => navigate(-1)}
           />
         </div>
@@ -989,7 +1056,9 @@ function SaleUnitNotice({
       </p>
       <p className="mb-3">
         {Lx(`Esta publicación vende por ${one}`, `This listing sells per ${one}`)}
-        {packFromTitle
+        {unit === "pair"
+          ? Lx(" (cada par son 2 piezas).", " (each pair is 2 pieces).")
+          : packFromTitle
           ? Lx(
               ` y su título indica ${packSize} piezas por ${one}: usamos ese dato como supuesto, pendiente de confirmar con el proveedor.`,
               ` and its title says ${packSize} pieces per ${one}: we use it as an assumption, to be confirmed with the supplier.`,

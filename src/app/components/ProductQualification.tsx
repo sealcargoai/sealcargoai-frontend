@@ -1,4 +1,5 @@
 import { inferCategory } from "../../utils/category";
+import { quantityWord } from "../../utils/saleUnit";
 import { useState, useEffect } from "react";
 import { DRAFT_KEY } from "../../utils/draft";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
@@ -85,20 +86,6 @@ function fieldError(name: string, value: string): string {
   return "";
 }
 
-
-// The unit the client used in the description ("50 cajas", "500 lápices")
-function quantityWord(description: string, n: number): string {
-  // "cajas de 100 piezas": the 100 is the content of each box, not the order
-  const d = String(description || "")
-    .toLowerCase()
-    .replace(/(cajas?|sets?|paquetes?|juegos?|estuches?|boxes|box|packs?|kits?|bolsas?)\s+(?:de|of|con|with|x)\s+\d[\d.,]*(?:\s*[a-záéíóúüñ]+)?/g, "$1 ");
-  const m = d.match(/\d[\d.,]*\s*(cajas?|sets?|paquetes?|juegos?|docenas?|estuches?|boxes|box|packs?|kits?|piezas?|pieces?)\b/);
-  if (!m) return "";
-  const w = m[1];
-  const one: Record<string, string> = { cajas: "caja", sets: "set", paquetes: "paquete", juegos: "juego", docenas: "docena", estuches: "estuche", boxes: "box", packs: "pack", kits: "kit", piezas: "pieza", pieces: "piece" };
-  const many: Record<string, string> = { caja: "cajas", set: "sets", paquete: "paquetes", juego: "juegos", docena: "docenas", estuche: "estuches", box: "boxes", pack: "packs", kit: "kits", pieza: "piezas", piece: "pieces" };
-  return n === 1 ? one[w] ?? w : many[w] ?? w;
-}
 
 export function ProductQualification() {
   const navigate = useNavigate();
@@ -596,7 +583,7 @@ export function ProductQualification() {
                       <span className="font-medium">
                         {t("qualification.quantity")}:
                       </span>{" "}
-                      {Number(formData.quantity || 0).toLocaleString()} {quantityWord(formData.productType, Number(formData.quantity || 0)) || unitsWord(Number(formData.quantity || 0))}
+                      {Number(formData.quantity || 0).toLocaleString()} {quantityWord(cleanDescription(formData.productType).text, Number(formData.quantity || 0)) || unitsWord(Number(formData.quantity || 0))}
                     </p>
                     <p>
                       <span className="font-medium">
