@@ -164,7 +164,7 @@ export function calculateFreight(
     const perCbm = (rates.container40 / rates.container40Cbm) * rates.lclFactor;
     const cbm = Math.max(rates.lclMinCbm, chargeable);
     return {
-      amount: Math.round(perCbm * cbm),
+      amount: perCbm * cbm,
       mode: "LCL",
       detail: `${Lx("Carga consolidada", "Consolidated cargo")} • ${cbm.toFixed(2)} m³ × ${formatQ(perCbm, rates.exchangeRate)}/m³ • ${rates.transitDays} ${Lx("días", "days")}`,
       chargeableCbm: cbm,
@@ -194,18 +194,19 @@ export function calculateCosts(
   rates: Rates = DEFAULT_RATES,
 ): CostResult {
   const quantity = params.quantity || 1;
-  const productCost = Math.round(params.price * quantity); // FOB
+  // Everything is kept unrounded; amounts are rounded only when shown
+  const productCost = params.price * quantity; // FOB
 
   const freight = calculateFreight(params.volumeCbm || 0, params.weightKg || 0, rates);
   const shipping = freight.amount;
 
   // Insurance: 1% of FOB, minimum USD 250
-  const insurance = Math.round(Math.max(productCost * rates.insuranceRate, rates.insuranceMin));
+  const insurance = Math.max(productCost * rates.insuranceRate, rates.insuranceMin);
 
   // Guatemala: DAI on CIF, IVA on CIF + DAI
   const cif = productCost + shipping + insurance;
-  const importDuties = Math.round(cif * rates.dutyRate);
-  const taxes = Math.round((cif + importDuties) * rates.vatRate);
+  const importDuties = cif * rates.dutyRate;
+  const taxes = (cif + importDuties) * rates.vatRate;
 
   // Fixed quetzal fees are kept exact (not rounded in USD) so they show as Q1,200 / Q9,500
   const customsFees = rates.customsFeesGTQ > 0 ? rates.customsFeesGTQ / rates.exchangeRate : Math.round(rates.customsFees);
@@ -239,14 +240,14 @@ export function calculateCosts(
     {
       key: "duties",
       label: Lx("DAI (arancel)", "DAI (import duty)"),
-      detail: `${pct(rates.dutyRate)} ${Lx("sobre valor CIF", "on CIF value")} ${formatQ(cif, rates.exchangeRate)}`,
+      detail: `${pct(rates.dutyRate)} ${Lx("sobre valor CIF", "on CIF value")} ${formatQ(cif, rates.exchangeRate, 2)}`,
       amount: importDuties,
       color: "#60A5FA",
     },
     {
       key: "vat",
       label: Lx("IVA", "IVA (VAT)"),
-      detail: `${pct(rates.vatRate)} ${Lx("sobre CIF + DAI", "on CIF + DAI")}`,
+      detail: `${pct(rates.vatRate)} ${Lx("sobre CIF + DAI", "on CIF + DAI")} ${formatQ(cif + importDuties, rates.exchangeRate, 2)}`,
       amount: taxes,
       color: "#93C5FD",
     },
