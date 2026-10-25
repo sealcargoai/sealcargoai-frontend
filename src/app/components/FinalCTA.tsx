@@ -118,9 +118,13 @@ export function FinalCTA() {
   const supplierName = stateSupplier?.name || "";
   const isLiveData = hasUsableSupplier(stateSupplier);
   const priceInfo = supplierPriceInfo(stateSupplier);
-  const priceNote = priceInfo.isRange
-    ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
-    : "";
+  const priceNote = stateSupplier?.priceSource === "client"
+    ? L("precio indicado por el cliente", "price entered by the client")
+    : priceInfo.isRange
+      ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
+      : stateSupplier?.priceConfirmed
+        ? L("precio publicado atípico, usado a pedido del cliente", "atypical published price, used at the client's request")
+        : "";
 
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;

@@ -121,7 +121,8 @@ export function getReviewTopics(productType: string, supplier: any, description 
         source: T("Proveedor", "Supplier"),
       },
     );
-    if (FOOD_USE.test(`${description} ${supplier?.productName ?? ""}`)) {
+    // Only the client's own description decides (listing titles mix many uses)
+    if (FOOD_USE.test(description || "")) {
       topics.push(
         {
           title: T("Partes en contacto con alimentos", "Parts in contact with food"),
@@ -325,12 +326,10 @@ export function RiskCompliance() {
             <ClipboardList className="w-5 h-5" />
             {L(`Temas por revisar (${topics.length})`, `Topics to review (${topics.length})`)}
           </h2>
-          <ol className="space-y-4">
+          <ol className="space-y-4 list-none">
             {topics.map((tp, i) => (
               <li key={i} className="border-l-4 border-blue-400 bg-blue-50/60 rounded-lg p-4">
-                <h3 className="font-semibold text-[#0B3C5D] mb-1">
-                  {i + 1}. {tp.title}
-                </h3>
+                <h3 className="font-semibold text-[#0B3C5D] mb-1">{`${i + 1}. ${tp.title}`}</h3>
                 <p className="text-sm text-slate-700 mb-2">{tp.why}</p>
                 <p className="text-sm text-slate-800">
                   <span className="font-medium">{L("Qué hacer:", "What to do:")}</span> {tp.action}

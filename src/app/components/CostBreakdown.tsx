@@ -1,4 +1,6 @@
+import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
+import { priceIssue } from "../../utils/priceCheck";
 import {
   DollarSign,
   Ship,
@@ -99,7 +101,31 @@ export function CostBreakdown() {
   const { t, L } = useLanguage();
 
   // ── Read state ────────────────────────────────────────────────────────────
-  const stateSupplier = location.state?.supplier ?? null;
+  const originalSupplier = location.state?.supplier ?? null;
+  // Atypical published prices (US$1, very wide ranges…) are not used until the
+  // client confirms them or types the price they were quoted.
+  const priceFlag = priceIssue(originalSupplier);
+  const [customPrice, setCustomPrice] = useState<number>(
+    originalSupplier?.priceSource === "client" ? Number(originalSupplier.price) || 0 : 0,
+  );
+  const [usePublished, setUsePublished] = useState<boolean>(!!originalSupplier?.priceConfirmed);
+  const stateSupplier =
+    originalSupplier && customPrice > 0 && originalSupplier.priceSource !== "client"
+      ? {
+          ...originalSupplier,
+          price: customPrice,
+          priceRange: "",
+          priceSource: "client",
+          priceFlag: undefined,
+          priceConfirmed: undefined,
+          publishedPrice: supplierPriceInfo(originalSupplier).published,
+        }
+      : originalSupplier && customPrice > 0
+        ? { ...originalSupplier, price: customPrice }
+        : originalSupplier && usePublished && priceFlag
+          ? { ...originalSupplier, priceConfirmed: true }
+          : originalSupplier;
+  const needsPriceDecision = !!priceFlag && !usePublished && !(customPrice > 0);
   const stateQuantity = location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
@@ -125,6 +151,30 @@ export function CostBreakdown() {
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
   const rates = useRates();
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
+  if (needsPriceDecision) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
+        <div className="max-w-4xl mx-auto">
+          <button
+            onClick={() => navigate(-1)}
+            className="mb-4 text-sm text-slate-600 hover:text-[#0B3C5D]"
+          >
+            ← {L("Volver a proveedores", "Back to suppliers")}
+          </button>
+          <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
+          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+        <OwnPrice current={customPrice} onChange={(v) => setCustomPrice(v)} />
+          <PriceDecision
+            reason={priceFlag}
+            published={priceInfo.published}
+            onCustom={(v) => setCustomPrice(v)}
+            onUsePublished={() => setUsePublished(true)}
+            onBack={() => navigate(-1)}
+          />
+        </div>
+      </div>
+    );
+  }
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg }, rates);
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
 
@@ -623,5 +673,124 @@ export function CostBreakdown() {
         </div>
       </div>
     </div>
+  );
+}
+
+/** Shown instead of the scenario when the published price looks atypical. */
+function PriceDecision({
+  reason,
+  published,
+  onCustom,
+  onUsePublished,
+  onBack,
+}: {
+  reason: string;
+  published: string;
+  onCustom: (v: number) => void;
+  onUsePublished: () => void;
+  onBack: () => void;
+}) {
+  const [text, setText] = useState("");
+  const value = parseFloat(text.replace(",", "."));
+  const ok = value > 0 && value < 10_000_000;
+  return (
+    <div className="bg-amber-50 border-2 border-amber-300 rounded-xl p-5 sm:p-6 mb-8">
+      <h2 className="text-lg font-semibold text-amber-900 mb-2">
+        {Lx("Antes de calcular: este precio no parece utilizable", "Before calculating: this price doesn't look usable")}
+      </h2>
+      <p className="text-sm text-amber-900 mb-4">
+        {reason}{" "}
+        {Lx(
+          `Calcular costos con ${published} daría un escenario engañoso. Escribe el precio unitario que te cotizaron, o vuelve y escoge otra opción.`,
+          `Estimating costs with ${published} would give a misleading scenario. Enter the unit price you were quoted, or go back and choose another option.`,
+        )}
+      </p>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ok) onCustom(value);
+        }}
+        className="flex flex-col sm:flex-row gap-3 sm:items-end mb-4"
+      >
+        <label className="flex-1 text-sm text-slate-700">
+          <span className="block mb-1 font-medium">{Lx("Precio unitario cotizado (US$)", "Quoted unit price (US$)")}</span>
+          <input
+            type="number"
+            min="0.01"
+            step="0.01"
+            inputMode="decimal"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+            placeholder={Lx("Ej. 4500", "e.g. 4500")}
+          />
+        </label>
+        <button
+          type="submit"
+          disabled={!ok}
+          className="px-5 py-2.5 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold disabled:opacity-50"
+        >
+          {Lx("Calcular con este precio", "Calculate with this price")}
+        </button>
+      </form>
+      <div className="flex flex-col sm:flex-row gap-3 text-sm">
+        <button onClick={onBack} className="px-4 py-2 rounded-lg border-2 border-slate-300 text-slate-700 font-semibold bg-white">
+          {Lx("Escoger otra opción", "Choose another option")}
+        </button>
+        <button onClick={onUsePublished} className="px-4 py-2 rounded-lg text-amber-900 underline">
+          {Lx(`Usar ${published} de todos modos`, `Use ${published} anyway`)}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/** Lets the client recalculate with the price they were quoted. */
+function OwnPrice({ current, onChange }: { current: number; onChange: (v: number) => void }) {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState(current > 0 ? String(current) : "");
+  const value = parseFloat(text.replace(",", "."));
+  const ok = value > 0 && value < 10_000_000;
+  if (!open) {
+    return (
+      <div className="mb-6 -mt-4 text-sm">
+        <button onClick={() => setOpen(true)} className="text-blue-600 hover:underline">
+          {current > 0
+            ? Lx("Cambiar el precio que indicaste", "Change the price you entered")
+            : Lx("¿Te cotizaron otro precio? Calcular con mi precio", "Were you quoted another price? Calculate with my price")}
+        </button>
+      </div>
+    );
+  }
+  return (
+    <form
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (ok) {
+          onChange(value);
+          setOpen(false);
+        }
+      }}
+      className="mb-6 -mt-4 flex flex-col sm:flex-row gap-3 sm:items-end bg-white border border-slate-200 rounded-xl p-4"
+    >
+      <label className="flex-1 text-sm text-slate-700">
+        <span className="block mb-1 font-medium">{Lx("Precio unitario cotizado (US$)", "Quoted unit price (US$)")}</span>
+        <input
+          type="number"
+          min="0.01"
+          step="0.01"
+          inputMode="decimal"
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+        />
+      </label>
+      <button type="submit" disabled={!ok} className="px-5 py-2.5 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold disabled:opacity-50">
+        {Lx("Recalcular", "Recalculate")}
+      </button>
+      <button type="button" onClick={() => setOpen(false)} className="px-4 py-2 text-sm text-slate-600">
+        {Lx("Cancelar", "Cancel")}
+      </button>
+    </form>
   );
 }

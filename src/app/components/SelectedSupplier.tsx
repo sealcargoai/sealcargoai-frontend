@@ -49,6 +49,10 @@ export interface SelectedSupplierData {
   productName?: string;
   price?: number;
   priceRange?: string;
+  priceSource?: string; // "client" when the client typed the price
+  priceFlag?: string;
+  priceConfirmed?: boolean;
+  publishedPrice?: string;
   moq?: number;
   rating?: number | null;
   reviews?: number;
@@ -277,8 +281,20 @@ export function SelectedSupplierCard({ supplier, description = "" }: { supplier:
         </div>
 
         <div className="sm:text-right shrink-0">
-          <p className="text-xs text-slate-500">{Lx("Precio publicado en Alibaba", "Price published on Alibaba")}</p>
+          <p className="text-xs text-slate-500">
+            {supplier.priceSource === "client"
+              ? Lx("Precio indicado por ti", "Price you entered")
+              : Lx("Precio publicado en Alibaba", "Price published on Alibaba")}
+          </p>
           <p className="text-lg font-bold text-[#0B3C5D]">{published}</p>
+          {supplier.priceSource === "client" && supplier.publishedPrice && (
+            <p className="text-xs text-slate-500 mt-0.5">
+              {Lx(`Publicado en Alibaba: ${supplier.publishedPrice}`, `Published on Alibaba: ${supplier.publishedPrice}`)}
+            </p>
+          )}
+          {supplier.priceConfirmed && supplier.priceSource !== "client" && (
+            <p className="text-xs text-amber-700 mt-0.5">{Lx("Precio atípico usado a pedido tuyo", "Atypical price used at your request")}</p>
+          )}
           {isRange && (
             <p className="text-xs text-slate-500 mt-0.5">
               {Lx(`Se calculó con ${formatUSD(used, 2)} (precio medio)`, `Calculated with ${formatUSD(used, 2)} (midpoint)`)}

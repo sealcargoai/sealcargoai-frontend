@@ -26,6 +26,8 @@ import { SEAL_COMPANY } from "../../utils/reportExports";
 import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
 import { Lx, plural } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
+import { flagPrices } from "../../utils/priceCheck";
+import { descriptionIsDetailed } from "../../utils/descriptionCheck";
 import {
   supplierPriceInfo,
   SupplierDisclaimer,
@@ -93,7 +95,8 @@ function MorePlatforms({
   const [error, setError] = useState("");
 
   const kw = (keyword || productDescription || "").trim();
-  if (!kw) return null;
+  // No external searches for descriptions that don't name a product ("abc")
+  if (!kw || !descriptionIsDetailed(productDescription || keyword)) return null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -533,6 +536,8 @@ interface Supplier {
   id: number;
   name: string;
   productName?: string;
+  priceRange?: string;
+  priceFlag?: string;
   rating: number | null;
   reviews: number;
   moq: number;
@@ -595,14 +600,14 @@ export function SupplierResults() {
   // Only real results — no demo data
   const reqSpecs = requestedSpecs(String(location.state?.productDescription ?? ""));
   // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
-  const displaySuppliers: Supplier[] = orderBySpecs(
+  const displaySuppliers: Supplier[] = flagPrices(orderBySpecs(
     (apiData?.topSuppliers ?? []).map((s: Supplier) => ({
       ...s,
       name: decodeEntities(s.name),
       productName: s.productName ? decodeEntities(s.productName) : s.productName,
     })),
     reqSpecs,
-  ).slice(0, 9);
+  ).slice(0, 9));
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
@@ -617,8 +622,9 @@ export function SupplierResults() {
   const rates = useRates();
 
   // ── State ─────────────────────────────────────────────────────────────────
+  // Default: the first option whose price looks usable (atypical prices need confirmation)
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier>(
-    displaySuppliers[0] as Supplier,
+    (displaySuppliers.find((s) => !s.priceFlag) ?? displaySuppliers[0]) as Supplier,
   );
   const [showFiltered, setShowFiltered] = useState(false);
   const [sortBy, setSortBy] = useState("seal");
@@ -951,6 +957,12 @@ export function SupplierResults() {
                           </p>
                         )}
                         <SpecTags description={String(location.state?.productDescription ?? "")} productName={supplier.productName} />
+                        {supplier.priceFlag && (
+                          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-3">
+                            <span className="font-semibold">{Lx("Precio atípico:", "Atypical price:")}</span> {supplier.priceFlag}{" "}
+                            {Lx("Para calcular costos con esta opción te pediremos confirmarlo o escribir el precio que te coticen.", "To estimate costs with this option we'll ask you to confirm it or enter the price you're quoted.")}
+                          </p>
+                        )}
 
                         {/* Índice de Confianza SEAL */}
                         <div className="mb-3">
@@ -1000,6 +1012,11 @@ export function SupplierResults() {
                               {pi.isRange && (
                                 <div className="text-xs text-slate-500">
                                   {Lx("medio", "midpoint")} {formatUSD(pi.used, 2)}
+                                </div>
+                              )}
+                              {supplier.priceFlag && (
+                                <div className="mt-1 inline-block text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2 py-0.5">
+                                  {Lx("Precio atípico", "Atypical price")}
                                 </div>
                               )}
                             </>
