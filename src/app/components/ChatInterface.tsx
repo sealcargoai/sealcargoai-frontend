@@ -4,7 +4,7 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { buildReply, productFromMessage, productMention, replyKinds, foodAdvice, quantityChange, type ReplySpec } from "../../utils/chatReply";
+import { buildReply, productFromMessage, productMention, replyKinds, foodAdvice, quantityChange, followUpMath, packMathAll, packMath, mathStatement, type ReplySpec } from "../../utils/chatReply";
 
 interface Message {
   role: "user" | "ai";
@@ -73,14 +73,31 @@ export function ChatInterface() {
   const handleSend = () => {
     if (!input.trim()) return;
     const text = input.trim();
-    const newProduct = productFromMessage(text) || undefined;
+    // the last calculation asked here, so "¿Y los 300 cuadernos en paquetes de 10?" builds on it
+    const isMath = replyKinds(text).includes("math");
+    // the latest earlier calculation this message follows ("¿Y los cuadernos?" can point further back)
+    let lastMath = "";
+    let follow = null as ReturnType<typeof followUpMath>;
+    if (!isMath && !replyKinds(text).length)
+      for (const x of [...specs].reverse()) {
+        if (!x.mathText) continue;
+        follow = followUpMath(text, x.mathText);
+        if (follow) { lastMath = x.mathText; break; }
+      }
+    const mathText = isMath
+      ? packMathAll(text).length ? text : mathStatement(packMath(text)!)
+      : follow ? mathStatement(follow) : undefined;
+    // a calculation is not a product statement nor a quantity change
+    const newProduct = mathText ? undefined : productFromMessage(text) || undefined;
     // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
-    const mentioned = !newProduct ? productMention(text) || undefined : undefined;
+    const mentioned = !newProduct && !mathText ? productMention(text) || undefined : undefined;
     // only a certificate answer that asked "¿qué producto?" is answered again for the new product
     const lastAi = specs[specs.length - 1];
     const askedForProduct = !!lastAi && !lastAi.product && replyKinds(lastAi.reask || lastAi.text).includes("certificate");
-    const qc = quantityChange(text);
+    const qc = mathText ? null : quantityChange(text);
     const spec: ReplySpec = {
+      mathText,
+      previousMath: follow ? lastMath : undefined,
       newQuantity: qc?.qty,
       oldQuantity: qc ? qc.before || currentQuantity || undefined : undefined,
       text,

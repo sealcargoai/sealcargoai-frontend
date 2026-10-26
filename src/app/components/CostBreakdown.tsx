@@ -23,7 +23,7 @@ import {
 } from "recharts";
 import { buildCostPdf } from "../../utils/costPdf";
 import { Lx } from "../../utils/lang";
-import { saleUnitInfo, unitWordFor, quantityIntent } from "../../utils/saleUnit";
+import { saleUnitInfo, unitWordFor, quantityIntent, productNoun } from "../../utils/saleUnit";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
@@ -247,6 +247,8 @@ export function CostBreakdown() {
             fromDescription={intent !== ""}
             onMode={setQtyMode}
             onPack={setCustomPack}
+            item={productNoun(productDescription)}
+            mixedWith={unitInfo.mixedWith || ""}
             blocking
           />
         </div>
@@ -487,6 +489,8 @@ export function CostBreakdown() {
             fromDescription={intent !== ""}
             onMode={setQtyMode}
             onPack={setCustomPack}
+            item={productNoun(productDescription)}
+            mixedWith={unitInfo.mixedWith || ""}
           />
         )}
         {sc.moqNote && (
@@ -1032,7 +1036,11 @@ function SaleUnitNotice({
   onMode,
   onPack,
   blocking = false,
+  item = "",
+  mixedWith = "",
 }: {
+  item?: string;
+  mixedWith?: string;
   unit: string;
   packSize: number;
   packFromTitle: boolean;
@@ -1045,6 +1053,10 @@ function SaleUnitNotice({
 }) {
   const [packText, setPackText] = useState("");
   const one = unitWordFor(unit, 1);
+  // the client's product word ("botellas"), so a mixed kit isn't counted by all its items
+  const itemEs = item || "piezas";
+  const itemEn = item || "pieces";
+  const howMany = /as$/.test(itemEs) ? "Cuántas" : "Cuántos";
   const many = unitWordFor(unit, 2);
   const sets = packSize > 1 ? Math.ceil(requested / packSize) : 0;
   const packValue = parseInt(packText, 10);
@@ -1067,8 +1079,13 @@ function SaleUnitNotice({
               ` and its title says ${packSize} pieces per ${one}: we use it as an assumption, to be confirmed with the supplier.`,
             )
           : packSize > 1
-            ? Lx(` y tú indicaste ${packSize} piezas por ${one}.`, ` and you entered ${packSize} pieces per ${one}.`)
-            : Lx(`; el título no dice cuántas piezas trae cada ${one}.`, `; the title doesn't say how many pieces each ${one} holds.`)}
+            ? Lx(` y tú indicaste ${packSize} ${itemEs} por ${one}.`, ` and you entered ${packSize} ${itemEn} per ${one}.`)
+            : mixedWith
+              ? Lx(
+                  `; es un set mixto (el título también menciona ${mixedWith}), así que no usamos el conteo de piezas del título: indica cuántas ${itemEs} trae cada ${one}.`,
+                  `; it's a mixed set (the title also mentions ${mixedWith}), so we don't use the title's piece count: enter how many ${itemEn} each ${one} holds.`,
+                )
+              : Lx(`; el título no dice cuántas ${itemEs} trae cada ${one}.`, `; the title doesn't say how many ${itemEn} each ${one} holds.`)}
         {fromDescription && mode
           ? Lx(
               ` Por lo que escribiste, tomamos tu cantidad como ${mode === "pieces" ? "piezas" : many}; puedes cambiarlo.`,
@@ -1081,19 +1098,21 @@ function SaleUnitNotice({
           {`${requested.toLocaleString()} ${unitWordFor(unit, requested)}`}
           {packSize > 1 && (
             <span className="block text-xs font-normal">
-              {Lx(`= ${(requested * packSize).toLocaleString()} piezas`, `= ${(requested * packSize).toLocaleString()} pieces`)}
+              {Lx(`= ${(requested * packSize).toLocaleString()} ${itemEs}`, `= ${(requested * packSize).toLocaleString()} ${itemEn}`)}
             </span>
           )}
         </button>
         <button onClick={() => onMode("pieces")} className={btn(mode === "pieces")}>
-          {Lx(`${requested.toLocaleString()} ${requested === 1 ? "pieza" : "piezas"}`, `${requested.toLocaleString()} ${requested === 1 ? "piece" : "pieces"}`)}
+          {item
+            ? `${requested.toLocaleString()} ${item}`
+            : Lx(`${requested.toLocaleString()} ${requested === 1 ? "pieza" : "piezas"}`, `${requested.toLocaleString()} ${requested === 1 ? "piece" : "pieces"}`)}
           <span className="block text-xs font-normal">
             {packSize > 1
               ? Lx(
-                  `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} piezas)`,
-                  `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} pieces)`,
+                  `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} ${itemEs})`,
+                  `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} ${itemEn})`,
                 )
-              : Lx(`necesitamos saber cuántas trae cada ${one}`, `we need to know how many each ${one} holds`)}
+              : Lx(`necesitamos saber cuántas ${itemEs} trae cada ${one}`, `we need to know how many ${itemEn} each ${one} holds`)}
           </span>
         </button>
       </div>
@@ -1106,7 +1125,14 @@ function SaleUnitNotice({
           className="mt-3 flex flex-col sm:flex-row gap-2 sm:items-end"
         >
           <label className="flex-1">
-            <span className="block mb-1 font-medium">{Lx(`Piezas por ${one} (según el proveedor)`, `Pieces per ${one} (per the supplier)`)}</span>
+            <span className="block mb-1 font-medium">
+              {item || mixedWith
+                ? Lx(
+                    `¿${howMany} ${itemEs} contiene cada ${one}? No incluyas ${mixedWith ? `${mixedWith} ni otros accesorios` : "accesorios ni otros artículos"}.`,
+                    `How many ${itemEn} does each ${one} contain? Don't count ${mixedWith ? `${mixedWith} or other accessories` : "accessories or other items"}.`,
+                  )
+                : Lx(`Piezas por ${one} (según el proveedor)`, `Pieces per ${one} (per the supplier)`)}
+            </span>
             <input
               type="number"
               min="2"

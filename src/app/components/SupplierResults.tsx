@@ -1191,6 +1191,11 @@ export function SupplierResults() {
                                           {Lx(`${u.packSize} piezas según el título`, `${u.packSize} pieces per the title`)}
                                         </span>
                                       )}
+                                      {u.mixedWith && (
+                                        <span className="block text-xs text-amber-700">
+                                          {Lx(`Set mixto: también incluye ${u.mixedWith}`, `Mixed set: also includes ${u.mixedWith}`)}
+                                        </span>
+                                      )}
                                     </>
                                   );
                                 })()}
