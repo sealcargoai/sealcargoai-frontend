@@ -6,7 +6,7 @@ import { Lx } from "../utils/lang";
 
 // Shown small in the corner so testers can tell which version they are seeing.
 // Update it with each published change.
-export const APP_VERSION = "2026.10.26-b";
+export const APP_VERSION = "2026.10.26-c";
 
 // Name of the main script this tab is running (it changes with every deploy)
 function currentBundle(): string {
@@ -75,10 +75,8 @@ export default function App() {
     <LanguageProvider>
       <RouterProvider router={router} />
       <NewVersionBanner />
-      <div
-        aria-hidden="true"
-        className="fixed bottom-1 left-2 z-50 text-[10px] text-slate-400 pointer-events-none select-none"
-      >
+      {/* at the end of the page (not floating), so it never covers content */}
+      <div aria-hidden="true" className="text-[10px] text-slate-400 text-right px-3 py-1 select-none bg-slate-50">
         v{APP_VERSION}
       </div>
     </LanguageProvider>
