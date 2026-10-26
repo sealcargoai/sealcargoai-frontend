@@ -105,6 +105,9 @@ export function packMath(text: string, force = false): PackMath | null {
   if (!force && !VERB_Q.test(t)) return null;
   // money is not a quantity ("tengo US$500", "Q2,000", "300 dólares")
   t = t.replace(/(?:us\$|usd|\$|(?:^|\s)q\.?)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:d[oó]lares|dollars|usd|quetzales|gtq)\b/g, " ");
+  // the value being replaced is not part of the calculation: "paquetes de 16 en
+  // lugar de 10", "300 en vez de 500", "24 per set instead of 12"
+  t = t.replace(new RegExp(`(?:en\\s+lugar\\s+de|en\\s+vez\\s+de|instead\\s+of|rather\\s+than|y\\s+no\\s+de|y\\s+no)\\s+(?:(?:los|las|el|la|the)\\s+)?(?:${PACK_RE}\\s+(?:de|of)\\s+)?\\d+(?:[.,]\\d+)?(?:\\s+(?:${PACK_RE}|[a-záéíóúüñ]+))?`, "g"), " ");
   // samples are not part of the order ("y 2 sets de muestra")
   t = t.replace(new RegExp(`\\d+\\s+${PACK_RE}\\s+(?:de\\s+)?(?:muestras?|samples?)\\b`, "g"), " ");
   // a budget is money even without a currency ("presupuesto de 300")
@@ -234,7 +237,12 @@ export function followUpMath(text: string, previous: string): PackMath | null {
   if (/\d\s*(?:d[ií]as?|days?|semanas?|weeks?|meses|months?|a[nñ]os?|years?|horas?|hours?|contenedor(?:es)?|containers?|%)\b|us\$|\$|(?:^|\s)q\s*\d|\d\s*(?:d[oó]lares|dollars|quetzales|usd|gtq)\b|modelo|model|garant|guarant|flete|freight|pago|pagar|pay\b|precio|price|costo|cost|presupuesto|budget|tiendas?|escuelas?|sucursal(?:es)?|stores?|branch(?:es)?|clientes?|customers?/i.test(t)) return null;
   const full = packMath(t, true);
   if (full) return full;
-  const prev = all[0] || packMath(previous, true);
+  // the earlier order this refers to: the one with the same kind of pack when the
+  // message names one ("¿Y si cada set trae 30?" is about the sets, not the paquetes)
+  const cands = all.length ? all : [packMath(previous, true)].filter((x): x is PackMath => !!x);
+  const named = normalizeNumbers(t.toLowerCase()).match(new RegExp(`\\b${PACK_RE}\\b`));
+  const namedPack = named ? packOf(named[1]) : undefined;
+  const prev = namedPack ? cands.find((m) => m.pack === namedPack) : cands[0];
   if (!prev) return null;
   const items = prev.item || Lx("piezas", "pieces");
   // "¿Y si son 50 sets?": a count of packs, checked against the earlier order
@@ -465,6 +473,8 @@ export function sameProduct(a: string, b: string): boolean {
 export function quantityChange(text: string): { qty: number; before: number } | null {
   const t = normalizeNumbers(` ${String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ")} `);
   if (packMath(text)) return null;
+  // "paquetes de 16 en lugar de 10" changes the pack, not the quantity
+  if (new RegExp(`\\b${PACK_RE}\\b`).test(t)) return null;
   const m =
     t.match(/(?:cambi\w*|ajust\w*|pon\w*|modific\w*|change|set|make)\s+(?:la\s+|the\s+)?(?:cantidad|quantity|it)?\s*(?:a|to|en)?\s*(\d+)/) ||
     t.match(/(?:quiero|necesito|ser[ií]an|mejor|i\s+want|i\s+need|make\s+it)\s+(\d+)\b[^\d]*?\b(?:en\s+vez\s+de|en\s+lugar\s+de|instead\s+of|y\s+no|not)\s+(\d+)/) ||
@@ -507,6 +517,20 @@ export function buildReply(r: ReplySpec): string {
   // a follow-up to an earlier calculation ("¿Y los 300 cuadernos en paquetes de 10?")
   const follow = !kinds.length && r.previousMath ? followUpMath(q, r.previousMath) : null;
   if (follow) return [...parts, packMathReply(follow)].join("\n\n");
+  // a pack size with no quantity and nothing earlier to build on: ask before calculating
+  if (!kinds.length && !r.newProduct) {
+    const size = normalizeNumbers(q.toLowerCase()).match(new RegExp(`${PACK_RE}\\s+(?:de|of|con|with|x)\\s*(\\d+)|(?:trae|traen|tiene|tienen|contiene|vienen?|has|holds|contains)\\s+(\\d+)`));
+    if (size) {
+      const n = size[2] || size[3];
+      return [
+        ...parts,
+        Lx(
+          `Para calcular con ${size[1] ? `${size[1]} de ${n}` : `${n} por empaque`} necesito la cantidad total: ¿cuántas piezas quieres en total?`,
+          `To calculate with ${size[1] ? `${size[1]} of ${n}` : `${n} per pack`} I need the total quantity: how many pieces do you want in total?`,
+        ),
+      ].join("\n\n");
+    }
+  }
   // a bare product statement answers the earlier question again, now for this product
   if (!kinds.length && r.newProduct && r.reask) {
     q = r.reask;

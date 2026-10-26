@@ -111,6 +111,23 @@ export interface UseMatch {
   listed: string; // uses the listing mentions
   excluded: string; // uses the client ruled out ("carne, pintura")
   hitsExcluded: string; // uses the listing mentions that the client ruled out ("" if none)
+  mentions?: string; // general uses the title names when none of the above ("uso industrial, uso mecánico")
+}
+
+// General uses a title may name ("industrial mechanical", "household cleaning"):
+// not compared with the client's use, only shown so the client confirms it
+const GENERAL: [string, string, RegExp][] = [
+  ["uso industrial", "industrial use", /\b(?:industrial|industry|industria)\b/],
+  ["uso mecánico", "mechanical use", /\b(?:mechanical|mechanic|mec[aá]nic[oa]s?)\b/],
+  ["construcción", "construction", /\b(?:construction|construcci[oó]n|building\s+site)\b/],
+  ["automotriz", "automotive", /\b(?:automotive|automotriz|car\s+repair|auto\s+repair)\b/],
+  ["jardinería", "gardening", /\b(?:garden(?:ing)?|jard[ií]n(?:er[ií]a)?)\b/],
+  ["uso doméstico", "household use", /\b(?:household|dom[eé]stic[oa]?|domestic|home\s+use)\b/],
+  ["limpieza", "cleaning", /\b(?:cleaning|limpieza)\b/],
+];
+export function generalUses(title?: string): string {
+  const t = String(title || "").toLowerCase();
+  return GENERAL.filter(([, , re]) => re.test(t)).map(([es, en]) => Lx(es, en)).join(", ");
 }
 
 /** null when the client did not say what the product is (or is not) for. */
@@ -149,6 +166,7 @@ export function matchUse(description: string, productTitle?: string): UseMatch |
     listed: conceptLabel(hit.length ? hit : status === "match" ? sharedC : [...listedC]),
     excluded: conceptLabel([...excludedC]),
     hitsExcluded: conceptLabel(hit),
+    mentions: status === "unknown" ? generalUses(productTitle) : "",
   };
 }
 
@@ -158,7 +176,12 @@ const RANK: Record<UseStatus, number> = { match: 0, unknown: 1, other: 2 };
 export function orderByUse<T extends { productName?: string }>(list: T[], description: string): T[] {
   if (!matchUse(description, "")) return list;
   return list
-    .map((s, i) => ({ s, i, r: RANK[matchUse(description, s.productName)!.status] }))
+    .map((s, i) => {
+      const u = matchUse(description, s.productName)!;
+      // a title that names only a general use (industrial, household…) goes after
+      // the ones that say nothing, when the client asked for a specific use
+      return { s, i, r: RANK[u.status] + (u.status === "unknown" && u.mentions && u.asked ? 0.5 : 0) };
+    })
     .sort((a, b) => a.r - b.r || a.i - b.i)
     .map((x) => x.s);
 }

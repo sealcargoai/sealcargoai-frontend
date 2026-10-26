@@ -130,8 +130,11 @@ export function flagComponents<T extends { productName?: string; price?: number;
   const wanted = splitExclusions(description).wanted;
   const MACHINE_TITLE = /\b(?:making|production|manufacturing|processing|packing|packaging|forming|molding|moulding)\s+(?:machines?|lines?|equipment|plants?)\b|\b(?:machines?|m[aá]quinas?|equipment|equipos?|molds?|moulds?|moldes?)\b/i;
   const clientWantsMachine = inferCategory(description) === "machinery" || MACHINE_TITLE.test(wanted) || /\b(molinos?|mills?|grinders?|tostadoras?|roasters?|bordadoras?|hornos?|ovens?|mezcladoras?|mixers?|selladoras?|sealers?|compresor|generador|bomba|pump)\b/i.test(wanted);
+  // "personal protective equipment", "safety equipment", "PPE" describe the product, not a machine
+  const NOT_MACHINE = /\b(?:personal\s+)?protect(?:ive|ion)\s+equipment\b|\bsafety\s+equipment\b|\bppe\b|\bequipo\s+de\s+protecci[oó]n\b|\bequipos?\s+de\s+seguridad\b|\bfitness\s+equipment\b|\bsports?\s+equipment\b|\bequipo\s+deportivo\b/gi;
+  const machineTitle = (title: string) => MACHINE_TITLE.test(title.replace(NOT_MACHINE, " "));
   const markMachine = <U extends { productName?: string }>(s: U) =>
-    !clientWantsMachine && MACHINE_TITLE.test(String(s.productName || ""))
+    !clientWantsMachine && machineTitle(String(s.productName || ""))
       ? { ...s, componentFlag: { status: "machine" as const, part: Lx("máquina o equipo", "machine or equipment") } }
       : s;
   const ctx = ctxFor(description);
