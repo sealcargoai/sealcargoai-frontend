@@ -4,6 +4,7 @@
 import { Lx } from "./lang";
 import { splitExclusions } from "./useMatch";
 import { comparablePrice } from "./priceCheck";
+import { inferCategory } from "./category";
 
 // minPrice: below this price per unit (US$) a "complete" product with a part in
 // its title is checked with the client (it is only a reason to ask, never shown as data)
@@ -58,7 +59,7 @@ const FAMILIES: Family[] = [
 // words that say it is a part whatever the product
 const GENERIC = /\breplacements?\s*$|\b(spare\s+parts?|parts?\s+for|replacement\s+(?:parts?|for)|repuestos?|refacci[oó]n(?:es)?|accesorios?\s+para|accessor(?:y|ies)\s+for|repair\s+kit|kit\s+de\s+reparaci[oó]n)\b/i;
 
-export type ComponentStatus = "part" | "ambiguous";
+export type ComponentStatus = "part" | "ambiguous" | "machine";
 export interface ComponentFlag { status: ComponentStatus; part: string }
 
 interface Ctx { familyIdx: number; askedParts: Set<string> }
@@ -125,11 +126,21 @@ export function flagComponents<T extends { productName?: string; price?: number;
   description: string,
   productType = "",
 ): (T & { componentFlag?: ComponentFlag })[] {
+  // "pencil making machine" for a client who wants pencils: another product
+  const wanted = splitExclusions(description).wanted;
+  const MACHINE_TITLE = /\b(?:making|production|manufacturing|processing|packing|packaging|forming|molding|moulding)\s+(?:machines?|lines?|equipment|plants?)\b|\b(?:machines?|m[aá]quinas?|equipment|equipos?|molds?|moulds?|moldes?)\b/i;
+  const clientWantsMachine = inferCategory(description) === "machinery" || MACHINE_TITLE.test(wanted) || /\b(molinos?|mills?|grinders?|tostadoras?|roasters?|bordadoras?|hornos?|ovens?|mezcladoras?|mixers?|selladoras?|sealers?|compresor|generador|bomba|pump)\b/i.test(wanted);
+  const markMachine = <U extends { productName?: string }>(s: U) =>
+    !clientWantsMachine && MACHINE_TITLE.test(String(s.productName || ""))
+      ? { ...s, componentFlag: { status: "machine" as const, part: Lx("máquina o equipo", "machine or equipment") } }
+      : s;
   const ctx = ctxFor(description);
-  if (!ctx) return list;
+  if (!ctx) return list.map(markMachine);
   const reads = list.map((s) => readTitle(ctx, s.productName || ""));
   const prices = list.map((s) => comparablePrice(s as never, productType));
   return list.map((s, i) => {
+    const m = markMachine(s);
+    if (m !== s) return m;
     const r = reads[i];
     if (!r) return s;
     if (r.status !== "feature") return { ...s, componentFlag: { status: r.status, part: r.part } };
@@ -147,6 +158,14 @@ export function flagComponents<T extends { productName?: string; price?: number;
 }
 
 export function componentText(f: ComponentFlag): { tag: string; warn: string } {
+  if (f.status === "machine")
+    return {
+      tag: Lx("Parece una máquina o equipo para fabricarlo, no el producto", "Looks like a machine or equipment to make it, not the product"),
+      warn: Lx(
+        "El título describe una máquina o equipo, no el producto que pediste. Si calculamos con su precio, el escenario no correspondería a lo que buscas.",
+        "The title describes a machine or equipment, not the product you asked for. Calculating with its price would not match what you're looking for.",
+      ),
+    };
   return f.status === "part"
     ? {
         tag: Lx(`Parece un componente o accesorio («${f.part}»), no el producto completo`, `Looks like a part or accessory ("${f.part}"), not the complete product`),
@@ -166,6 +185,6 @@ export function componentText(f: ComponentFlag): { tag: string; warn: string } {
 
 /** Stable re-order: parts last, ambiguous ones after the clear complete products. */
 export function orderByComponent<T extends { componentFlag?: ComponentFlag }>(list: T[]): T[] {
-  const r = (s: T) => (s.componentFlag?.status === "part" ? 2 : s.componentFlag?.status === "ambiguous" ? 1 : 0);
+  const r = (s: T) => (s.componentFlag?.status === "part" || s.componentFlag?.status === "machine" ? 2 : s.componentFlag?.status === "ambiguous" ? 1 : 0);
   return list.map((s, i) => ({ s, i })).sort((a, b) => r(a.s) - r(b.s) || a.i - b.i).map((x) => x.s);
 }

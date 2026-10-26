@@ -67,7 +67,7 @@ const groupsOf = (cs: Set<Concept>) => new Set([...cs].map((c) => c.g));
 // "not for paint or ink". The excluded part runs until the end of the clause
 // (punctuation, "sino", "pero", "solo", "but", "only") or a new "para"/"for".
 const NEG_START =
-  /\b(?:sin\s+(?:usarl[oa]s?|usar|uso|utilizarl[oa]|emplearl[oa])(?:\s+(?:en|para|con))?|nada\s+de|evit(?:ar|ando|o|e)(?:\s+(?:usarlo\s+)?(?:en|para|con))?|nunca(?:\s+para)?|jam[aá]s(?:\s+para)?|avoid(?:ing)?|never(?:\s+for)?|without(?:\s+(?:using\s+it\s+)?(?:for|on|with))?|que\s+no\s+sea(?:\s+para)?|no\s+(?:es\s+|sea\s+|sirve\s+|lo\s+quiero\s+|apt[oa]s?\s+)?(?:para|de)\b|no(?=\s)(?!\s+(?:tejid|t[oó]xic|toxic|inflamab|corrosiv|pereceder|retornab|reciclab|adhesiv|desechab|lavab|el[eé]ctric|met[aá]lic|magn[eé]tic|estéril|esteril|slip|woven))|ni(?:\s+para)?|excepto(?:\s+para)?|salvo(?:\s+para)?|menos\s+para|excluyendo|not(?:\s+(?:for|suitable\s+for|used\s+for|meant\s+for))?|nor(?:\s+for)?|except(?:\s+for)?|other\s+than|excluding)\b/g;
+  /\b(?:non[\s-]+(?=[a-záéíóúüñ])|sin\s+(?:usarl[oa]s?|usar|uso|utilizarl[oa]|emplearl[oa])(?:\s+(?:en|para|con))?|nada\s+de|evit(?:ar|ando|o|e)(?:\s+(?:usarlo\s+)?(?:en|para|con))?|nunca(?:\s+para)?|jam[aá]s(?:\s+para)?|avoid(?:ing)?|never(?:\s+for)?|without(?:\s+(?:using\s+it\s+)?(?:for|on|with))?|que\s+no\s+sea(?:\s+para)?|no\s+(?:es\s+|sea\s+|sirve\s+|lo\s+quiero\s+|apt[oa]s?\s+)?(?:para|de)\b|no(?=\s)(?!\s+(?:tejid|t[oó]xic|toxic|inflamab|corrosiv|pereceder|retornab|reciclab|adhesiv|desechab|lavab|el[eé]ctric|met[aá]lic|magn[eé]tic|estéril|esteril|slip|woven))|ni(?:\s+para)?|excepto(?:\s+para)?|salvo(?:\s+para)?|menos\s+para|excluyendo|not(?:\s+(?:for|suitable\s+for|used\s+for|meant\s+for))?|nor(?:\s+for)?|except(?:\s+for)?|other\s+than|excluding)\b/g;
 const NEG_END = /[.,;:!?()]|\b(?:sino|pero|solo|sólo|solamente|únicamente|unicamente|but|only|para|for)\b/;
 
 /** Splits a description into what the client wants and what they rule out. */
@@ -138,12 +138,15 @@ export function matchUse(description: string, productTitle?: string): UseMatch |
       askedC.has(c) ||
       (asked.has(c.g) && sameKind(c) && !excludedC.has(c) && !(excludedGroups.has(c.g) && hit.length)),
   );
-  const status: UseStatus = shared ? "match" : hit.length ? "other" : listed.size && asked.size ? "other" : "unknown";
+  // a listing that names a use the client ruled out is never "the requested use",
+  // even if it also names the requested one ("medical and food grade")
+  const status: UseStatus = hit.length ? "other" : shared ? "match" : listed.size && asked.size ? "other" : "unknown";
   const conceptLabel = (cs: Concept[]) => cs.map((c) => Lx(c.es, c.en)).join(", ");
+  const sharedC = [...listedC].filter((c) => askedC.has(c) || (asked.has(c.g) && sameKind(c) && !excludedC.has(c)));
   return {
     status,
     asked: conceptLabel([...askedC]),
-    listed: conceptLabel(hit.length ? hit : [...listedC]),
+    listed: conceptLabel(hit.length ? hit : status === "match" ? sharedC : [...listedC]),
     excluded: conceptLabel([...excludedC]),
     hitsExcluded: conceptLabel(hit),
   };

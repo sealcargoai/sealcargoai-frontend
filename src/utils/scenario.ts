@@ -7,6 +7,12 @@ import { saleUnitInfo, quantityIntent, packSizeFromTitle, unitWordFor, type Sale
 import { formatUSD } from "./costCalculator";
 import { Lx } from "./lang";
 
+/** A quantity from the form or state ("1e7", "1,000", 500): whole units, 1 when unusable. */
+export function qtyFrom(v: unknown): number {
+  const n = typeof v === "number" ? v : Number(String(v ?? "").replace(/,/g, "").trim());
+  return Number.isFinite(n) && n >= 1 ? Math.min(Math.floor(n), 10_000_000) : 1000;
+}
+
 export interface CostChoices {
   customPrice?: number;
   usePublished?: boolean;
@@ -191,4 +197,40 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
     supplier, priceFlag, needsPriceDecision, needsCompleteDecision, confirmationReset: !confirmationValid, needsUnitDecision, needsBasisDecision, unitInfo, intent, qtyMode,
     packSize, piecesPerUnit, quantity, price, ownPrice, publishedPerPiece, notes, moqNote,
   };
+}
+
+/** How the price used was obtained, for the reports ("" = the published price as is). */
+export function priceNoteFor(s: any): string {
+  if (!s) return "";
+  if (s.priceBasisNote) return String(s.priceBasisNote);
+  if (s.priceSource === "client") return Lx("precio indicado por el cliente", "price entered by the client");
+  const nums = String(s.priceRange || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/g)?.map(Number).filter((n) => n > 0) ?? [];
+  if (nums.length >= 2 && nums[0] !== nums[1]) {
+    const pub = `${formatUSD(nums[0], 2)} – ${formatUSD(nums[1], 2)}`;
+    const used = Number(s.price) || 0;
+    const isMid = used > 0 && Math.abs(used - (nums[0] + nums[1]) / 2) <= Math.max(0.005, used * 0.005);
+    return isMid ? Lx(`precio medio del rango ${pub}`, `midpoint of the range ${pub}`) : Lx(`rango publicado ${pub}`, `published range ${pub}`);
+  }
+  if (s.priceConfirmed) return Lx("precio publicado atípico, usado a pedido del cliente", "atypical published price, used at the client's request");
+  return "";
+}
+
+/** The assumptions every report keeps (same on screen, PDF and Excel), in the current language. */
+export function reportNotesFor(sc: Scenario, perUnitUsd: number, Q: (usd: number, decimals?: number) => string): string[] {
+  const one = unitWordFor(sc.unitInfo.unit, 1);
+  return [
+    ...sc.notes,
+    ...(sc.piecesPerUnit > 1
+      ? [
+          Lx(
+            `Equivalente por pieza: unos ${Q(perUnitUsd / sc.piecesPerUnit, 2)} por pieza (${Q(perUnitUsd, 2)} por ${one} de ${sc.piecesPerUnit} piezas).`,
+            `Per-piece equivalent: about ${Q(perUnitUsd / sc.piecesPerUnit, 2)} per piece (${Q(perUnitUsd, 2)} per ${one} of ${sc.piecesPerUnit} pieces).`,
+          ),
+        ]
+      : []),
+    ...(sc.ownPrice ? [Lx("Precio usado: el que indicaste tú, no el publicado.", "Price used: the one you entered, not the published one.")] : []),
+    ...(!sc.ownPrice && sc.supplier?.priceConfirmed
+      ? [Lx("Precio usado: el publicado, aunque parecía atípico, porque lo confirmaste.", "Price used: the published one, although it looked atypical, because you confirmed it.")]
+      : []),
+  ];
 }

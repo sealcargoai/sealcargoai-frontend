@@ -107,6 +107,8 @@ export interface ExcelExportData {
 }
 
 const DEFAULT_FX = 7.9;
+// Quetzal cell format: 2 decimals, 4 under Q1 (Q0.0023, never Q0.00)
+const qFmt = (q: number) => (Math.abs(q) > 0 && Math.abs(q) < 1 ? '"Q"#,##0.0000' : '"Q"#,##0.00');
 
 export async function generateBeautifulExcel(
   data: ExcelExportData,
@@ -375,8 +377,9 @@ export async function generateBeautifulExcel(
     };
     appliedRateCell.alignment = { vertical: "middle", horizontal: "center" };
 
-    amountCell.value = row.pending ? Lx("Por cotizar", "To be quoted") : Math.round(row.amount * 100) / 100;
-    amountCell.numFmt = '"Q"#,##0.00';
+    // unrounded amounts; small ones keep 4 decimals (same as the screen and PDF)
+    amountCell.value = row.pending ? Lx("Por cotizar", "To be quoted") : row.amount;
+    amountCell.numFmt = qFmt(row.amount);
     amountCell.font = {
       name: "Arial",
       size: 10,
@@ -441,8 +444,8 @@ export async function generateBeautifulExcel(
     : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA");
   totalDetailCell.value = `${data.quantity.toLocaleString()} ${unitWordFor(data.costs.saleUnit, data.quantity)}`;
   totalRateCell.value = "—";
-  totalAmountCell.value = Math.round(data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100;
-  totalAmountCell.numFmt = '"Q"#,##0.00';
+  totalAmountCell.value = data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX);
+  totalAmountCell.numFmt = qFmt(totalAmountCell.value as number);
   totalPctCell.value = "100%";
 
   [
@@ -485,8 +488,8 @@ export async function generateBeautifulExcel(
   const perUnitEmpty = ws.getCell(`E${perUnitRowNum}`);
 
   perUnitLabel.value = Lx(`COSTO ESTIMADO POR ${unitWordFor(data.costs.saleUnit, 1).toUpperCase()}`, `ESTIMATED COST PER ${unitWordFor(data.costs.saleUnit, 1).toUpperCase()}`);
-  perUnitValue.value = Math.round(data.costs.perUnit * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100;
-  perUnitValue.numFmt = '"Q"#,##0.00';
+  perUnitValue.value = data.costs.perUnit * (data.costs.exchangeRate || DEFAULT_FX);
+  perUnitValue.numFmt = qFmt(perUnitValue.value as number);
 
   [perUnitLabel, perUnitValue, perUnitEmpty].forEach((cell, i) => {
     cell.font = {

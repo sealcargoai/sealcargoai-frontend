@@ -58,69 +58,158 @@ export function productMention(text: string): string | null {
 }
 const clean = (s: string) => s.replace(/^(?:un|una|unos|unas|los|las|el|la|a|an|the)\s+/i, "").replace(/[.!]+$/, "").trim();
 
-// ── Simple pack arithmetic ("¿cuántos sets de 12 cubren 500 lápices?") ──────
-const PACK_W = "(sets?|cajas?|paquetes?|estuches?|juegos?|docenas?|bolsas?|packs?|boxes|box|bags?|kits?|pares|pairs?)";
-const toNum = (x: string) => {
-  const t = x.toLowerCase().replace(/\s+/g, "");
-  const m = t.match(/^(\d+(?:[.,]\d+)?)(mil|thousand)?$/);
-  if (!m) return NaN;
-  const base = /^\d{1,3}([.,]\d{3})+$/.test(m[1]) ? Number(m[1].replace(/[.,]/g, "")) : Number(m[1].replace(",", "."));
-  return m[2] ? base * 1000 : base;
-};
-const NUM = "(\\d+(?:[.,]\\d+)*(?:\\s*(?:mil|thousand))?)";
+// ── Simple pack arithmetic ──────────────────────────────────────────────────
+// Recognises the same operation however it is written: "¿cuántos sets de 12
+// cubren 500 lápices?", "quiero 500 lápices, cada set trae 12, ¿cuántos sets?",
+// "if each box has 100, how many boxes for 5,000 gloves?", "¿alcanzan 40 sets?".
+const PACKS: [RegExp, string, string, string, string][] = [
+  // regex, singular ES, plural ES, singular EN, plural EN
+  [/^(?:sets?|juegos?)$/, "set", "sets", "set", "sets"],
+  [/^(?:cajas?|boxes|box)$/, "caja", "cajas", "box", "boxes"],
+  [/^(?:paquetes?|packs?)$/, "paquete", "paquetes", "pack", "packs"],
+  [/^(?:estuches?|cases?)$/, "estuche", "estuches", "case", "cases"],
+  [/^(?:bolsas?|bags?)$/, "bolsa", "bolsas", "bag", "bags"],
+  [/^(?:kits?)$/, "kit", "kits", "kit", "kits"],
+  [/^(?:docenas?|dozens?)$/, "docena", "docenas", "dozen", "dozens"],
+  [/^(?:pares|par|pairs?)$/, "par", "pares", "pair", "pairs"],
+  [/^(?:cartones|cart[oó]n|cartons?)$/, "cartón", "cartones", "carton", "cartons"],
+  [/^(?:rollos?|rolls?)$/, "rollo", "rollos", "roll", "rolls"],
+];
+const PACK_RE = "(sets?|juegos?|cajas?|boxes|box|paquetes?|packs?|estuches?|bolsas?|bags?|kits?|docenas?|dozens?|pares|par|pairs?|cartones|cart[oó]n|cartons?|rollos?|rolls?)";
+const packOf = (w: string) => PACKS.find(([r]) => r.test(w));
+// words that are not the counted item ("1,000 necesito", "500 para")
+const NOT_ITEM = /^(?:necesito|necesitas|necesita|quiero|quieres|compro|comprar|pido|pedir|son|hay|para|por|en|de|del|y|o|con|sin|que|cu[aá]nt[oa]s?|cada|total|unidades?|units?|i|need|want|buy|for|in|of|and|or|with|each|are|is|how|many|do|me|mi|mis|el|la|los|las|un|una|unos|unas|the|a|an|individual(?:es)?|sueltos?|sueltas?|single|loose)$/;
+const VERB_Q = /cu[aá]nt|how\s+many|how\s+much|necesit|alcanz|cubr|sobr|falt|enough|cover|need|left\s+over|spare|extra/;
 
-export interface PackMath { packs: number; perPack: number; total: number; wanted: number; extra: number; packWord: string; item: string; mode: "packs" | "total" }
+function normalizeNumbers(t: string): string {
+  return t
+    .replace(/(\d+(?:[.,]\d+)?)\s*(?:mil|thousand)\b/g, (_, n) => String(Math.round(parseFloat(n.replace(",", ".")) * 1000)))
+    .replace(/\b(\d{1,3}(?:,\d{3})+)\b/g, (n) => n.replace(/,/g, ""))
+    .replace(/\b(\d{1,3}(?:\.\d{3})+)\b(?!\.\d)/g, (n) => n.replace(/\./g, ""));
+}
 
-/** Reads "how many packs of N for M items" or "how many items in K packs of N". */
+export interface PackMath {
+  mode: "packs" | "total" | "check";
+  perPack: number;
+  packs: number; // packs needed (packs) / given (total, check)
+  wanted: number;
+  total: number;
+  extra: number;
+  pack: [RegExp, string, string, string, string];
+  item: string;
+}
+
+/** Reads a pack calculation in any wording, or null when the message isn't one. */
 export function packMath(text: string): PackMath | null {
-  const t = ` ${String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ")} `;
-  if (!/cu[aá]nt|how\s+many|how\s+much|alcanza|cubre|sobra|faltan|need|enough|left\s+over/.test(t)) return null;
-  // pack size: "sets de 12", "cajas de 100", "boxes of 50", "docenas" (12)
-  const size = t.match(new RegExp(`${PACK_W}\\s+(?:de|of|con|with|x)\\s+${NUM}(?:\\s+([a-záéíóúüñ]+))?`));
-  let perPack = size ? toNum(size[2]) : NaN;
-  let packWord = size ? size[1] : "";
-  if (!size && /docenas?|dozens?/.test(t)) { perPack = 12; packWord = /dozen/.test(t) ? "dozens" : "docenas"; }
-  if (!(perPack > 1) || perPack > 1e6) return null;
-  const rest = size ? t.replace(size[0], " ") : t;
-  // "42 sets de 12 → cuántos lápices": the number is right before the pack word
-  const packsGiven = size ? t.slice(0, t.indexOf(size[0])).match(new RegExp(`${NUM}\\s*$`)) : null;
-  if (packsGiven) {
-    const packs = toNum(packsGiven[1]);
-    if (!(packs > 0) || packs > 1e7) return null;
-    const asked = t.match(/cu[aá]nt[oa]s\s+([a-záéíóúüñ]{3,})|how\s+many\s+([a-z]{3,})/);
-    const item = (asked && (asked[1] || asked[2]) && !/^(?:son|hay|are|is)$/.test(asked[1] || asked[2]) ? asked[1] || asked[2] : "") || (size && size[3]) || "";
-    return { packs, perPack, total: packs * perPack, wanted: 0, extra: 0, packWord, item, mode: "total" };
+  let t = ` ${normalizeNumbers(String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ").replace(/\s+/g, " "))} `;
+  if (!VERB_Q.test(t)) return null;
+  // money is not a quantity ("tengo US$500", "Q2,000", "300 dólares")
+  t = t.replace(/(?:us\$|usd|\$|\bq\.?)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:d[oó]lares|dollars|usd|quetzales|gtq)\b/g, " ");
+  const N = "(\\d+(?:[.,]\\d+)?)";
+  const HAS = "(?:trae|traen|tiene|tienen|contiene|contienen|incluye|incluyen|lleva|llevan|viene\\s+con|vienen\\s+con|es\\s+de|son\\s+de|has|have|holds|hold|contains|contain|comes\\s+with|come\\s+with|includes|include)";
+  const rules: [RegExp, number, number][] = [
+    // [regex, group of the pack word, group of the size]
+    [new RegExp(`(?:cada|each|every|un|una|1|per|por)\\s+${PACK_RE}\\s+${HAS}\\s+${N}`), 1, 2],
+    [new RegExp(`${PACK_RE}\\s+${HAS}\\s+${N}`), 1, 2],
+    [new RegExp(`${PACK_RE}\\s+(?:de|of|con|with|x)\\s*${N}`), 1, 2],
+    [new RegExp(`${PACK_RE}\\s+(?:vienen|viene|come|comes|son|are)\\s+(?:de|of|con|with|en)\\s+${N}`), 1, 2],
+    [new RegExp(`${N}\\s+(?:[a-záéíóúüñ]+\\s+){0,2}(?:por|per|each|en\\s+cada|in\\s+each|in\\s+a|a|/)\\s*${PACK_RE}\\b`), 2, 1],
+    [new RegExp(`(?:vienen|viene|come|comes)\\s+(?:en\\s+|in\\s+)?${PACK_RE}\\s+(?:de|of)\\s+${N}`), 1, 2],
+  ];
+  let perPack = NaN;
+  let packWord = "";
+  let used = "";
+  for (const [re, pw, sz] of rules) {
+    const m = t.match(re);
+    if (m) {
+      perPack = Number(m[sz].replace(",", "."));
+      packWord = m[pw];
+      used = m[0];
+      break;
+    }
   }
-  const want = rest.match(new RegExp(`${NUM}\\s+([a-záéíóúüñ]{3,})?`));
-  const wanted = want ? toNum(want[1]) : NaN;
-  if (!(wanted > 0) || wanted > 1e8) return null;
+  if (!packWord) {
+    const m = t.match(new RegExp(`\\b${PACK_RE}\\b`));
+    if (m && /^(?:docenas?|dozens?)$/.test(m[1])) { perPack = 12; packWord = m[1]; }
+    else if (m && /^(?:pares|par|pairs?)$/.test(m[1])) { perPack = 2; packWord = m[1]; }
+  }
+  const pack = packOf(packWord);
+  if (!pack || !(perPack > 1) || perPack > 1e6 || !Number.isInteger(perPack)) return null;
+  // "42 sets de 12": the number right before the matched pack phrase is a count of packs
+  let rest = t;
+  let packsGiven = NaN;
+  if (used) {
+    const at = t.indexOf(used);
+    const before = t.slice(0, at).match(new RegExp(`${N}\\s*$`));
+    if (before && /^(?:sets?|juegos?|cajas?|boxes|box|paquetes?|packs?|estuches?|bolsas?|bags?|kits?|docenas?|dozens?|pares|par|pairs?|cartones|cart[oó]n|cartons?|rollos?|rolls?)/.test(used)) {
+      packsGiven = Number(before[1]);
+      rest = t.slice(0, at - before[0].length) + " " + t.slice(at + used.length);
+    } else rest = t.replace(used, " ");
+  }
+  // "40 cajas" elsewhere in the message
+  const given = rest.match(new RegExp(`${N}\\s+${PACK_RE}\\b`));
+  if (!Number.isFinite(packsGiven) && given && packOf(given[2]) === pack) packsGiven = Number(given[1]);
+  const rest2 = given && packOf(given[2]) === pack ? rest.replace(given[0], " ") : rest;
+  // the number of items wanted, and the word after it
+  const nums = [...rest2.matchAll(/(\d+(?:[.,]\d+)?)(?:\s+([a-záéíóúüñ]+))?(?:\s+([a-záéíóúüñ]+))?/g)];
+  const w = nums.find((m) => Number(m[1]) > 0);
+  const wanted = w ? Number(w[1].replace(",", ".")) : NaN;
+  let item = "";
+  if (w) item = [w[2], w[3]].find((x) => x && !NOT_ITEM.test(x) && !packOf(x)) || "";
+  if (!item) {
+    const asked = t.match(/cu[aá]nt[oa]s\s+([a-záéíóúüñ]+)|how\s+many\s+([a-z]+)/);
+    const a = asked && (asked[1] || asked[2]);
+    if (a && !NOT_ITEM.test(a) && !packOf(a)) item = a;
+  }
+  if (!item && used) {
+    const after = used.match(/\d+\s+([a-záéíóúüñ]+)/);
+    if (after && !NOT_ITEM.test(after[1]) && !packOf(after[1])) item = after[1];
+  }
+  if (Number.isFinite(packsGiven) && packsGiven > 0 && packsGiven <= 1e7) {
+    if (Number.isFinite(wanted) && wanted > 0 && wanted <= 1e8)
+      return { mode: "check", perPack, packs: packsGiven, wanted, total: packsGiven * perPack, extra: packsGiven * perPack - wanted, pack, item };
+    return { mode: "total", perPack, packs: packsGiven, wanted: 0, total: packsGiven * perPack, extra: 0, pack, item };
+  }
+  if (!(wanted > 0) || wanted > 1e8 || !Number.isInteger(wanted)) return null;
   const packs = Math.ceil(wanted / perPack);
-  const item = (want && want[2] && !/^(?:sets?|cajas?|piezas?|unidades)$/.test(want[2]) ? want[2] : "") || (size && size[3]) || "";
-  return { packs, perPack, total: packs * perPack, wanted, extra: packs * perPack - wanted, packWord, item, mode: "packs" };
+  return { mode: "packs", perPack, packs, wanted, total: packs * perPack, extra: packs * perPack - wanted, pack, item };
 }
 
 function packMathReply(m: PackMath): string {
   const items = m.item || Lx("piezas", "pieces");
-  const pw = (n: number) => {
-    const w = m.packWord;
-    if (n !== 1) return /s$/.test(w) ? w : w === "box" ? "boxes" : w === "caja" ? "cajas" : `${w}s`;
-    return w.replace(/(es|s)$/, (x) => (w === "boxes" ? "" : x === "es" && /(?:ches|xes)$/.test(w) ? "" : "")).replace(/^boxe$/, "box") || w;
-  };
+  const pw = (n: number) => (n === 1 ? Lx(m.pack[1], m.pack[3]) : Lx(m.pack[2], m.pack[4]));
   const f = (n: number) => n.toLocaleString("en-US");
+  const confirm = Lx(
+    " Confirma con el proveedor el contenido real y su pedido mínimo.",
+    " Confirm the real content and minimum order with the supplier.",
+  );
   if (m.mode === "total")
     return Lx(
-      `${f(m.packs)} ${pw(m.packs)} de ${f(m.perPack)} son ${f(m.total)} ${items}. Es un cálculo con el contenido que indicaste; confirma con el proveedor cuántas piezas trae realmente cada ${pw(1)}.`,
-      `${f(m.packs)} ${pw(m.packs)} of ${f(m.perPack)} make ${f(m.total)} ${items}. This uses the content you gave; confirm with the supplier how many pieces each ${pw(1)} really holds.`,
-    );
-  return m.extra === 0
-    ? Lx(
-        `Necesitarías ${f(m.packs)} ${pw(m.packs)}: exactamente ${f(m.total)} ${items}, suponiendo ${f(m.perPack)} por ${pw(1)}. Confirma con el proveedor el contenido real y su pedido mínimo.`,
-        `You'd need ${f(m.packs)} ${pw(m.packs)}: exactly ${f(m.total)} ${items}, assuming ${f(m.perPack)} per ${pw(1)}. Confirm the real content and minimum order with the supplier.`,
-      )
-    : Lx(
-        `Necesitarías ${f(m.packs)} ${pw(m.packs)}: ${f(m.total)} ${items}, con ${f(m.extra)} ${m.extra === 1 ? "adicional" : "adicionales"}, suponiendo ${f(m.perPack)} por ${pw(1)}. Con ${f(m.packs - 1)} ${pw(m.packs - 1)} tendrías ${f((m.packs - 1) * m.perPack)} y te faltarían ${f(m.wanted - (m.packs - 1) * m.perPack)}. Confirma con el proveedor el contenido real y su pedido mínimo.`,
-        `You'd need ${f(m.packs)} ${pw(m.packs)}: ${f(m.total)} ${items}, with ${f(m.extra)} extra, assuming ${f(m.perPack)} per ${pw(1)}. With ${f(m.packs - 1)} ${pw(m.packs - 1)} you'd have ${f((m.packs - 1) * m.perPack)}, ${f(m.wanted - (m.packs - 1) * m.perPack)} short. Confirm the real content and minimum order with the supplier.`,
-      );
+      `${f(m.packs)} ${pw(m.packs)} de ${f(m.perPack)} son ${f(m.total)} ${items}.`,
+      `${f(m.packs)} ${pw(m.packs)} of ${f(m.perPack)} make ${f(m.total)} ${items}.`,
+    ) + confirm;
+  if (m.mode === "check") {
+    const need = Math.ceil(m.wanted / m.perPack);
+    return (m.extra >= 0
+      ? Lx(
+          `Sí alcanza: ${f(m.packs)} ${pw(m.packs)} de ${f(m.perPack)} son ${f(m.total)} ${items}${m.extra ? `, con ${f(m.extra)} ${m.extra === 1 ? "adicional" : "adicionales"}` : ""} para las ${f(m.wanted)} que necesitas.`,
+          `Yes, it's enough: ${f(m.packs)} ${pw(m.packs)} of ${f(m.perPack)} make ${f(m.total)} ${items}${m.extra ? `, with ${f(m.extra)} extra` : ""} for the ${f(m.wanted)} you need.`,
+        )
+      : Lx(
+          `No alcanza: ${f(m.packs)} ${pw(m.packs)} de ${f(m.perPack)} son ${f(m.total)} ${items}; te faltarían ${f(-m.extra)}. Necesitarías ${f(need)} ${pw(need)} (${f(need * m.perPack)} ${items}).`,
+          `It's not enough: ${f(m.packs)} ${pw(m.packs)} of ${f(m.perPack)} make ${f(m.total)} ${items}; you'd be ${f(-m.extra)} short. You'd need ${f(need)} ${pw(need)} (${f(need * m.perPack)} ${items}).`,
+        )) + confirm;
+  }
+  if (m.extra === 0)
+    return Lx(
+      `Necesitarías ${f(m.packs)} ${pw(m.packs)}: exactamente ${f(m.total)} ${items}, suponiendo ${f(m.perPack)} por ${pw(1)}.`,
+      `You'd need ${f(m.packs)} ${pw(m.packs)}: exactly ${f(m.total)} ${items}, assuming ${f(m.perPack)} per ${pw(1)}.`,
+    ) + confirm;
+  const less = m.packs - 1;
+  return Lx(
+    `Necesitarías ${f(m.packs)} ${pw(m.packs)}: ${f(m.total)} ${items}, con ${f(m.extra)} ${m.extra === 1 ? "adicional" : "adicionales"}, suponiendo ${f(m.perPack)} por ${pw(1)}.${less > 0 ? ` Con ${f(less)} ${pw(less)} tendrías ${f(less * m.perPack)} y te faltarían ${f(m.wanted - less * m.perPack)}.` : ""}`,
+    `You'd need ${f(m.packs)} ${pw(m.packs)}: ${f(m.total)} ${items}, with ${f(m.extra)} extra, assuming ${f(m.perPack)} per ${pw(1)}.${less > 0 ? ` With ${f(less)} ${pw(less)} you'd have ${f(less * m.perPack)}, ${f(m.wanted - less * m.perPack)} short.` : ""}`,
+  ) + confirm;
 }
 
 export function replyKinds(text: string): string[] {
@@ -233,6 +322,8 @@ export interface ReplySpec {
   previous?: string; // product before this message ("" when unknown)
   reask?: string; // earlier question to answer again for the new product
   earlierFood?: boolean; // an earlier answer talked about food-contact materials
+  newQuantity?: number; // "quiero 2000 en vez de 500"
+  oldQuantity?: number;
 }
 
 /** Whether a certificate answer for this product talks about food contact. */
@@ -243,11 +334,52 @@ export function foodAdvice(product: string): boolean {
 }
 
 /** Builds the reply in the current language (called at render time). */
+// "Lápices de grafito para escuela, 500 unidades" and "lápices escolares" are the same product
+const STOP = new Set(["para", "with", "from", "unidades", "piezas", "units", "pieces", "quiero", "importar", "necesito", "escuela", "school", "industrial", "industriales"]);
+const stems = (x: string) =>
+  new Set(
+    x
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .split(/[^a-z]+/)
+      .filter((w) => w.length >= 4 && !STOP.has(w))
+      .map((w) => w.slice(0, 5)),
+  );
+export function sameProduct(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const A = stems(a);
+  return [...stems(b)].some((w) => A.has(w));
+}
+
+/** "Quiero 2000 en vez de 500", "cambia la cantidad a 2,000", "make it 300". */
+export function quantityChange(text: string): { qty: number; before: number } | null {
+  const t = normalizeNumbers(` ${String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ")} `);
+  if (packMath(text)) return null;
+  const m =
+    t.match(/(?:cambi\w*|ajust\w*|pon\w*|modific\w*|change|set|make)\s+(?:la\s+|the\s+)?(?:cantidad|quantity|it)?\s*(?:a|to|en)?\s*(\d+)/) ||
+    t.match(/(?:quiero|necesito|ser[ií]an|mejor|i\s+want|i\s+need|make\s+it)\s+(\d+)\b[^\d]*?\b(?:en\s+vez\s+de|en\s+lugar\s+de|instead\s+of|y\s+no|not)\s+(\d+)/) ||
+    t.match(/\b(\d+)\s+(?:[a-záéíóúüñ]+\s+)?(?:en\s+vez\s+de|en\s+lugar\s+de|instead\s+of)\s+(\d+)/);
+  if (!m) return null;
+  const qty = Number(m[1]);
+  if (!(qty >= 1) || qty > 10_000_000) return null;
+  return { qty, before: m[2] ? Number(m[2]) : 0 };
+}
+
 export function buildReply(r: ReplySpec): string {
   const ctx: ChatCtx = { product: r.product };
   const parts: string[] = [];
+  if (r.newQuantity) {
+    parts.push(
+      Lx(
+        `Anotado: la cantidad es ${r.newQuantity.toLocaleString("en-US")}${r.oldQuantity ? ` (antes ${r.oldQuantity.toLocaleString("en-US")})` : ""}. La paso al formulario; ahí puedes ajustarla.`,
+        `Noted: the quantity is ${r.newQuantity.toLocaleString("en-US")}${r.oldQuantity ? ` (before ${r.oldQuantity.toLocaleString("en-US")})` : ""}. I'll carry it to the form, where you can adjust it.`,
+      ),
+    );
+    return parts.join("\n\n");
+  }
   if (r.newProduct) {
-    const changed = !!r.previous && r.previous.toLowerCase() !== r.newProduct.toLowerCase();
+    const changed = !!r.previous && !sameProduct(r.previous, r.newProduct);
     const wrongAdvice = !!r.earlierFood && !foodAdvice(r.newProduct);
     parts.push(
       changed || wrongAdvice
