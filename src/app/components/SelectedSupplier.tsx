@@ -68,7 +68,7 @@ export function SpecTags({ description, productName, warn = false, component }: 
           </span>
         )}
         {comp && (
-          <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[component!.status === "part" ? "red" : "amber"]}`}>
+          <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[component!.status === "ambiguous" ? "amber" : "red"]}`}>
             <span className="font-semibold">{comp.tag}</span>
           </span>
         )}
@@ -180,11 +180,13 @@ export const TRUST_LEVELS: Record<string, { label: string; labelEs: string; labe
   A: { label: "", labelEs: "Referencia alta", labelEn: "High reference", short: "A", badge: "bg-green-100 text-green-800 border-green-300", text: "text-green-700", bar: "bg-green-500" },
   B: { label: "", labelEs: "Referencia media", labelEn: "Medium reference", short: "B", badge: "bg-blue-100 text-blue-800 border-blue-300", text: "text-blue-700", bar: "bg-blue-500" },
   C: { label: "", labelEs: "Referencia básica · se recomienda verificación", labelEn: "Basic reference · verification recommended", short: "C", badge: "bg-amber-100 text-amber-800 border-amber-300", text: "text-amber-700", bar: "bg-amber-500" },
+  D: { label: "", labelEs: "Bajo el mínimo de 50 · verificación necesaria", labelEn: "Below the 50 minimum · verification needed", short: "D", badge: "bg-red-100 text-red-800 border-red-300", text: "text-red-700", bar: "bg-red-500" },
 };
 
 export function trustInfo(s?: SelectedSupplierData | null) {
   const score = s?.trustScore ?? s?.aiScore ?? 0;
-  const level = s?.trustLevel && TRUST_LEVELS[s.trustLevel] ? s.trustLevel : score >= 80 ? "A" : score >= 65 ? "B" : "C";
+  // the level always follows the score shown (A 80+, B 65+, C 50+, below 50 = D)
+  const level = score >= 80 ? "A" : score >= 65 ? "B" : score >= 50 ? "C" : "D";
   return {
     score,
     level,
@@ -322,7 +324,7 @@ export function hasUsableSupplier(s?: SelectedSupplierData | null): boolean {
   return !!s && !!s.name && (s.price ?? 0) > 0;
 }
 
-export function SelectedSupplierCard({ supplier, description = "" }: { supplier: SelectedSupplierData; description?: string }) {
+export function SelectedSupplierCard({ supplier, description = "", pending = false }: { supplier: SelectedSupplierData; description?: string; pending?: boolean }) {
   const { used, isRange, published } = supplierPriceInfo(supplier);
   const link = supplier.productUrl || supplier.storeUrl;
   const gold = supplier.verifiedSupplier === true || supplier.goldSupplier || supplier.verified;
@@ -409,9 +411,13 @@ export function SelectedSupplierCard({ supplier, description = "" }: { supplier:
           )}
           {isRange && (
             <p className="text-xs text-slate-500 mt-0.5">
-              {supplierPriceInfo(supplier).isMid
-                ? Lx(`Se calculó con ${formatUSD(used, 2)} (precio medio)`, `Calculated with ${formatUSD(used, 2)} (midpoint)`)
-                : Lx(`Se calculó con ${formatUSD(used, 2)}`, `Calculated with ${formatUSD(used, 2)}`)}
+              {pending
+                ? supplierPriceInfo(supplier).isMid
+                  ? Lx(`Precio medio del rango: ${formatUSD(used, 2)} (aún sin calcular)`, `Range midpoint: ${formatUSD(used, 2)} (not calculated yet)`)
+                  : Lx(`Precio de referencia: ${formatUSD(used, 2)} (aún sin calcular)`, `Reference price: ${formatUSD(used, 2)} (not calculated yet)`)
+                : supplierPriceInfo(supplier).isMid
+                  ? Lx(`Se calculó con ${formatUSD(used, 2)} (precio medio)`, `Calculated with ${formatUSD(used, 2)} (midpoint)`)
+                  : Lx(`Se calculó con ${formatUSD(used, 2)}`, `Calculated with ${formatUSD(used, 2)}`)}
             </p>
           )}
           {link && (

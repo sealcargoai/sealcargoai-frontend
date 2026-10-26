@@ -122,6 +122,8 @@ export function ProductQualification() {
     volumeCbm: "", // optional — used to quote ocean freight
     weightKg: "",  // optional
     ...(useDraft ? draft!.formData : {}),
+    // a quantity the client gave in the chat ("quiero 2000 en vez de 500")
+    ...(location.state?.quantity && Number(location.state.quantity) >= 1 ? { quantity: String(Number(location.state.quantity)) } : {}),
   });
 
   useEffect(() => {
@@ -267,6 +269,7 @@ export function ProductQualification() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             ...formData,
+            quantity: String(Number(formData.quantity)),
             productType: productCategory,
             material: "",
             userQuery: productDescription,
@@ -321,6 +324,8 @@ export function ProductQualification() {
       navigate("/suppliers", {
         state: {
           ...formData,
+          // "1e7" and "1000" mean the same: send the plain number
+          quantity: String(Number(formData.quantity)),
           productType: productCategory,
           productDescription,
           descriptionCleaned: descriptionCleaned || !!location.state?.descriptionCleaned,

@@ -1,5 +1,6 @@
 import { supplierKey, loadCostChoices, saveCostChoices } from "../../utils/draft";
-import { resolveScenario, type CostChoices } from "../../utils/scenario";
+import { componentText, type ComponentFlag } from "../../utils/componentMatch";
+import { qtyFrom, resolveScenario, priceNoteFor, reportNotesFor, type CostChoices } from "../../utils/scenario";
 import { useEffect, useState } from "react";
 import { cleanSupplier } from "../../utils/text";
 import { useNavigate, useLocation } from "react-router";
@@ -73,7 +74,7 @@ function exportToPDF(
     priceNote,
     costs,
     disclaimer: sealDisclaimer(),
-    fileName: `SEAL_Estimacion_${supplierName.replace(/\s+/g, "_")}_${Date.now()}.pdf`,
+    fileName: `SEAL_${Lx("Estimacion", "Estimate")}_${supplierName.replace(/\s+/g, "_")}_${Date.now()}.pdf`,
   });
 }
 
@@ -128,7 +129,7 @@ export function CostBreakdown() {
   const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
   const stateProductType = location.state?.productType ?? "";
-  const requestedQty = parseInt(String(stateQuantity)) || 1000;
+  const requestedQty = qtyFrom(String(stateQuantity));
   // Price, sale unit, pieces per set, price basis and minimum order: one
   // scenario shared with the supplier list and the reports (utils/scenario)
   const sc = resolveScenario(
@@ -165,13 +166,8 @@ export function CostBreakdown() {
   const isLiveData = hasUsableSupplier(stateSupplier);
   const priceInfo = supplierPriceInfo(stateSupplier);
   const productDescription = String(location.state?.productDescription ?? "");
-  const priceNote = stateSupplier?.priceBasisNote
-    ? String(stateSupplier.priceBasisNote)
-    : priceInfo.isRange
-    ? priceInfo.isMid
-      ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
-      : L(`rango publicado ${priceInfo.published}`, `published range ${priceInfo.published}`)
-    : "";
+  const priceNote = priceNoteFor(stateSupplier);
+
 
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
@@ -202,13 +198,15 @@ export function CostBreakdown() {
             ← {L("Volver a proveedores", "Back to suppliers")}
           </button>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
-          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} pending />
           <div role="alert" className="bg-amber-50 border border-amber-300 rounded-xl p-5 text-amber-900 mb-6">
             <p className="font-semibold mb-2">
               {L("Antes de calcular: ¿esta publicación es el producto completo?", "Before calculating: is this listing the complete product?")}
             </p>
             <p className="text-sm mb-4">
-              {f.status === "part"
+              {f.status === "machine"
+                ? componentText(f as ComponentFlag).warn
+                : f.status === "part"
                 ? L(
                     `El título indica «${f.part}» y parece ser solo esa pieza o un accesorio, no ${productDescription ? `«${productDescription.length > 60 ? productDescription.slice(0, 57).trim() + "…" : productDescription}»` : "el producto completo"}. Si calculamos con su precio, el escenario no correspondería a lo que buscas.`,
                     `The title says "${f.part}" and it seems to be only that part or an accessory, not ${productDescription ? `"${productDescription.length > 60 ? productDescription.slice(0, 57).trim() + "…" : productDescription}"` : "the complete product"}. Calculating with its price would not match what you're looking for.`,
@@ -239,7 +237,7 @@ export function CostBreakdown() {
             ← {L("Volver a proveedores", "Back to suppliers")}
           </button>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
-          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} pending />
           <SaleUnitNotice
             unit={unitInfo.unit}
             packSize={packSize}
@@ -264,7 +262,7 @@ export function CostBreakdown() {
             ← {L("Volver a proveedores", "Back to suppliers")}
           </button>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
-          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} pending />
           {packChangedNote}
           <div role="alert" className="bg-amber-50 border border-amber-300 rounded-xl p-5 text-amber-900 mb-6">
             <p className="font-semibold mb-2">{L("Confirma a qué corresponde el precio publicado", "Confirm what the published price refers to")}</p>
@@ -299,7 +297,7 @@ export function CostBreakdown() {
             ← {L("Volver a proveedores", "Back to suppliers")}
           </button>
           <h1 className="text-2xl sm:text-3xl font-bold text-[#0B3C5D] mb-4">{t("cost.title")}</h1>
-          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
+          <SelectedSupplierCard supplier={stateSupplier} description={productDescription} pending />
           {packChangedNote}
           <PriceDecision
             unit={unitInfo.unit}
@@ -316,18 +314,7 @@ export function CostBreakdown() {
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit: unitInfo.unit }, rates);
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
   // Assumptions shown on screen that the PDF and Excel must keep
-  const reportNotes = [
-    ...sc.notes,
-    ...(piecesPerUnit > 1
-      ? [
-          L(
-            `Equivalente por pieza: unos ${Q(costs.perUnit / piecesPerUnit, 2)} por pieza (${Q(costs.perUnit, 2)} por ${unitWordFor(unitInfo.unit, 1)} de ${piecesPerUnit} piezas).`,
-            `Per-piece equivalent: about ${Q(costs.perUnit / piecesPerUnit, 2)} per piece (${Q(costs.perUnit, 2)} per ${unitWordFor(unitInfo.unit, 1)} of ${piecesPerUnit} pieces).`,
-          ),
-        ]
-      : []),
-    ...(sc.ownPrice ? [L("Precio usado: el que indicaste tú, no el publicado.", "Price used: the one you entered, not the published one.")] : []),
-  ];
+  const reportNotes = reportNotesFor(sc, costs.perUnit, Q);
 
   // ── Chart data ────────────────────────────────────────────────────────────
   const costData = costs.lines
@@ -436,6 +423,12 @@ export function CostBreakdown() {
                     quantity: String(quantity),
                     piecesPerUnit,
                     reportNotes,
+                    // the final report rebuilds the same scenario (in the language in use)
+                    scenarioInput: {
+                      supplier: originalSupplier,
+                      choices: { customPrice, usePublished, qtyMode: qtyModeChoice, customPack, priceBasis, confirmedPack, completeConfirmed },
+                      requestedQty,
+                    },
                     budget: stateBudget,
                     destination: stateDestination,
                     productType: stateProductType,
@@ -505,7 +498,7 @@ export function CostBreakdown() {
         <SupplierDisclaimer
           supplier={stateSupplier}
           productDescription={location.state?.productDescription ?? ""}
-          quantity={stateQuantity}
+          quantity={`${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${piecesPerUnit > 1 ? ` (${(quantity * piecesPerUnit).toLocaleString("en-US")} ${L("piezas", "pieces")})` : ""}`}
         />
 
         {/* Total Cost Hero */}
@@ -590,8 +583,11 @@ export function CostBreakdown() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                <span className="text-xs text-slate-500">{costs.freightPending ? L("Total parcial, sin flete", "Partial total, no freight") : L("Total estimado", "Estimated total")}</span>
-                <span className="text-lg font-bold text-[#0B3C5D]">
+                {/* fits inside the ring (inner radius 62 px) */}
+                <span className="text-[10px] leading-tight text-slate-500 text-center max-w-[96px]">
+                  {costs.freightPending ? L("Total parcial, sin flete", "Partial total, no freight") : L("Total estimado", "Estimated total")}
+                </span>
+                <span className="text-base font-bold text-[#0B3C5D] max-w-[110px] truncate">
                   {Q(costs.totalCost)}
                 </span>
               </div>
@@ -701,7 +697,7 @@ export function CostBreakdown() {
               </div>
               <div className="text-right sm:text-right ml-13 sm:ml-0 flex-shrink-0">
                 <div className="text-xl sm:text-2xl font-bold text-[#0B3C5D]">
-                  {item.pending ? "Por cotizar" : Q(item.amount)}
+                  {item.pending ? L("Por cotizar", "To be quoted") : Q(item.amount, 2)}
                 </div>
                 <div className="text-xs sm:text-sm text-slate-600">
                   {item.displayPercent}
@@ -782,6 +778,8 @@ export function CostBreakdown() {
               })()}
               {(() => {
                 // Small orders: fixed charges weigh more than the product itself
+                const ins = costs.lines.find((l) => l.key === "insurance")?.amount ?? 0;
+                const insuranceMin = ins > costs.productCost * 0.0101;
                 const fixed = costs.lines
                   .filter((l) => l.key === "insurance" || l.key === "customs" || l.key === "local")
                   .reduce((a, l) => a + l.amount, 0);
@@ -790,8 +788,8 @@ export function CostBreakdown() {
                     <span className="text-green-500 mt-1">•</span>
                     <span>
                       {L(
-                        `En este pedido, los cargos que no dependen de la cantidad (seguro mínimo, honorarios de aduana y gastos en destino) suman ${Q(fixed)}, más que el producto (${Q(costs.productCost)}). Por eso el costo por ${unitWordFor(unitInfo.unit, 1)} sale alto; con una cantidad mayor se reparte entre más unidades.`,
-                        `In this order, the charges that don't depend on quantity (minimum insurance, customs fee and destination charges) add up to ${Q(fixed)}, more than the product (${Q(costs.productCost)}). That's why the cost per ${unitWordFor(unitInfo.unit, 1)} is high; with a larger quantity it is spread over more units.`,
+                        `En este pedido, los cargos que no dependen de la cantidad (seguro mínimo, honorarios de aduana y gastos en destino) suman ${Q(fixed)}, más que el producto (${Q(costs.productCost)}). Por eso el costo por ${unitWordFor(unitInfo.unit, 1)} sale alto; con una cantidad mayor se reparte entre más unidades.${insuranceMin ? " Además, el seguro mínimo forma parte del valor CIF, así que también sube la base del DAI y del IVA." : ""}`,
+                        `In this order, the charges that don't depend on quantity (minimum insurance, customs fee and destination charges) add up to ${Q(fixed)}, more than the product (${Q(costs.productCost)}). That's why the cost per ${unitWordFor(unitInfo.unit, 1)} is high; with a larger quantity it is spread over more units.${insuranceMin ? " Also, the minimum insurance is part of the CIF value, so it also raises the DAI and IVA base." : ""}`,
                       )}
                     </span>
                   </li>
@@ -939,8 +937,8 @@ function PriceDecision({
           <span className="block mb-1 font-medium">{Lx(`Precio cotizado por ${unitWordFor(unit, 1)} (US$)`, `Quoted price per ${unitWordFor(unit, 1)} (US$)`)}</span>
           <input
             type="number"
-            min="0.01"
-            step="0.01"
+            min="0"
+            step="any"
             inputMode="decimal"
             value={text}
             onChange={(e) => setText(e.target.value)}
@@ -1000,13 +998,18 @@ function OwnPrice({ current, onChange, unit = "" }: { current: number; onChange:
         <span className="block mb-1 font-medium">{Lx(`Precio cotizado por ${unitWordFor(unit, 1)} (US$)`, `Quoted price per ${unitWordFor(unit, 1)} (US$)`)}</span>
         <input
           type="number"
-          min="0.01"
-          step="0.01"
+          min="0"
+          step="any"
           inputMode="decimal"
           value={text}
           onChange={(e) => setText(e.target.value)}
           className="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
         />
+        {text.trim() !== "" && !ok && (
+          <span role="alert" className="block mt-1 text-xs text-red-700">
+            {Lx("Escribe un precio mayor a 0 (por ejemplo 12.50).", "Enter a price greater than 0 (for example 12.50).")}
+          </span>
+        )}
       </label>
       <button type="submit" disabled={!ok} className="px-5 py-2.5 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold disabled:opacity-50">
         {Lx("Recalcular", "Recalculate")}

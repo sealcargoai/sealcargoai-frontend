@@ -1,3 +1,4 @@
+import { unitWordFor, saleUnitInfo } from "../../utils/saleUnit";
 import { wantedText } from "../../utils/useMatch";
 import { FOOD_USE } from "../../utils/category";
 import { useNavigate, useLocation } from "react-router";
@@ -321,6 +322,7 @@ export function RiskCompliance() {
         productDescription,
         piecesPerUnit: location.state?.piecesPerUnit,
         reportNotes: location.state?.reportNotes,
+        scenarioInput: location.state?.scenarioInput,
       },
     });
   };
@@ -453,7 +455,7 @@ export function RiskCompliance() {
         <SupplierDisclaimer
           supplier={supplier}
           productDescription={productDescription}
-          quantity={quantity}
+          quantity={quantity ? `${Number(quantity).toLocaleString("en-US")} ${unitWordFor(saleUnitInfo(supplier, productType).unit, Number(quantity))}` : ""}
         />
       </div>
     </div>

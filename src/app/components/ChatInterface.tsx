@@ -4,7 +4,7 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { buildReply, productFromMessage, productMention, replyKinds, foodAdvice, type ReplySpec } from "../../utils/chatReply";
+import { buildReply, productFromMessage, productMention, replyKinds, foodAdvice, quantityChange, type ReplySpec } from "../../utils/chatReply";
 
 interface Message {
   role: "user" | "ai";
@@ -29,19 +29,46 @@ export function ChatInterface() {
     },
     {
       role: "ai",
-      content: L(
-        "Para preparar una orientación más útil, necesito algunos datos sobre el producto, la cantidad y el destino.",
-        "To prepare more useful guidance, I need some details about the product, the quantity and the destination.",
-      ),
+      content: query
+        ? L(
+            "Con tu consulta ya tengo el producto. En el formulario confirmamos la cantidad y, si lo tienes, el volumen o el peso; el destino es Guatemala. También puedes preguntarme aquí.",
+            "With your request I already have the product. In the form we confirm the quantity and, if you have it, the volume or weight; the destination is Guatemala. You can also ask me here.",
+          )
+        : L(
+            "Para preparar una orientación más útil, dime qué producto quieres importar y cuántas unidades; el destino es Guatemala.",
+            "To prepare more useful guidance, tell me what product you want to import and how many units; the destination is Guatemala.",
+          ),
     },
   ];
   // "ai" entries hold a reply spec (JSON); the text is built at render (ES / EN)
   // from the product the client actually named
-  const [messages, setMessages] = useState<Message[]>([]);
+  // The conversation survives a reload of this tab (same request)
+  const CHAT_KEY = "seal_chat";
+  const [messages, setMessages] = useState<Message[]>(() => {
+    try {
+      const saved = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "null");
+      return saved && saved.query === (query || "") && Array.isArray(saved.messages) ? saved.messages : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try {
+      sessionStorage.setItem(CHAT_KEY, JSON.stringify({ query: query || "", messages }));
+    } catch {
+      /* storage unavailable */
+    }
+  }, [messages, query]);
   const [input, setInput] = useState("");
   const specs = messages.filter((m) => m.role === "ai").map((m) => JSON.parse(m.content) as ReplySpec);
   const lastNamed = [...specs].reverse().find((x) => x.newProduct || x.mentioned);
   const currentProduct = lastNamed?.newProduct || lastNamed?.mentioned || String(query || "").trim();
+  // quantity: the last one the client gave here, else the one in their request
+  const initialQty = (() => {
+    const m = String(query || "").replace(/(\d),(\d{3})/g, "$1$2").match(/\b(\d+)\s+(?!kg|kgs|t\b|l\b|litros|agujas|needles)/i);
+    return m ? Number(m[1]) : 0;
+  })();
+  const currentQuantity = [...specs].reverse().find((x) => x.newQuantity)?.newQuantity || initialQty;
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -49,14 +76,19 @@ export function ChatInterface() {
     const newProduct = productFromMessage(text) || undefined;
     // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
     const mentioned = !newProduct ? productMention(text) || undefined : undefined;
-    const lastCert = [...specs].reverse().find((x) => replyKinds(x.text).includes("certificate") || (x.reask && replyKinds(x.reask).includes("certificate")));
+    // only a certificate answer that asked "¿qué producto?" is answered again for the new product
+    const lastAi = specs[specs.length - 1];
+    const askedForProduct = !!lastAi && !lastAi.product && replyKinds(lastAi.reask || lastAi.text).includes("certificate");
+    const qc = quantityChange(text);
     const spec: ReplySpec = {
+      newQuantity: qc?.qty,
+      oldQuantity: qc ? qc.before || currentQuantity || undefined : undefined,
       text,
       product: newProduct || mentioned || currentProduct,
       newProduct,
       mentioned,
       previous: currentProduct,
-      reask: lastCert ? (replyKinds(lastCert.text).includes("certificate") ? lastCert.text : lastCert.reask) : undefined,
+      reask: askedForProduct ? lastAi.reask || lastAi.text : undefined,
       earlierFood: specs.some((x) => (replyKinds(x.text).includes("certificate") || !!x.reask) && foodAdvice(x.product)),
     };
     setMessages([...messages, { role: "user", content: text }]);
@@ -172,7 +204,15 @@ export function ChatInterface() {
             <p className="text-sm text-slate-600 mb-4">{t("chat.ctaDesc")}</p>
             <button
               onClick={() =>
-                navigate("/qualify", { state: { query: currentProduct || query, name, email, descriptionCleaned } })
+                navigate("/qualify", {
+                  state: {
+                    query: currentProduct || query,
+                    name,
+                    email,
+                    descriptionCleaned,
+                    ...([...specs].reverse().find((x) => x.newQuantity) ? { quantity: String(currentQuantity) } : {}),
+                  },
+                })
               }
               className="px-6 py-3 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-xl hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center gap-2 shadow-lg hover:shadow-xl"
             >

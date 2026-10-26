@@ -1,5 +1,5 @@
 import { supplierKey, loadCostChoices } from "../../utils/draft";
-import { resolveScenario, type CostChoices } from "../../utils/scenario";
+import { qtyFrom, resolveScenario, type CostChoices } from "../../utils/scenario";
 import { useState } from "react";
 import { useNavigate, useLocation } from "react-router";
 import {
@@ -701,7 +701,7 @@ export function SupplierResults() {
   const storedChoicesFor = (s: Supplier) => (loadCostChoices(supplierKey(s, descriptionText)) ?? {}) as CostChoices;
   const scenarioFor = (s: Supplier) =>
     resolveScenario(s, storedChoicesFor(s), {
-      requestedQty: parseInt(String(location.state?.quantity ?? "1000")) || 1000,
+      requestedQty: qtyFrom(String(location.state?.quantity ?? "1000")),
       productType: String(location.state?.productType ?? ""),
       description: descriptionText,
     });
@@ -878,6 +878,12 @@ export function SupplierResults() {
             </span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <button
+              onClick={() => navigate("/qualify")}
+              className="px-2 sm:px-3 py-1.5 text-[#0B3C5D] hover:underline text-xs sm:text-sm whitespace-nowrap"
+            >
+              ← {Lx("Modificar búsqueda", "Edit search")}
+            </button>
             {/* Reduced button padding from py-2 to py-1.5 and sm:py-3 to sm:py-2 to fit perfectly in the shorter header */}
             <button
               onClick={goToCosts}
@@ -887,7 +893,7 @@ export function SupplierResults() {
                 {" "}
                 {t("suppliers.viewCostBreakdown")}{" "}
               </span>
-              <span className="sm:hidden">Costos</span>
+              <span className="sm:hidden">{Lx("Costos", "Costs")}</span>
               <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
             <LanguageToggle />
@@ -1034,7 +1040,9 @@ export function SupplierResults() {
                     : first.priceFlag
                       ? Lx("tiene un precio por confirmar", "has a price to confirm")
                       : first.componentFlag
-                        ? first.componentFlag.status === "part"
+                        ? first.componentFlag.status === "machine"
+                          ? Lx("parece una máquina para fabricar el producto, no el producto", "looks like a machine to make the product, not the product")
+                          : first.componentFlag.status === "part"
                           ? Lx("parece un componente o accesorio, no el producto completo", "looks like a part or accessory, not the complete product")
                           : Lx("no deja claro si es el producto completo", "doesn't make clear whether it is the complete product")
                       : matchUse(descriptionText, first.productName)?.status === "other"
@@ -1421,6 +1429,18 @@ export function SupplierResults() {
                       </p>
                     </div>
                       );
+                    if (sc.needsCompleteDecision)
+                      return (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900">
+                      <p className="font-semibold mb-1">{Lx("Confirma que sea el producto completo", "Confirm it is the complete product")}</p>
+                      <p>
+                        {Lx(
+                          "Esta publicación podría ser solo una pieza o un accesorio. No mostramos una estimación hasta que lo confirmes en el desglose de costos.",
+                          "This listing could be only a part or an accessory. We don't show an estimate until you confirm it in the cost breakdown.",
+                        )}
+                      </p>
+                    </div>
+                      );
                     if (sc.needsPriceDecision || sc.needsUnitDecision || sc.needsBasisDecision)
                       return (
                     <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-amber-900">
@@ -1434,8 +1454,8 @@ export function SupplierResults() {
                               "We don't estimate with this published price. In the cost breakdown you can enter the price you're quoted or confirm it.",
                             )
                           : sc.needsUnitDecision
-                            ? Lx("En el desglose de costos indica si tu cantidad está en piezas o en sets; luego verás aquí el mismo escenario.", "In the cost breakdown, say whether your quantity is in pieces or sets; then you'll see the same scenario here.")
-                            : Lx("En el desglose de costos confirma si el precio publicado es por pieza o por caja; luego verás aquí el mismo escenario.", "In the cost breakdown, confirm whether the published price is per piece or per box; then you'll see the same scenario here.")}
+                            ? Lx(`En el desglose de costos indica si tu cantidad está en piezas o en ${unitWordFor(sc.unitInfo.unit, 2)}; luego verás aquí el mismo escenario.`, `In the cost breakdown, say whether your quantity is in pieces or ${unitWordFor(sc.unitInfo.unit, 2)}; then you'll see the same scenario here.`)
+                            : Lx(`En el desglose de costos confirma si el precio publicado es por pieza o por ${unitWordFor(sc.unitInfo.unit, 1)}; luego verás aquí el mismo escenario.`, `In the cost breakdown, confirm whether the published price is per piece or per ${unitWordFor(sc.unitInfo.unit, 1)}; then you'll see the same scenario here.`)}
                       </p>
                     </div>
                       );

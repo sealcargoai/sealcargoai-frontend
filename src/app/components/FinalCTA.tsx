@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { cleanSupplier } from "../../utils/text";
+import { qtyFrom, resolveScenario, priceNoteFor, reportNotesFor } from "../../utils/scenario";
 import { clearDraft } from "../../utils/draft";
 import { useNavigate, useLocation } from "react-router";
 import {
@@ -69,7 +70,7 @@ function generateReportPDF(data: {
     topics: getReviewTopics(data.productType, data.supplier, data.productDescription),
     disclaimer: sealDisclaimer(),
     reportId: data.reportId,
-    fileName: `SEAL_Informe_${data.supplierName.replace(/\s+/g, "_")}_${Date.now()}.pdf`,
+    fileName: `SEAL_${Lx("Informe", "Report")}_${data.supplierName.replace(/\s+/g, "_")}_${Date.now()}.pdf`,
     saveFile: data.saveFile,
   });
 }
@@ -107,14 +108,24 @@ export function FinalCTA() {
   const { t, L } = useLanguage();
 
   // ── Read state ────────────────────────────────────────────────────────────
-  const stateSupplier = cleanSupplier(location.state?.supplier ?? null);
-  const stateQuantity = location.state?.quantity ?? "1000";
+  // The costs page hands over its inputs: the report rebuilds the very same
+  // scenario (price, unit, quantity, assumptions) in the language in use
+  const input = location.state?.scenarioInput;
+  const rebuilt = input?.supplier
+    ? resolveScenario(cleanSupplier(input.supplier), input.choices || {}, {
+        requestedQty: qtyFrom(input.requestedQty),
+        productType: String(location.state?.productType ?? ""),
+        description: String(location.state?.productDescription ?? ""),
+      })
+    : null;
+  const stateSupplier = rebuilt ? rebuilt.supplier : cleanSupplier(location.state?.supplier ?? null);
+  const stateQuantity = rebuilt ? rebuilt.quantity : location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "";
   const stateDestination = location.state?.destination ?? "GT";
   const stateProductType = location.state?.productType ?? "";
   const stateSuppliersData = location.state?.suppliersData ?? null;
 
-  const quantity = parseInt(String(stateQuantity)) || 1000;
+  const quantity = qtyFrom(String(stateQuantity));
   const destination = String(stateDestination);
   const productType = String(stateProductType);
   const productDescription = String(location.state?.productDescription ?? "");
@@ -125,17 +136,8 @@ export function FinalCTA() {
   const supplierName = stateSupplier?.name || "";
   const isLiveData = hasUsableSupplier(stateSupplier);
   const priceInfo = supplierPriceInfo(stateSupplier);
-  const priceNote = stateSupplier?.priceBasisNote
-    ? String(stateSupplier.priceBasisNote)
-    : stateSupplier?.priceSource === "client"
-    ? L("precio indicado por el cliente", "price entered by the client")
-    : priceInfo.isRange
-      ? priceInfo.isMid
-        ? L(`precio medio del rango ${priceInfo.published}`, `midpoint of the range ${priceInfo.published}`)
-        : L(`rango publicado ${priceInfo.published}`, `published range ${priceInfo.published}`)
-      : stateSupplier?.priceConfirmed
-        ? L("precio publicado atípico, usado a pedido del cliente", "atypical published price, used at the client's request")
-        : "";
+  const priceNote = priceNoteFor(stateSupplier);
+
 
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
@@ -143,7 +145,12 @@ export function FinalCTA() {
   const saleUnit = saleUnitInfo(stateSupplier, productType).unit;
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit }, rates);
   // Assumptions from the costs page (pieces per set, price basis, minimum order…)
-  const reportNotes: string[] = Array.isArray(location.state?.reportNotes) ? location.state.reportNotes.map(String) : [];
+  const reportNotes: string[] = rebuilt
+    ? reportNotesFor(rebuilt, costs.perUnit, (usd, d = 0) => formatQ(usd, costs.exchangeRate, d))
+    : Array.isArray(location.state?.reportNotes)
+      ? location.state.reportNotes.map(String)
+      : [];
+  const piecesPerUnitShown = rebuilt ? rebuilt.piecesPerUnit : Number(location.state?.piecesPerUnit) || 0;
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
   const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? Lx(" — estimación parcial, sin flete", " — partial estimate, without freight") : ""}`;
 
@@ -172,7 +179,26 @@ export function FinalCTA() {
 
   // ── Modal state ───────────────────────────────────────────────────────────
   // One ID per report: the screen, the PDF and the email show the same one
-  const [reportId] = useState(() => `SEAL-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`);
+  const [reportId] = useState<string>(
+    () => location.state?.reportId || `SEAL-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+  );
+  // Esc closes the quote and email forms
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setShowQuoteModal(false);
+        setShowEmailModal(false);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  // kept in this page's history entry: a reload shows the same ID
+  useEffect(() => {
+    if (location.state && location.state.reportId !== reportId)
+      navigate(location.pathname, { replace: true, state: { ...location.state, reportId } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showQuoteModal, setShowQuoteModal] = useState(false);
   const [showEmailModal, setShowEmailModal] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -324,6 +350,14 @@ export function FinalCTA() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             recipientEmail: emailRecipient,
+            // who ran the search (the server only sends reports for them)
+            requesterEmail: (() => {
+              try {
+                return JSON.parse(localStorage.getItem("sealcargo_user_data") || "{}").email || "";
+              } catch {
+                return "";
+              }
+            })(),
             recipientName: emailRecipientName,
             pdfBase64,
             supplierName,
@@ -333,7 +367,19 @@ export function FinalCTA() {
         },
       );
       if (res.status === 400) {
-        alert("Revisa tu correo: debe ser completo, por ejemplo nombre@empresa.com.");
+        alert(Lx("Revisa el correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check the email: it must be complete, for example name@company.com."));
+        return;
+      }
+      if (res.status === 403 || res.status === 429) {
+        // not sent from here (limit or session): the client still gets the PDF
+        downloadReportNow();
+        alert(
+          Lx(
+            "No pudimos enviarlo por correo desde aquí, así que el informe se descargó en este dispositivo. Puedes reenviarlo tú o pedírselo a SEAL por WhatsApp +502 5996 4664.",
+            "We couldn't email it from here, so the report was downloaded to this device. You can forward it yourself or ask SEAL on WhatsApp +502 5996 4664.",
+          ),
+        );
+        setShowEmailModal(false);
         return;
       }
       if (!res.ok) throw new Error("Failed");
@@ -342,7 +388,10 @@ export function FinalCTA() {
         // Could not email the client directly — SEAL got the report and will forward it.
         downloadReportNow();
         alert(
-          `Tu informe se descargó en este dispositivo. Además, un ejecutivo de SEAL te lo enviará a ${emailRecipient}.`,
+          Lx(
+            `Tu informe se descargó en este dispositivo. Además, un ejecutivo de SEAL te lo enviará a ${emailRecipient}.`,
+            `Your report was downloaded to this device. A SEAL executive will also send it to ${emailRecipient}.`,
+          ),
         );
       } else {
         alert(t("final.emailSuccess"));
@@ -354,7 +403,10 @@ export function FinalCTA() {
       // Never leave the user empty-handed: give them the PDF right away
       downloadReportNow();
       alert(
-        `No pudimos enviarlo por correo, pero tu informe se descargó en este dispositivo. Si lo necesitas, llámanos al ${SEAL_COMPANY.phone}.`,
+        Lx(
+          `No pudimos enviarlo por correo, pero tu informe se descargó en este dispositivo. Si lo necesitas, llámanos al ${SEAL_COMPANY.phone}.`,
+          `We couldn't email it, but your report was downloaded to this device. If you need help, call us at ${SEAL_COMPANY.phone}.`,
+        ),
       );
     } finally {
       setSubmitting(false);
@@ -380,6 +432,14 @@ export function FinalCTA() {
             </span>
           </div>
           <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
+            <button
+              onClick={() => navigate(-1)}
+              aria-label={L("Volver a aspectos por revisar", "Back to points to review")}
+              title={L("Aspectos por revisar", "Points to review")}
+              className="px-2 sm:px-3 py-2 text-[#0B3C5D] hover:underline text-xs sm:text-sm whitespace-nowrap"
+            >
+              ←<span className="hidden md:inline"> {L("Aspectos por revisar", "Points to review")}</span>
+            </button>
             <button
               onClick={() => {
               clearDraft();
@@ -481,7 +541,7 @@ export function FinalCTA() {
         <SupplierDisclaimer
           supplier={stateSupplier}
           productDescription={location.state?.productDescription ?? ""}
-          quantity={stateQuantity}
+          quantity={`${quantity.toLocaleString("en-US")} ${unitWordFor(saleUnit, quantity)}`}
         />
 
         {/* Report Preview */}
@@ -537,11 +597,11 @@ export function FinalCTA() {
               )}
               <div className="text-sm text-green-700">
                 {Q(costs.perUnit, 2)} {Lx("por", "per")} {unitWordFor(saleUnit, 1)}
-                {Number(location.state?.piecesPerUnit) > 1 && (
+                {piecesPerUnitShown > 1 && (
                   <span className="block text-xs text-green-800">
                     {Lx(
-                      `≈ ${Q(costs.perUnit / Number(location.state.piecesPerUnit), 2)} por pieza (supuesto: ${location.state.piecesPerUnit} piezas por ${unitWordFor(saleUnit, 1)}, por confirmar)`,
-                      `≈ ${Q(costs.perUnit / Number(location.state.piecesPerUnit), 2)} per piece (assumption: ${location.state.piecesPerUnit} pieces per ${unitWordFor(saleUnit, 1)}, to be confirmed)`,
+                      `≈ ${Q(costs.perUnit / piecesPerUnitShown, 2)} por pieza (supuesto: ${piecesPerUnitShown} piezas por ${unitWordFor(saleUnit, 1)}, por confirmar)`,
+                      `≈ ${Q(costs.perUnit / piecesPerUnitShown, 2)} per piece (assumption: ${piecesPerUnitShown} pieces per ${unitWordFor(saleUnit, 1)}, to be confirmed)`,
                     )}
                   </span>
                 )}
