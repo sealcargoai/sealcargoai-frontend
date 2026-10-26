@@ -422,7 +422,7 @@ export function ProductQualification() {
               {remainingSearches === 0
                 ? limitReason === "ip"
                   ? L("🔒 Esta conexión ya usó sus búsquedas gratuitas de hoy", "🔒 This connection has used today's free searches")
-                  : L("🔒 Sin búsquedas disponibles", "🔒 No searches left")
+                  : L(`🔒 Ya usaste tus ${quotaLimit} consultas. Para seguir, cotiza con SEAL el servicio a largo plazo: +502 5996 4664`, `🔒 You've used your ${quotaLimit} searches. To continue, ask SEAL for a long-term service quote: +502 5996 4664`)
                 : L(
                     `🔍 ${remainingSearches} búsqueda${remainingSearches !== 1 ? "s" : ""} restante${remainingSearches !== 1 ? "s" : ""} de ${quotaLimit}`,
                     `🔍 ${remainingSearches} search${remainingSearches !== 1 ? "es" : ""} left of ${quotaLimit}`,
@@ -805,27 +805,29 @@ export function ProductQualification() {
                       `Desde esta conexión ya se usaron las búsquedas gratuitas de hoy (puede pasar si varias personas comparten la misma red).`,
                       `Today's free searches from this connection have been used (this can happen when several people share the same network).`,
                     )
-                  : <>{L("Has utilizado tus", "You have used your")} <strong>{quotaLimit} {L("búsquedas gratuitas", "free searches")}</strong>.</>}
+                  : <>{L("Cada correo puede hacer un máximo de", "Each email can run a maximum of")} <strong>{quotaLimit} {L("consultas", "searches")}</strong>{L(", y ya las usaste.", ", and you have used them.")}</>}
             </p>
-            <p className="text-slate-600 mb-6">
-              {L("Para continuar buscando proveedores, contacta al equipo de SEAL y obtén acceso completo.", "To keep searching for suppliers, contact the SEAL team to get full access.")}
-            </p>
-
-            {/* Highlight box */}
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-left">
-              <p className="text-sm font-semibold text-[#0B3C5D] mb-2">
-                {L("Con acceso completo obtienes:", "With full access you get:")}
+            {limitReason !== "rate" && (
+              <p className="text-slate-600 mb-6">
+                {L(
+                  "Para seguir usando SmartTrade AI, contacta al equipo de SEAL y cotiza el servicio a largo plazo de esta herramienta.",
+                  "To keep using SmartTrade AI, contact the SEAL team for a quote on the long-term service of this tool.",
+                )}
               </p>
-              <ul className="space-y-1 text-sm text-slate-700">
-                <li>✅ {L("Búsquedas ilimitadas de proveedores", "Unlimited supplier searches")}</li>
-                <li>✅ {L("Análisis de costos detallado", "Detailed cost analysis")}</li>
-                <li>✅ {L("Informes PDF y Excel", "PDF and Excel reports")}</li>
-                <li>✅ {L("Soporte del equipo SEAL", "Support from the SEAL team")}</li>
-              </ul>
-            </div>
+            )}
 
             {/* Buttons */}
             <div className="space-y-3">
+              {limitReason !== "rate" && (
+                <a
+                  href={`https://wa.me/50259964664?text=${encodeURIComponent(L("Hola, quiero cotizar el servicio a largo plazo de SEAL SmartTrade AI.", "Hello, I'd like a quote for the long-term SEAL SmartTrade AI service."))}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 bg-green-600 text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:bg-green-700 transition-all shadow-lg"
+                >
+                  💬 {L("Cotizar por WhatsApp", "Get a quote on WhatsApp")}
+                </a>
+              )}
               <a
                 href="tel:+50259964664"
                 className="w-full py-3 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-xl font-semibold flex items-center justify-center gap-2 hover:from-blue-700 hover:to-[#0a2f47] transition-all shadow-lg"

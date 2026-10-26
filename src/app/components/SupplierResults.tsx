@@ -25,7 +25,7 @@ import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/reportExports";
-import { calculateCosts, useRates, formatQ, formatUSD } from "../../utils/costCalculator";
+import { calculateCosts, useRates, formatQ, formatUSD, formatUnitUSD, formatUnitQ } from "../../utils/costCalculator";
 import { Lx, plural } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
 import { flagPrices, comparablePrice } from "../../utils/priceCheck";
@@ -1197,7 +1197,7 @@ export function SupplierResults() {
                               </div>
                               {pi.isRange && (
                                 <div className="text-xs text-slate-500">
-                                  {pi.isMid ? Lx("medio", "midpoint") : Lx("se usa", "used")} {formatUSD(pi.used, 2)}
+                                  {pi.isMid ? Lx("medio", "midpoint") : Lx("se usa", "used")} {formatUnitUSD(pi.used)}
                                 </div>
                               )}
                               {supplier.priceFlag && (

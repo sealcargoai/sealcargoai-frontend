@@ -3,7 +3,7 @@ import { useState } from "react";
 import { clearDraft } from "../../utils/draft";
 import { useNavigate } from "react-router";
 import { MapPin, Award, Star, Package, ExternalLink, AlertCircle, ArrowLeft, Search, ShieldCheck } from "lucide-react";
-import { formatUSD } from "../../utils/costCalculator";
+import { formatUSD, formatUnitUSD, formatUnitQ } from "../../utils/costCalculator";
 import { Lx } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, specLabel } from "../../utils/capacity";
 import { matchUse } from "../../utils/useMatch";
@@ -311,9 +311,9 @@ export function supplierPriceInfo(s?: SelectedSupplierData | null) {
     .filter((n) => n > 0) ?? [];
   const isRange = nums.length >= 2 && nums[0] !== nums[1];
   const published = isRange
-    ? `${formatUSD(nums[0], 2)} – ${formatUSD(nums[1], 2)}`
+    ? `${formatUnitUSD(nums[0])} – ${formatUnitUSD(nums[1])}`
     : used > 0
-      ? formatUSD(used, 2)
+      ? formatUnitUSD(used)
       : Lx("N/D", "N/A");
   // "midpoint" only when the price used really is the middle of the range
   const isMid = isRange && used > 0 && Math.abs(used - (nums[0] + nums[1]) / 2) <= Math.max(0.005, used * 0.005);
@@ -326,6 +326,7 @@ export function hasUsableSupplier(s?: SelectedSupplierData | null): boolean {
 
 export function SelectedSupplierCard({ supplier, description = "", pending = false }: { supplier: SelectedSupplierData; description?: string; pending?: boolean }) {
   const { used, isRange, published } = supplierPriceInfo(supplier);
+  const conv = (supplier as any).basisConverted as { perPiece: number; piecesPerUnit: number; unit: string } | undefined;
   const link = supplier.productUrl || supplier.storeUrl;
   const gold = supplier.verifiedSupplier === true || supplier.goldSupplier || supplier.verified;
   const hasTrust = supplier.trustScore !== undefined || supplier.aiScore !== undefined;
@@ -398,9 +399,19 @@ export function SelectedSupplierCard({ supplier, description = "", pending = fal
           <p className="text-xs text-slate-500">
             {supplier.priceSource === "client"
               ? Lx("Precio indicado por ti", "Price you entered")
-              : Lx("Precio publicado en Alibaba", "Price published on Alibaba")}
+              : conv
+                ? Lx(`Equivalente por ${conv.unit}, calculado según tu indicación`, `Equivalent per ${conv.unit}, calculated from what you indicated`)
+                : Lx("Precio publicado en Alibaba", "Price published on Alibaba")}
           </p>
           <p className="text-lg font-bold text-[#0B3C5D]">{published}</p>
+          {conv && supplier.priceSource !== "client" && (
+            <p className="text-xs text-slate-500 mt-0.5">
+              {Lx(
+                `Publicado en Alibaba: ${formatUnitUSD(conv.perPiece)}, tomado como precio por pieza × ${conv.piecesPerUnit} piezas`,
+                `Published on Alibaba: ${formatUnitUSD(conv.perPiece)}, taken as a per-piece price × ${conv.piecesPerUnit} pieces`,
+              )}
+            </p>
+          )}
           {supplier.priceSource === "client" && supplier.publishedPrice && (
             <p className="text-xs text-slate-500 mt-0.5">
               {Lx(`Publicado en Alibaba: ${supplier.publishedPrice}`, `Published on Alibaba: ${supplier.publishedPrice}`)}
@@ -413,11 +424,11 @@ export function SelectedSupplierCard({ supplier, description = "", pending = fal
             <p className="text-xs text-slate-500 mt-0.5">
               {pending
                 ? supplierPriceInfo(supplier).isMid
-                  ? Lx(`Precio medio del rango: ${formatUSD(used, 2)} (aún sin calcular)`, `Range midpoint: ${formatUSD(used, 2)} (not calculated yet)`)
-                  : Lx(`Precio de referencia: ${formatUSD(used, 2)} (aún sin calcular)`, `Reference price: ${formatUSD(used, 2)} (not calculated yet)`)
+                  ? Lx(`Precio medio del rango: ${formatUnitUSD(used)} (aún sin calcular)`, `Range midpoint: ${formatUnitUSD(used)} (not calculated yet)`)
+                  : Lx(`Precio de referencia: ${formatUnitUSD(used)} (aún sin calcular)`, `Reference price: ${formatUnitUSD(used)} (not calculated yet)`)
                 : supplierPriceInfo(supplier).isMid
-                  ? Lx(`Se calculó con ${formatUSD(used, 2)} (precio medio)`, `Calculated with ${formatUSD(used, 2)} (midpoint)`)
-                  : Lx(`Se calculó con ${formatUSD(used, 2)}`, `Calculated with ${formatUSD(used, 2)}`)}
+                  ? Lx(`Se calculó con ${formatUnitUSD(used)} (precio medio)`, `Calculated with ${formatUnitUSD(used)} (midpoint)`)
+                  : Lx(`Se calculó con ${formatUnitUSD(used)}`, `Calculated with ${formatUnitUSD(used)}`)}
             </p>
           )}
           {link && (

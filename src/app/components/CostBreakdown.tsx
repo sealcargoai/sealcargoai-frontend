@@ -45,7 +45,7 @@ import {
   calculateCosts,
   useRates,
   formatQ,
-  formatUSD,
+  formatUSD, formatUnitUSD, formatUnitQ,
   estimateNote,
   scenarioVariables,
   type CostResult,
@@ -268,13 +268,13 @@ export function CostBreakdown() {
             <p className="font-semibold mb-2">{L("Confirma a qué corresponde el precio publicado", "Confirm what the published price refers to")}</p>
             <p className="text-sm mb-4">
               {L(
-                `El precio publicado es ${formatUSD(sc.price, 2)}. Si fuera por ${one} de ${piecesPerUnit} piezas, cada pieza costaría unos ${formatUSD(sc.publishedPerPiece, 4)}, una cifra poco realista. Antes de calcular, indica a qué corresponde ese precio o escribe el que te cotizaron.`,
-                `The published price is ${formatUSD(sc.price, 2)}. If it were per ${one} of ${piecesPerUnit} pieces, each piece would cost about ${formatUSD(sc.publishedPerPiece, 4)}, an unrealistic figure. Before calculating, say what that price refers to or enter the one you were quoted.`,
+                `El precio publicado es ${formatUnitUSD(sc.price)}. Si fuera por ${one} de ${piecesPerUnit} piezas, cada pieza costaría unos ${formatUSD(sc.publishedPerPiece, 4)}, una cifra poco realista. Antes de calcular, indica a qué corresponde ese precio o escribe el que te cotizaron.`,
+                `The published price is ${formatUnitUSD(sc.price)}. If it were per ${one} of ${piecesPerUnit} pieces, each piece would cost about ${formatUSD(sc.publishedPerPiece, 4)}, an unrealistic figure. Before calculating, say what that price refers to or enter the one you were quoted.`,
               )}
             </p>
             <div className="flex flex-wrap gap-2">
               <button onClick={() => confirmBasis("piece")} className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold">
-                {L(`Es por pieza (${formatUSD(sc.price * piecesPerUnit, 2)} por ${one})`, `It's per piece (${formatUSD(sc.price * piecesPerUnit, 2)} per ${one})`)}
+                {L(`Es por pieza (${formatUnitUSD(sc.price * piecesPerUnit)} por ${one})`, `It's per piece (${formatUnitUSD(sc.price * piecesPerUnit)} per ${one})`)}
               </button>
               <button onClick={() => confirmBasis("unit")} className="px-4 py-2 rounded-lg border border-amber-400 bg-white text-sm font-semibold">
                 {L(`Es por ${one} de ${piecesPerUnit} piezas`, `It's per ${one} of ${piecesPerUnit} pieces`)}
@@ -468,7 +468,7 @@ export function CostBreakdown() {
             {isLiveData ? (
               <span className="text-green-600">
                 ✅ {t("cost.dynamicCalc")} — {quantity.toLocaleString()}{" "}
-                {unitWordFor(unitInfo.unit, quantity)} × {formatUSD(Number(price), 2)} ({Q(Number(price), 2)}) →{" "}
+                {unitWordFor(unitInfo.unit, quantity)} × {formatUnitUSD(Number(price))} ({formatUnitQ(Number(price), costs.exchangeRate)}) →{" "}
                 {t("cost.destination")} Guatemala
               </span>
             ) : null}
