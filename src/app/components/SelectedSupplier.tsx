@@ -50,6 +50,12 @@ export function SpecTags({ description, productName, warn = false, component }: 
               text: Lx(`Parece para otro uso: ${use.listed}`, `Seems meant for another use: ${use.listed}`),
               sub: Lx(`Pediste ${use.asked}`, `You asked for ${use.asked}`),
             }
+          : use.mentions
+            ? {
+                tone: "amber",
+                text: Lx(`El título menciona ${use.mentions}; confirma que cumple tus requisitos`, `The title mentions ${use.mentions}; confirm it meets your requirements`),
+                sub: use.asked ? Lx(`Pediste ${use.asked}`, `You asked for ${use.asked}`) : Lx(`Excluiste ${use.excluded}`, `You ruled out ${use.excluded}`),
+              }
           : {
               tone: "slate",
               text: Lx("La publicación no dice para qué uso es", "The listing doesn't say what it's for"),

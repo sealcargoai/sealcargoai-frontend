@@ -505,18 +505,20 @@ function rejectReason(r: string): string {
 function UseSummary({ description, list }: { description: string; list: { productName?: string }[] }) {
   const first = list.length ? matchUse(description, list[0].productName) : null;
   if (!first) return null;
-  let match = 0, other = 0, unknown = 0, excl = 0;
+  let match = 0, other = 0, unknown = 0, excl = 0, general = 0;
   list.forEach((s) => {
     const u = matchUse(description, s.productName)!;
     const st = u.status;
     if (st === "match") match++;
     else if (st === "other" && u.hitsExcluded) excl++;
     else if (st === "other") other++;
+    else if (u.mentions) general++;
     else unknown++;
   });
   const parts = [
     match && `${match} ${plural(match, "indica ese uso", "indican ese uso", "states that use", "state that use")}`,
     excl && `${excl} ${plural(excl, "menciona un uso que excluiste", "mencionan un uso que excluiste", "mentions a use you ruled out", "mention a use you ruled out")}`,
+    general && `${general} ${plural(general, "menciona un uso general (industrial, doméstico…) por confirmar", "mencionan un uso general (industrial, doméstico…) por confirmar", "mentions a general use (industrial, household…) to confirm", "mention a general use (industrial, household…) to confirm")}`,
     unknown && `${unknown} ${plural(unknown, "no dice para qué uso es", "no dicen para qué uso son", "doesn't say its use", "don't say their use")}`,
     other && `${other} ${plural(other, "parece para otro uso", "parecen para otro uso", "seems meant for another use", "seem meant for another use")}`,
   ].filter(Boolean);
