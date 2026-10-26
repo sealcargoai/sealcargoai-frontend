@@ -84,12 +84,17 @@ export function SpecTags({ description, productName, warn = false, component }: 
           </span>
         )}
         {mat && (
-          <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[mat.status === "match" ? "green" : "red"]}`}>
+          <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[mat.status === "match" ? (mat.mixed ? "amber" : "green") : "red"]}`}>
             <span className="font-semibold">
-              {mat.status === "match"
+              {mat.status === "match" && mat.mixed
+                ? Lx(`El título menciona varios materiales: ${mat.mixed}`, `The title names several materials: ${mat.mixed}`)
+                : mat.status === "match"
                 ? Lx(`Indica el material: ${mat.listed}`, `States the material: ${mat.listed}`)
                 : Lx(`Material distinto: ${mat.listed}`, `Different material: ${mat.listed}`)}
             </span>
+            {mat.status === "match" && mat.mixed && (
+              <span className="opacity-80"> · {Lx(`Puede ser una mezcla; confirma la composición (pediste ${mat.asked})`, `It may be a blend; confirm the composition (you asked for ${mat.asked})`)}</span>
+            )}
             {mat.status === "other" && mat.asked && <span className="opacity-80"> · {Lx(`Pediste ${mat.asked}`, `You asked for ${mat.asked}`)}</span>}
             {mat.status === "other" && !mat.asked && <span className="opacity-80"> · {Lx("Lo excluiste", "You ruled it out")}</span>}
           </span>
@@ -124,6 +129,14 @@ export function SpecTags({ description, productName, warn = false, component }: 
       )}
       {warn && comp && (
         <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">{comp.warn}</p>
+      )}
+      {warn && mat?.status === "match" && mat.mixed && (
+        <p className="text-sm text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mt-2">
+          {Lx(
+            `Ojo: el título de esta publicación menciona ${mat.mixed}, así que puede ser una mezcla y no ${mat.asked} puro. La composición cambia el producto, el precio y la partida; pide al proveedor la ficha técnica con el material exacto.`,
+            `Note: this listing's title names ${mat.mixed}, so it may be a blend rather than pure ${mat.asked}. The composition changes the product, the price and the tariff heading; ask the supplier for the technical sheet with the exact material.`,
+          )}
+        </p>
       )}
       {warn && mat?.status === "other" && (
         <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">

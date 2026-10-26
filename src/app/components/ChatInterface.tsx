@@ -84,8 +84,9 @@ export function ChatInterface() {
         follow = followUpMath(text, x.mathText);
         if (follow) { lastMath = x.mathText; break; }
       }
+    const single = isMath && !packMathAll(text).length ? packMath(text) : null;
     const mathText = isMath
-      ? packMathAll(text).length ? text : mathStatement(packMath(text)!)
+      ? single ? mathStatement(single) : text
       : follow ? mathStatement(follow) : undefined;
     // a calculation is not a product statement nor a quantity change
     const newProduct = mathText ? undefined : productFromMessage(text) || undefined;

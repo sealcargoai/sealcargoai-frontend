@@ -243,6 +243,8 @@ export function CostBreakdown() {
             packSize={packSize}
             packFromTitle={unitInfo.packSize > 1}
             requested={requestedQty}
+            pieceCount={sc.requestedPieces}
+            countedIn={sc.countedIn}
             mode={qtyMode}
             fromDescription={intent !== ""}
             onMode={setQtyMode}
@@ -485,6 +487,8 @@ export function CostBreakdown() {
             packSize={packSize}
             packFromTitle={unitInfo.packSize > 1}
             requested={requestedQty}
+            pieceCount={sc.requestedPieces}
+            countedIn={sc.countedIn}
             mode={qtyMode}
             fromDescription={intent !== ""}
             onMode={setQtyMode}
@@ -1038,7 +1042,11 @@ function SaleUnitNotice({
   blocking = false,
   item = "",
   mixedWith = "",
+  pieceCount,
+  countedIn = "",
 }: {
+  pieceCount?: number; // the client's quantity in pieces (1,000 pares → 2,000)
+  countedIn?: "pair" | "dozen" | "";
   item?: string;
   mixedWith?: string;
   unit: string;
@@ -1058,7 +1066,10 @@ function SaleUnitNotice({
   const itemEn = item || "pieces";
   const howMany = /as$/.test(itemEs) ? "Cuántas" : "Cuántos";
   const many = unitWordFor(unit, 2);
-  const sets = packSize > 1 ? Math.ceil(requested / packSize) : 0;
+  // pairs or dozens are counted in pieces against a box of pieces
+  const pieces = pieceCount && pieceCount > 0 ? pieceCount : requested;
+  const countedLabel = countedIn === "pair" ? Lx("pares", "pairs") : countedIn === "dozen" ? Lx("docenas", "dozens") : "";
+  const sets = packSize > 1 ? Math.ceil(pieces / packSize) : 0;
   const packValue = parseInt(packText, 10);
   const btn = (active: boolean) =>
     `px-3 py-2 rounded-lg border-2 text-left ${active ? "border-[#0B3C5D] bg-white font-semibold" : "border-amber-300 bg-amber-50/50"}`;
@@ -1103,7 +1114,9 @@ function SaleUnitNotice({
           )}
         </button>
         <button onClick={() => onMode("pieces")} className={btn(mode === "pieces")}>
-          {item
+          {countedLabel
+            ? `${requested.toLocaleString()} ${countedLabel} (${pieces.toLocaleString()} ${item || Lx("piezas", "pieces")})`
+            : item
             ? `${requested.toLocaleString()} ${item}`
             : Lx(`${requested.toLocaleString()} ${requested === 1 ? "pieza" : "piezas"}`, `${requested.toLocaleString()} ${requested === 1 ? "piece" : "pieces"}`)}
           <span className="block text-xs font-normal">

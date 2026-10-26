@@ -722,6 +722,8 @@ export function SupplierResults() {
     first.price > 0 &&
     matchUse(descriptionText, first.productName)?.status !== "other" &&
     matchMaterial(descriptionText, first.productName)?.status !== "other" &&
+    // a title that mixes materials ("vinyl nitrile") is not taken on its own either
+    !matchMaterial(descriptionText, first.productName)?.mixed &&
     !partMaterialIssue(descriptionText, first.productName) &&
     // an option whose minimum order is above the client's order is not taken on its own
     !scenarioFor(first).moqNote &&
@@ -1051,6 +1053,8 @@ export function SupplierResults() {
                         ? Lx("parece para otro uso", "seems meant for another use")
                         : matchMaterial(descriptionText, first.productName)?.status === "other" || partMaterialIssue(descriptionText, first.productName)
                           ? Lx("indica otro material", "names another material")
+                        : matchMaterial(descriptionText, first.productName)?.mixed
+                          ? Lx("menciona una mezcla de materiales", "names a blend of materials")
                         : scenarioFor(first).moqNote
                           ? /sin indicar|without saying/.test(scenarioFor(first).moqNote)
                             ? Lx("no aclara en qué unidad es su pedido mínimo", "doesn't say what unit its minimum order is in")
