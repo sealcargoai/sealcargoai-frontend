@@ -91,6 +91,20 @@ export function formatUSD(usdAmount: number, decimals = 0): string {
   })}`;
 }
 
+// Unit prices: as many decimals as the value really has (2 to 4), so the price
+// shown × the quantity gives the same total the calculator uses (US$2.425, not US$2.43).
+function unitDigits(v: number): number {
+  for (let d = 2; d < 4; d++) if (Math.abs(Math.round(v * 10 ** d) - v * 10 ** d) < 1e-6) return d;
+  return 4;
+}
+export function formatUnitUSD(usd: number): string {
+  return `US$${usd.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: unitDigits(usd) })}`;
+}
+export function formatUnitQ(usd: number, exchangeRate: number): string {
+  const q = usd * exchangeRate;
+  return `Q${q.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: unitDigits(q) })}`;
+}
+
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 let ratesCache: Rates | null = null;
 let ratesPromise: Promise<Rates> | null = null;
@@ -226,7 +240,7 @@ export function calculateCosts(
     {
       key: "product",
       label: Lx("Costo de producto (FOB)", "Product cost (FOB)"),
-      detail: `${quantity.toLocaleString("en-US")} ${unitWordFor(params.saleUnit, quantity)} × ${formatUSD(Number(params.price), 2)} (${formatQ(Number(params.price), rates.exchangeRate, 2)} ${Lx("por", "per")} ${unitWordFor(params.saleUnit, 1)})`,
+      detail: `${quantity.toLocaleString("en-US")} ${unitWordFor(params.saleUnit, quantity)} × ${formatUnitUSD(Number(params.price))} (${formatUnitQ(Number(params.price), rates.exchangeRate)} ${Lx("por", "per")} ${unitWordFor(params.saleUnit, 1)})`,
       amount: productCost,
       color: "#0B3C5D",
     },
@@ -240,14 +254,14 @@ export function calculateCosts(
     {
       key: "insurance",
       label: Lx("Seguro de carga", "Cargo insurance"),
-      detail: `${pct(rates.insuranceRate)} ${Lx("del valor FOB • mínimo", "of FOB value • minimum")} ${formatQ(rates.insuranceMin, rates.exchangeRate)}`,
+      detail: `${pct(rates.insuranceRate)} ${Lx("del valor FOB • mínimo", "of FOB value • minimum")} ${formatQ(rates.insuranceMin, rates.exchangeRate)} • ${Lx("forma parte del valor CIF", "part of the CIF value")}`,
       amount: insurance,
       color: "#BFDBFE",
     },
     {
       key: "duties",
       label: Lx("DAI (arancel)", "DAI (import duty)"),
-      detail: `${pct(rates.dutyRate)} ${Lx("sobre valor CIF", "on CIF value")} ${formatQ(cif, rates.exchangeRate, 2)}`,
+      detail: `${pct(rates.dutyRate)} ${shipping > 0 ? Lx("sobre valor CIF (FOB + flete + seguro)", "on CIF value (FOB + freight + insurance)") : Lx("sobre FOB + seguro (falta sumar el flete al CIF)", "on FOB + insurance (freight still to be added to CIF)")} ${formatQ(cif, rates.exchangeRate, 2)}`,
       amount: importDuties,
       color: "#60A5FA",
     },

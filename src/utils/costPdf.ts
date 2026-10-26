@@ -7,7 +7,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { drawCompanyInfoBox, drawCompanyFooter } from "./reportExports";
-import { formatQ, formatUSD, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
+import { formatQ, formatUSD, formatUnitUSD, formatUnitQ, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
@@ -40,8 +40,9 @@ export interface CostPdfInput {
   saveFile?: boolean;
 }
 
-export function buildCostPdf(d: CostPdfInput): string {
+function drawCostPdf(d: CostPdfInput, tight: boolean): any {
   const doc = new jsPDF();
+  const RH = tight ? 4.3 : 5; // line height of the details block
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const BOTTOM = H - 28; // keep clear of the footer
@@ -89,14 +90,14 @@ export function buildCostPdf(d: CostPdfInput): string {
   text(Lx("DATOS DE LA CONSULTA", "REQUEST DETAILS"), 14, y);
   y += 6;
   doc.setFont("helvetica", "normal");
-  doc.setFontSize(9);
+  doc.setFontSize(tight ? 8.5 : 9);
   doc.setTextColor(30, 41, 59);
   const rows: [string, string][] = [
     [Lx("Proveedor considerado", "Supplier considered"), d.supplierName],
     [Lx("Cantidad", "Quantity"), `${d.quantity.toLocaleString("en-US")} ${unitWordFor(d.costs.saleUnit, d.quantity)}`],
     [
       Lx(`Precio por ${unitWordFor(d.costs.saleUnit, 1)}`, `Price per ${unitWordFor(d.costs.saleUnit, 1)}`),
-      `${formatUSD(Number(d.price), 2)} (${formatQ(Number(d.price), fx, 2)})${d.priceNote ? ` - ${d.priceNote}` : ""}`,
+      `${formatUnitUSD(Number(d.price))} (${formatUnitQ(Number(d.price), fx)})${d.priceNote ? ` - ${d.priceNote}` : ""}`,
     ],
     [Lx("Destino", "Destination"), "Guatemala"],
   ];
@@ -106,7 +107,7 @@ export function buildCostPdf(d: CostPdfInput): string {
     doc.setFont("helvetica", "normal");
     const lines = wrap(v, W - 70);
     text(lines, 58, y);
-    y += 5 * lines.length;
+    y += RH * lines.length;
   }
   // Product description (client's own words, up to 8 lines)
   doc.setFont("helvetica", "bold");
@@ -115,7 +116,7 @@ export function buildCostPdf(d: CostPdfInput): string {
   let desc = wrap(d.productDescription || "-", W - 70);
   if (desc.length > 8) desc = [...desc.slice(0, 7), `${desc[7].slice(0, 80)}...`];
   text(desc, 58, y);
-  y += 5 * desc.length + 4;
+  y += RH * desc.length + (tight ? 2 : 4);
 
   // Assumptions behind the quantity and price (same as on screen)
   if (d.notes?.length) {
@@ -124,15 +125,15 @@ export function buildCostPdf(d: CostPdfInput): string {
     doc.setFont("helvetica", "normal");
     for (const n of d.notes) {
       const lines = wrap(`- ${n}`, W - 72);
-      ensure(5 * lines.length + 2);
+      ensure(RH * lines.length + 2);
       text(lines, 58, y);
-      y += 5 * lines.length;
+      y += RH * lines.length;
     }
-    y += 4;
+    y += tight ? 2 : 4;
   }
 
-  // Costs table
-  ensure(30);
+  // Costs table: kept on one page (title, rows and total together)
+  ensure(Math.min(12 + (d.costs.lines.length + 2) * (tight ? 6.5 : 8), BOTTOM - 20));
   doc.setFont("helvetica", "bold");
   doc.setFontSize(11);
   doc.setTextColor(11, 60, 93);
@@ -161,7 +162,7 @@ export function buildCostPdf(d: CostPdfInput): string {
     headStyles: { fillColor: [11, 60, 93], textColor: 255, fontStyle: "bold" },
     footStyles: { fillColor: [59, 130, 246], textColor: 255, fontStyle: "bold" },
     alternateRowStyles: { fillColor: [239, 246, 255] },
-    styles: { fontSize: 8.5, cellPadding: 2, font: "helvetica" },
+    styles: { fontSize: tight ? 7.8 : 8.5, cellPadding: tight ? 1.3 : 2, font: "helvetica" },
     columnStyles: { 2: { halign: "right" }, 3: { halign: "right" } },
     margin: { left: 14, right: 14, bottom: 30 },
     didParseCell: (cell: any) => {
@@ -184,7 +185,10 @@ export function buildCostPdf(d: CostPdfInput): string {
     sh + 5 + sum(varLines, lh) + gap + (topicLines.length ? 5 + sum(topicLines, lh) + gap : 0) + sum(noteLines, 3.8) + disc.length * 3.8 + 2;
   // a small overflow is absorbed by tighter spacing instead of a new page
   const over = need(4.2, 19, 3) - (BOTTOM - y);
-  const compact = over > 0 && over <= 30;
+  const compact = tight || (over > 0 && over <= 30);
+  // A larger overflow moves the whole closing block (summary, lists, notice)
+  // to the next page, so no page holds only a few loose lines
+  if (over > 30 && need(3.6, 15, 1.5) <= BOTTOM - 16) ensure(BOTTOM);
   const LH = compact ? 3.6 : 4.2;
   const GAP = compact ? 1.5 : 3;
   const tailH = sum(noteLines, 3.8) + disc.length * 3.8 + 2;
@@ -242,6 +246,18 @@ export function buildCostPdf(d: CostPdfInput): string {
   text(disc, 14, y + 1);
 
   drawCompanyFooter(doc);
+  return doc;
+}
+
+export function buildCostPdf(d: CostPdfInput): string {
+  const pagesOf = (x: any) => x.internal.getNumberOfPages() as number;
+  // Normal layout first; if it spills to a second page, a tighter layout is
+  // tried and used when everything fits on one page
+  let doc = drawCostPdf(d, false);
+  if (pagesOf(doc) > 1) {
+    const tightDoc = drawCostPdf(d, true);
+    if (pagesOf(tightDoc) === 1) doc = tightDoc;
+  }
   if (d.saveFile !== false) {
     // Plain letters only in the file name (accents or symbols get mangled by some systems)
     const base = d.fileName.replace(/\.pdf$/i, "");

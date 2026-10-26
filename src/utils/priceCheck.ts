@@ -1,7 +1,7 @@
 // Flags published prices that are probably not the real unit price
 // (US$1 "starting" prices, very wide ranges, or far below the other options),
 // so they are not used in the cost scenario without the client confirming them.
-import { formatUSD } from "./costCalculator";
+import { formatUSD, formatUnitUSD, formatUnitQ } from "./costCalculator";
 import { Lx } from "./lang";
 import { saleUnitInfo } from "./saleUnit";
 
@@ -74,22 +74,22 @@ export function priceIssue(
   // costly product types, or when the other options cost far more
   if ((price <= 1 || lo <= 1) && (COSTLY_TYPES.has(productType) || (own !== null && own <= 1 && peerMedian >= 20))) {
     return Lx(
-      `El precio publicado (${formatUSD(lo, 2)}) parece simbólico o inicial, no el precio real de la unidad.`,
-      `The published price (${formatUSD(lo, 2)}) looks symbolic or a starting price, not the real unit price.`,
+      `El precio publicado (${formatUnitUSD(lo)}) parece simbólico o inicial, no el precio real de la unidad.`,
+      `The published price (${formatUnitUSD(lo)}) looks symbolic or a starting price, not the real unit price.`,
     );
   }
   if (nums.length >= 2 && hi / lo >= 20) {
     return Lx(
-      `El rango publicado es muy amplio (${formatUSD(lo, 2)} – ${formatUSD(hi, 2)}); el mínimo suele ser de un accesorio o un modelo distinto.`,
-      `The published range is very wide (${formatUSD(lo, 2)} – ${formatUSD(hi, 2)}); the minimum is usually an accessory or a different model.`,
+      `El rango publicado es muy amplio (${formatUnitUSD(lo)} – ${formatUnitUSD(hi)}); el mínimo suele ser de un accesorio o un modelo distinto.`,
+      `The published range is very wide (${formatUnitUSD(lo)} – ${formatUnitUSD(hi)}); the minimum is usually an accessory or a different model.`,
     );
   }
   if (peerMedian > 0 && own !== null) {
     const m = peerMedian;
     if (own < m * 0.2) {
       return Lx(
-        `Está muy por debajo de las demás opciones de esta búsqueda, comparando el precio por pieza (${formatUSD(own, 2)} contra un precio típico cercano a ${formatUSD(m, 2)}${perPiece || " por pieza"}).`,
-        `It is far below the other options in this search, comparing the price per piece (${formatUSD(own, 2)} against a typical price around ${formatUSD(m, 2)}${perPiece || " per piece"}).`,
+        `Está muy por debajo de las demás opciones de esta búsqueda, comparando el precio por pieza (${formatUnitUSD(own)} contra un precio típico cercano a ${formatUnitUSD(m)}${perPiece || " por pieza"}).`,
+        `It is far below the other options in this search, comparing the price per piece (${formatUnitUSD(own)} against a typical price around ${formatUnitUSD(m)}${perPiece || " per piece"}).`,
       );
     }
   }

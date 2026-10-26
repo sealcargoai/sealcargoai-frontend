@@ -4,7 +4,7 @@
 // to the platform's sale unit before calculating or checking the minimum order.
 import { priceIssue } from "./priceCheck";
 import { saleUnitInfo, quantityIntent, packSizeFromTitle, unitWordFor, type SaleUnitInfo } from "./saleUnit";
-import { formatUSD } from "./costCalculator";
+import { formatUSD, formatUnitUSD, formatUnitQ } from "./costCalculator";
 import { Lx } from "./lang";
 
 /** A quantity from the form or state ("1e7", "1,000", 500): whole units, 1 when unusable. */
@@ -112,22 +112,23 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
           ...supplier,
           price,
           priceRange: "",
+          basisConverted: { perPiece, piecesPerUnit, unit: one },
           priceBasisNote: Lx(
-            `precio publicado ${formatUSD(perPiece, 2)} por pieza × ${piecesPerUnit} piezas`,
-            `published price ${formatUSD(perPiece, 2)} per piece × ${piecesPerUnit} pieces`,
+            `precio publicado ${formatUnitUSD(perPiece)} por pieza × ${piecesPerUnit} piezas`,
+            `published price ${formatUnitUSD(perPiece)} per piece × ${piecesPerUnit} pieces`,
           ),
         };
         notes.push(
           Lx(
-            `Precio publicado ${formatUSD(perPiece, 2)} tomado como precio por pieza, según indicaste: ${formatUSD(price, 2)} por ${one} de ${piecesPerUnit} piezas.`,
-            `Published price ${formatUSD(perPiece, 2)} taken as a per-piece price, as you indicated: ${formatUSD(price, 2)} per ${one} of ${piecesPerUnit} pieces.`,
+            `Precio publicado ${formatUnitUSD(perPiece)} tomado como precio por pieza, según indicaste: ${formatUnitUSD(price)} por ${one} de ${piecesPerUnit} piezas.`,
+            `Published price ${formatUnitUSD(perPiece)} taken as a per-piece price, as you indicated: ${formatUnitUSD(price)} per ${one} of ${piecesPerUnit} pieces.`,
           ),
         );
       } else if (choices.priceBasis === "unit") {
         notes.push(
           Lx(
-            `Confirmaste que ${formatUSD(price, 2)} es el precio por ${one} de ${piecesPerUnit} piezas (unos ${formatUSD(publishedPerPiece, 4)} por pieza).`,
-            `You confirmed ${formatUSD(price, 2)} is the price per ${one} of ${piecesPerUnit} pieces (about ${formatUSD(publishedPerPiece, 4)} per piece).`,
+            `Confirmaste que ${formatUnitUSD(price)} es el precio por ${one} de ${piecesPerUnit} piezas (unos ${formatUSD(publishedPerPiece, 4)} por pieza).`,
+            `You confirmed ${formatUnitUSD(price)} is the price per ${one} of ${piecesPerUnit} pieces (about ${formatUSD(publishedPerPiece, 4)} per piece).`,
           ),
         );
       } else needsBasisDecision = true;
@@ -206,7 +207,7 @@ export function priceNoteFor(s: any): string {
   if (s.priceSource === "client") return Lx("precio indicado por el cliente", "price entered by the client");
   const nums = String(s.priceRange || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/g)?.map(Number).filter((n) => n > 0) ?? [];
   if (nums.length >= 2 && nums[0] !== nums[1]) {
-    const pub = `${formatUSD(nums[0], 2)} – ${formatUSD(nums[1], 2)}`;
+    const pub = `${formatUnitUSD(nums[0])} – ${formatUnitUSD(nums[1])}`;
     const used = Number(s.price) || 0;
     const isMid = used > 0 && Math.abs(used - (nums[0] + nums[1]) / 2) <= Math.max(0.005, used * 0.005);
     return isMid ? Lx(`precio medio del rango ${pub}`, `midpoint of the range ${pub}`) : Lx(`rango publicado ${pub}`, `published range ${pub}`);

@@ -2,7 +2,7 @@ import ExcelJS from "exceljs";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
-import { estimateNote, scenarioVariables, formatUSD, formatQ } from "./costCalculator";
+import { estimateNote, scenarioVariables, formatUSD, formatUnitUSD, formatUnitQ, formatQ } from "./costCalculator";
 
 // ─── SEAL Company Info ────────────────────────────────────────────────────────
 export const SEAL_COMPANY = {
@@ -238,7 +238,7 @@ export async function generateBeautifulExcel(
     [Lx("Producto:", "Product:"), data.productType],
     [Lx("País de destino:", "Destination country:"), "Guatemala"],
     [Lx("Cantidad:", "Quantity:"), `${data.quantity.toLocaleString()} ${unitWordFor(data.costs.saleUnit, data.quantity)}`],
-    [Lx(`Precio por ${unitWordFor(data.costs.saleUnit, 1)}:`, `Price per ${unitWordFor(data.costs.saleUnit, 1)}:`), `${formatUSD(Number(data.price), 2)} (${formatQ(Number(data.price), data.costs.exchangeRate || DEFAULT_FX, 2)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
+    [Lx(`Precio por ${unitWordFor(data.costs.saleUnit, 1)}:`, `Price per ${unitWordFor(data.costs.saleUnit, 1)}:`), `${formatUnitUSD(Number(data.price))} (${formatUnitQ(Number(data.price), data.costs.exchangeRate || DEFAULT_FX)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
   ];
 
   orderRows.forEach((row, i) => {

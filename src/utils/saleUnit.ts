@@ -115,7 +115,18 @@ function readQuantity(description?: string): QtyRead {
   const pieces = [...t.matchAll(new RegExp(`${NEG}${num}\\s+([a-záéíóúüñ]{3,})`, "g"))].filter(
     (m) => !m[1] && !new RegExp(`^${PACK}$`).test(m[2]) && !new RegExp(`^${MEASURE}$`).test(m[2]),
   );
-  if (pieces.length && !packs.length) return { intent: "piece", word: pieces[0][2] };
+  // The counted word must be a unit ("piezas", "unidades") or the product itself
+  // ("Botellas de vidrio, 240 botellas"); any other word after a number
+  // ("240 capacidad", "500 aprox") is not what is being counted.
+  const UNIT_WORD = /^(?:piezas?|unidades?|units?|pieces?|pcs|pzas?|art[ií]culos?|items?)$/;
+  const STOP = /^(?:quiero|queremos|necesito|necesitamos|busco|buscamos|importar|comprar|cotizar|traer|pedir|unos?|unas?|para|con|sin|los|las|del|que|una|i|we|need|want|buy|import|quote|about|aprox\w*|approx\w*|around|some)$/;
+  const words = t.match(/[a-záéíóúüñ]{3,}/g) || [];
+  const head = words.find((w) => !STOP.test(w)) || "";
+  const stem = (w: string) => w.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/(?:es|s)$/, "").slice(0, 5);
+  const valid = (w: string) => UNIT_WORD.test(w) || (!!head && stem(w) === stem(head)) || words.filter((x) => stem(x) === stem(w)).length > 1;
+  const counted = pieces.filter((m) => valid(m[2]));
+  if (counted.length && !packs.length) return { intent: "piece", word: counted[0][2] };
+  if (pieces.length && !counted.length && !packs.length) return { intent: "", word: "" };
   if (packs.length && !pieces.length) return { intent: "pack", word: packs[0][2] };
   return { intent: "", word: "" };
 }
