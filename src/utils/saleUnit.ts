@@ -28,9 +28,28 @@ export function unitWordFor(unit: string | undefined, n: number): string {
   return n === 1 ? Lx(w[0], w[2]) : Lx(w[1], w[3]);
 }
 
+/** Pairs per box/pack written in the title ("20 pairs/box", "carton of 12 pairs"), 0 = none. */
+export function pairsFromTitle(title?: string): number {
+  const t = String(title || "").toLowerCase();
+  const rules: RegExp[] = [
+    /(\d{1,4})\s*(?:pairs?|prs|pares)\s*(?:\/|per|por|in\s+(?:a|one|1)|a|each)\s*(?:box|boxes|carton|ctn|case|caja|bag|pack|package|paquete|bolsa|set)\b/,
+    /\b(?:box|carton|ctn|case|caja|bag|pack|package|paquete|bolsa|set)\s*(?:of|de|con|with|x)\s*(\d{1,4})\s*(?:pairs?|prs|pares)\b/,
+    /(\d{1,4})\s*-?\s*(?:pairs?|prs|pares)\s+(?:[\w-]+\s+){0,4}(?:box|carton|ctn|caja|pack|package|paquete|bolsa|set)\b/,
+  ];
+  for (const re of rules) {
+    const m = t.match(re);
+    const n = m ? parseInt(m[1], 10) : 0;
+    if (n > 1 && n <= 2500) return n;
+  }
+  return 0;
+}
+
 /** Pieces per set/box/pack written in the title ("12 pcs/set", "box of 50", "12 colors set"). */
 export function packSizeFromTitle(title?: string): number {
   const t = String(title || "").toLowerCase();
+  // "box of 20 pairs" holds 40 pieces, not 20
+  const pairs = pairsFromTitle(t);
+  if (pairs > 1) return pairs * 2;
   const rules: RegExp[] = [
     /(\d{1,4})\s*(?:pcs|pc|pieces?|piezas?|pzs|unidades|units?)\s*(?:\/|per|por|in\s+(?:a|one|1))\s*(?:set|box|pack|bag|caja|paquete|bolsa)/,
     /(\d{1,4})\s*(?:pcs?|pieces?|piezas?)?\s*\/\s*(?:set|box|pack|bag|caja|paquete|bolsa)\b/,
@@ -65,6 +84,7 @@ export interface SaleUnitInfo {
   unit: SaleUnit; // "" when the platform doesn't say
   packSize: number; // pieces per unit from the title, 0 = unknown
   multi: boolean; // the unit is not a single piece (or holds several)
+  pairsPerUnit?: number; // the title counts the content in pairs ("20 pairs/box" → 20; packSize is then 40 pieces)
   mixedWith?: string; // a mixed kit: the other items the title names ("cups")
 }
 
@@ -108,8 +128,9 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
     if (n > 1 && n <= 5000) packSize = n;
   }
   if (WHOLE_ITEM_TYPES.has(productType) && !(packSize > 1)) return { unit: "piece", packSize: 0, multi: false };
-  // a pair holds two pieces by definition
-  if (fromMoq === "pair" && !(packSize > 1)) packSize = 2;
+  // a pair holds two pieces by definition (a "20 pairs/box" title doesn't change that)
+  if (fromMoq === "pair") packSize = 2;
+  if (fromMoq === "dozen" && !(packSize > 1)) packSize = 12;
   let unit: SaleUnit = fromMoq;
   // "piece" from the MOQ text plus "set of 12" in the title: trust the platform's unit
   if (!unit && packSize > 1) unit = unitFromTitle(s?.productName) || "set";
@@ -118,7 +139,8 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
   // so it is not the number of the client's product in each set — it must be asked
   const mixedWith = multi && unit !== "pair" ? mixedKitItems(s?.productName) : "";
   if (mixedWith) return { unit, packSize: 0, multi, mixedWith };
-  return { unit, packSize: unit === "piece" ? 0 : packSize, multi };
+  const pairs = unit !== "pair" && unit !== "piece" ? pairsFromTitle(s?.productName) : 0;
+  return { unit, packSize: unit === "piece" ? 0 : packSize, multi, ...(pairs > 1 && packSize === pairs * 2 ? { pairsPerUnit: pairs } : {}) };
 }
 
 /**
@@ -126,7 +148,10 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
  * "500 lápices" / "500 piezas" → "piece"; "500 paquetes" / "500 cajas" → "pack".
  * A negated mention ("no 500 paquetes") does not count. "" when it's unclear.
  */
-interface QtyRead { intent: "piece" | "pack" | ""; word: string }
+// "pair" / "dozen": the client counts pairs or dozens ("1000 pares de guantes"), which are
+// pieces × 2 / × 12 unless the listing also sells by the pair or dozen
+export type QtyIntent = "piece" | "pack" | "pair" | "dozen" | "";
+interface QtyRead { intent: QtyIntent; word: string }
 function readQuantity(description?: string): QtyRead {
   const PACK = "(?:paquetes?|sets?|juegos?|cajas?|docenas?|estuches?|packs?|boxes|box|dozens?|cartons?|cartones?|kits?|pares|par|pairs?|bolsas?|bags?|rollos?|rolls?)";
   const t = ` ${String(description || "").toLowerCase()} `
@@ -162,7 +187,10 @@ function readQuantity(description?: string): QtyRead {
   const counted = pieces.filter((m) => valid(m[2]));
   if (counted.length && !packs.length) return { intent: "piece", word: counted[0][2] };
   if (pieces.length && !counted.length && !packs.length) return { intent: "", word: "" };
-  if (packs.length && !pieces.length) return { intent: "pack", word: packs[0][2] };
+  if (packs.length && !pieces.length) {
+    const w = packs[0][2];
+    return { intent: /^(?:pares|par|pairs?)$/.test(w) ? "pair" : /^(?:docenas?|dozens?)$/.test(w) ? "dozen" : "pack", word: w };
+  }
   return { intent: "", word: "" };
 }
 
@@ -171,7 +199,7 @@ function readQuantity(description?: string): QtyRead {
  * "500 lápices" / "500 piezas" → "piece"; "500 paquetes" / "500 cajas" → "pack".
  * A negated mention ("no 500 paquetes") does not count. "" when it's unclear.
  */
-export function quantityIntent(description?: string): "piece" | "pack" | "" {
+export function quantityIntent(description?: string): QtyIntent {
   return readQuantity(description).intent;
 }
 
@@ -187,6 +215,9 @@ export function productNoun(description?: string): string {
     .filter((w) => !NOT_OTHER_ITEM.test(w) && !/^(?:tiendas|escuelas|sucursales|clientes|stores|schools|branches|customers|colores|colors|colours)$/.test(w))
     .find((w) => !STOP.test(w) && !/^(?:piezas|unidades|units|pieces|pcs|cajas|sets|paquetes|bolsas|pares|docenas|kgs|kilos|gramos|litros|metros|toneladas|agujas|needles|horas|d[ií]as|meses|a[nñ]os)$/.test(w));
   if (counted) return counted;
+  // "1000 pares de guantes": the product counted in pairs or dozens
+  const pd = String(description || "").toLowerCase().match(/\b(?:pares|pairs|docenas|dozens)\s+(?:de|of)\s+([a-záéíóúüñ]{3,}s)\b/);
+  if (pd) return pd[1];
   const of = String(description || "").toLowerCase().match(/\b(?:piezas?|unidades?|units?|pieces?)\s+(?:de|of)\s+([a-záéíóúüñ]{3,}s)\b/);
   if (of) return of[1];
   const words = (String(description || "").toLowerCase().match(/[a-záéíóúüñ]{3,}/g) || []).filter((w) => !STOP.test(w) && !/^(?:piezas?|unidades?|units?|pieces?)$/.test(w));

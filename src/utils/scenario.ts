@@ -35,6 +35,8 @@ const MIN_PIECE_PRICE = 0.01;
 
 export interface Scenario {
   supplier: any; // supplier with the price actually used
+  requestedPieces: number; // the client's quantity in pieces (pairs × 2, dozens × 12 when the listing sells another unit)
+  countedIn: "pair" | "dozen" | ""; // the client counted pairs/dozens and they were converted to pieces
   priceFlag: string;
   needsPriceDecision: boolean;
   needsCompleteDecision: boolean;
@@ -42,7 +44,7 @@ export interface Scenario {
   needsUnitDecision: boolean;
   needsBasisDecision: boolean;
   unitInfo: SaleUnitInfo;
-  intent: "piece" | "pack" | "";
+  intent: "piece" | "pack" | "pair" | "dozen" | "";
   qtyMode: "sets" | "pieces" | null;
   packSize: number;
   piecesPerUnit: number;
@@ -84,18 +86,47 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
   const unitInfo = saleUnitInfo(supplier, productType);
   const intent = quantityIntent(ctx.description);
   const requested = Math.max(1, Math.floor(ctx.requestedQty) || 1);
+  // "1000 pares de guantes": 2,000 pieces, unless the listing also sells by the pair
+  // (a dozen likewise is 12 pieces). A listing that doesn't say its unit is not
+  // converted: its price may well be per pair, so the note asks to confirm it.
+  const countMult = intent === "pair" ? 2 : intent === "dozen" ? 12 : 1;
+  const sameCountUnit = (intent === "pair" && unitInfo.unit === "pair") || (intent === "dozen" && unitInfo.unit === "dozen");
+  const countedIn = countMult > 1 && !sameCountUnit && (unitInfo.multi || unitInfo.unit === "piece");
+  const requestedPieces = countedIn ? requested * countMult : requested;
+  const countWord = intent === "pair" ? Lx("pares", "pairs") : Lx("docenas", "dozens");
   // "200 zapatos" with a price per pair could mean 200 pairs: ask instead of halving it
   const qtyMode =
     choices.qtyMode ??
-    (intent === "pack" ? "sets" : intent === "piece" && unitInfo.unit !== "pair" ? "pieces" : null);
+    (sameCountUnit ? "sets" : countedIn ? "pieces" : intent === "pack" ? "sets" : intent === "piece" && unitInfo.unit !== "pair" ? "pieces" : null);
   const packSize = unitInfo.packSize > 1 ? unitInfo.packSize : Number(choices.customPack) || 0;
   // a client counting pairs ("100 pares") needs no per-piece figures
   const piecesPerUnit =
     unitInfo.multi && qtyMode !== null && packSize > 1 && !(unitInfo.unit === "pair" && qtyMode === "sets") ? packSize : 0;
   const needsUnitDecision = unitInfo.multi && (qtyMode === null || (qtyMode === "pieces" && !(packSize > 1)));
-  let quantity = unitInfo.multi && qtyMode === "pieces" && packSize > 1 ? Math.ceil(requested / packSize) : requested;
+  let quantity =
+    unitInfo.multi && qtyMode === "pieces" && packSize > 1
+      ? Math.ceil(requestedPieces / packSize)
+      : countedIn && !unitInfo.multi && qtyMode !== "sets"
+        ? requestedPieces
+        : requested;
 
   const notes: string[] = [];
+  // pairs/dozens counted against a listing sold by the piece
+  if (countedIn && !unitInfo.multi && qtyMode !== "sets")
+    notes.push(
+      Lx(
+        `Pediste ${requested.toLocaleString("en-US")} ${countWord} = ${requestedPieces.toLocaleString("en-US")} piezas (${intent === "pair" ? "cada par son 2" : "cada docena son 12"}), y la publicación vende por pieza. Si el proveedor cuenta cada ${intent === "pair" ? "par" : "docena"} como una unidad, serían ${requested.toLocaleString("en-US")} unidades: confírmalo.`,
+        `You asked for ${requested.toLocaleString("en-US")} ${countWord} = ${requestedPieces.toLocaleString("en-US")} pieces (${intent === "pair" ? "each pair is 2" : "each dozen is 12"}), and the listing sells per piece. If the supplier counts each ${intent === "pair" ? "pair" : "dozen"} as one unit, it would be ${requested.toLocaleString("en-US")} units: confirm it.`,
+      ),
+    );
+  // pairs/dozens against a listing that doesn't say its unit
+  if (countMult > 1 && !sameCountUnit && !countedIn)
+    notes.push(
+      Lx(
+        `Tu cantidad está en ${countWord} y la publicación no indica si su precio es por ${intent === "pair" ? "par" : "docena"} o por pieza: calculamos ${requested.toLocaleString("en-US")} unidades tomando el precio como precio por ${intent === "pair" ? "par" : "docena"}. Si es por pieza, serían ${(requested * countMult).toLocaleString("en-US")} piezas; confírmalo con el proveedor.`,
+        `Your quantity is in ${countWord} and the listing doesn't say whether its price is per ${intent === "pair" ? "pair" : "dozen"} or per piece: we calculate ${requested.toLocaleString("en-US")} units taking the price as per ${intent === "pair" ? "pair" : "dozen"}. If it is per piece, it would be ${(requested * countMult).toLocaleString("en-US")} pieces; confirm it with the supplier.`,
+      ),
+    );
   const one = unitWordFor(unitInfo.unit, 1);
   let price = Number(supplier?.price) > 0 ? Number(supplier.price) : 0;
 
@@ -153,10 +184,20 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
     const fromTitle = unitInfo.packSize > 1;
     const many = unitWordFor(unitInfo.unit, quantity);
     if (qtyMode === "pieces") {
+      const pairsTitle = unitInfo.pairsPerUnit ? Lx(` (${unitInfo.pairsPerUnit} pares)`, ` (${unitInfo.pairsPerUnit} pairs)`) : "";
+      const askedEs = countedIn
+        ? `${requested.toLocaleString("en-US")} ${countWord} = ${requestedPieces.toLocaleString("en-US")} piezas (${intent === "pair" ? "cada par son 2" : "cada docena son 12"})`
+        : `${requested.toLocaleString("en-US")} piezas`;
+      const askedEn = countedIn
+        ? `${requested.toLocaleString("en-US")} ${countWord} = ${requestedPieces.toLocaleString("en-US")} pieces (${intent === "pair" ? "each pair is 2" : "each dozen is 12"})`
+        : `${requested.toLocaleString("en-US")} pieces`;
+      const totalPieces = quantity * piecesPerUnit;
+      const backEs = countedIn ? ` (${(totalPieces / countMult).toLocaleString("en-US")} ${countWord})` : "";
+      const backEn = backEs ? ` (${(totalPieces / countMult).toLocaleString("en-US")} ${countWord})` : "";
       notes.push(
         Lx(
-          `Pediste ${requested.toLocaleString("en-US")} piezas. Con ${piecesPerUnit} piezas por ${one} (${unitInfo.unit === "pair" ? "cada par son 2 piezas" : `${fromTitle ? "según el título de la publicación" : "dato que escribiste"}, supuesto por confirmar con el proveedor`}) se calculan ${quantity.toLocaleString("en-US")} ${many} = ${(quantity * piecesPerUnit).toLocaleString("en-US")} piezas.`,
-          `You asked for ${requested.toLocaleString("en-US")} pieces. With ${piecesPerUnit} pieces per ${one} (${unitInfo.unit === "pair" ? "each pair is 2 pieces" : `${fromTitle ? "from the listing title" : "figure you entered"}, an assumption to confirm with the supplier`}) we calculate ${quantity.toLocaleString("en-US")} ${many} = ${(quantity * piecesPerUnit).toLocaleString("en-US")} pieces.`,
+          `Pediste ${askedEs}. Con ${piecesPerUnit} piezas${pairsTitle} por ${one} (${unitInfo.unit === "pair" ? "cada par son 2 piezas" : `${fromTitle ? "según el título de la publicación" : "dato que escribiste"}, supuesto por confirmar con el proveedor`}) se calculan ${quantity.toLocaleString("en-US")} ${many} = ${totalPieces.toLocaleString("en-US")} piezas${backEs}.`,
+          `You asked for ${askedEn}. With ${piecesPerUnit} pieces${pairsTitle} per ${one} (${unitInfo.unit === "pair" ? "each pair is 2 pieces" : `${fromTitle ? "from the listing title" : "figure you entered"}, an assumption to confirm with the supplier`}) we calculate ${quantity.toLocaleString("en-US")} ${many} = ${totalPieces.toLocaleString("en-US")} pieces${backEn}.`,
         ),
       );
     } else {
@@ -195,7 +236,7 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
   if (moqNote) notes.push(moqNote);
 
   return {
-    supplier, priceFlag, needsPriceDecision, needsCompleteDecision, confirmationReset: !confirmationValid, needsUnitDecision, needsBasisDecision, unitInfo, intent, qtyMode,
+    supplier, requestedPieces, countedIn: countedIn ? (intent as "pair" | "dozen") : "", priceFlag, needsPriceDecision, needsCompleteDecision, confirmationReset: !confirmationValid, needsUnitDecision, needsBasisDecision, unitInfo, intent, qtyMode,
     packSize, piecesPerUnit, quantity, price, ownPrice, publishedPerPiece, notes, moqNote,
   };
 }

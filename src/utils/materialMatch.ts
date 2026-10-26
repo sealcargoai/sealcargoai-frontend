@@ -64,6 +64,8 @@ export interface MaterialMatch {
   status: MaterialStatus;
   asked: string;
   listed: string;
+  // the title also names other materials ("vinyl nitrile blend"): all of them, to confirm the composition
+  mixed?: string;
 }
 
 /** null when the client named no material or the listing names none. */
@@ -149,15 +151,29 @@ export function matchMaterial(description: string, productTitle?: string): Mater
   const label = (ms: Mat[]) => ms.map((m) => Lx(m.es, m.en)).join(", ");
   const hitsRuledOut = listed.filter((m) => ruledOut.includes(m));
   const shared = listed.some((m) => asked.includes(m));
-  if (shared && !hitsRuledOut.length) return { status: "match", asked: label(asked), listed: label(listed.filter((m) => asked.includes(m))) };
+  if (shared && !hitsRuledOut.length) {
+    const others = listed.filter((m) => !asked.includes(m));
+    return { status: "match", asked: label(asked), listed: label(listed.filter((m) => asked.includes(m))), ...(others.length ? { mixed: label(listed) } : {}) };
+  }
+  // "nitrile coated nylon gloves": the requested material is in a part (the coating),
+  // the body is another one; that is a combination to confirm, not simply another material
+  const askedInPart = partMaterials(productTitle).pairs.filter((p) => !p.negated && asked.some((m) => m.es === p.mat || m.en === p.matEn));
+  if (askedInPart.length && !hitsRuledOut.length) {
+    const parts = askedInPart.map((p) => Lx(`${p.mat} (${p.part})`, `${p.matEn} (${p.partEn})`));
+    return { status: "match", asked: label(asked), listed: parts.join(", "), mixed: [...parts, label(listed)].join(", ") };
+  }
   if (!asked.length && !hitsRuledOut.length) return null;
   return { status: "other", asked: label(asked), listed: label(hitsRuledOut.length ? hitsRuledOut : listed) };
 }
 
-/** Stable re-order: listings naming another material go last. */
+/** Stable re-order: listings naming another material go last, mixed materials after pure matches. */
 export function orderByMaterial<T extends { productName?: string }>(list: T[], description: string): T[] {
   return list
-    .map((s, i) => ({ s, i, r: matchMaterial(description, s.productName)?.status === "other" || partMaterialIssue(description, s.productName) ? 1 : 0 }))
+    .map((s, i) => {
+      const m = matchMaterial(description, s.productName);
+      // a title that mixes the requested material with others goes after the pure matches
+      return { s, i, r: m?.status === "other" || partMaterialIssue(description, s.productName) ? 2 : m?.mixed ? 1 : 0 };
+    })
     .sort((a, b) => a.r - b.r || a.i - b.i)
     .map((x) => x.s);
 }
