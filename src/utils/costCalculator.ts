@@ -268,7 +268,7 @@ export function calculateCosts(
     {
       key: "vat",
       label: Lx("IVA", "IVA (VAT)"),
-      detail: `${pct(rates.vatRate)} ${Lx("sobre CIF + DAI", "on CIF + DAI")} ${formatQ(cif + importDuties, rates.exchangeRate, 2)}`,
+      detail: `${pct(rates.vatRate)} ${shipping > 0 ? Lx("sobre CIF + DAI", "on CIF + DAI") : Lx("sobre FOB + seguro + DAI (sin flete)", "on FOB + insurance + DAI (without freight)")} ${formatQ(cif + importDuties, rates.exchangeRate, 2)}`,
       amount: taxes,
       color: "#93C5FD",
     },
