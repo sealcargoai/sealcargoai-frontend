@@ -65,6 +65,32 @@ export interface SaleUnitInfo {
   unit: SaleUnit; // "" when the platform doesn't say
   packSize: number; // pieces per unit from the title, 0 = unknown
   multi: boolean; // the unit is not a single piece (or holds several)
+  mixedWith?: string; // a mixed kit: the other items the title names ("cups")
+}
+
+// Words after "with/and" that describe the product, not another item in the set
+const NOT_OTHER_ITEM = /^(?:ruedas?|capas?|a[nñ]os?|compartimentos?|cajones?|drawers?|velocidades?|tama[nñ]os?|patas?|tonos?|niveles?|puertas?|quemadores?|agujas?|cabezal(?:es)?|garant[ií]as?|piezas?|modos?|funciones?|bolsillos?|crafts?|dividers?|zippers?|handles?|asas?|tapas?|lids?|caps?|legs?|tiers?|shelves|estantes?|repisas?|pcs|pieces?|piezas?|units?|colou?rs?|colores|sizes?|tallas?|logos?|designs?|dise[nñ]os?|packs?|boxes|sets?|holes?|pockets?|bolsillos?|batter(?:y|ies)|wheels?|speeds?|layers?|compartments?|levels?|modes?|ports?|slots?|doors?|years?|months?|hours?|needles?|heads?|gears?|burners?|patterns?|prints?|styles?|options?|features?|functions?|usb|leds?|lights?|ml|kgs?|lbs?|inch(?:es)?|cm|mm|watts?|volts?)$/;
+
+/**
+ * The other items a mixed kit holds ("Glass bottle with 2 cups gift set" → "cups",
+ * "Bottle and cup set" → "cup"), "" if none. Only in a set/kit/gift context, and
+ * "with/con" needs a count ("with 2 cups"): "with handles", "con borradores" are features.
+ */
+export function mixedKitItems(title?: string): string {
+  const t = ` ${String(title || "").toLowerCase().replace(/[(),]/g, " ")} `;
+  if (!/\b(?:sets?|kits?|gift|combo|juegos?|estuches?|regalo)\b/.test(t)) return "";
+  const found: string[] = [];
+  const re = /\s(with|and|&|\+|plus|includ(?:es|ing)|con|y|incluye)\s+(?:(\d{1,3})\s*(?:pcs?\s+|pieces?\s+|piezas?\s+)?)?([a-záéíóúñ]{3,})\b/g;
+  for (const m of t.matchAll(re)) {
+    const [, conn, count, w] = m;
+    if (NOT_OTHER_ITEM.test(w) || /^(?:sets?|kits?|gift|combo|juegos?|regalo|the|a|an|el|la|los|las|un|una)$/.test(w)) continue;
+    if (/^(?:with|con|includ(?:es|ing)|incluye)$/.test(conn) && !count) continue;
+    // "and/y" without a count: only a plural noun is another item ("bottle and cups");
+    // "black and white", "hot and cold" are descriptions
+    if (/^(?:and|y|plus)$/.test(conn) && !count && !(/s$/.test(w) && !/ss$/.test(w)) && !/^(?:cup|mug|spoon|fork|knife|plate|bowl|straw|saucer|bottle|brush|comb|towel|taza|vaso|cuchara|tenedor|cuchillo|plato|taz[oó]n|botella|cepillo|toalla)$/.test(w)) continue;
+    found.push(w);
+  }
+  return [...new Set(found)].join(", ");
 }
 
 // A machine, appliance or piece of furniture sold "per set" is one unit unless
@@ -88,6 +114,10 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
   // "piece" from the MOQ text plus "set of 12" in the title: trust the platform's unit
   if (!unit && packSize > 1) unit = unitFromTitle(s?.productName) || "set";
   const multi = (!!unit && unit !== "piece") || (packSize > 1 && unit !== "piece");
+  // A mixed kit ("bottle with 2 cups, 3 pcs set"): the title's count mixes items,
+  // so it is not the number of the client's product in each set — it must be asked
+  const mixedWith = multi && unit !== "pair" ? mixedKitItems(s?.productName) : "";
+  if (mixedWith) return { unit, packSize: 0, multi, mixedWith };
   return { unit, packSize: unit === "piece" ? 0 : packSize, multi };
 }
 
@@ -113,13 +143,18 @@ function readQuantity(description?: string): QtyRead {
   const packs = [...t.matchAll(new RegExp(`${NEG}${num}\\s*(${PACK})\\b`, "g"))].filter((m) => !m[1]);
   // a number followed by a word that is not packaging nor a measure: "500 lápices", "500 piezas"
   const pieces = [...t.matchAll(new RegExp(`${NEG}${num}\\s+([a-záéíóúüñ]{3,})`, "g"))].filter(
-    (m) => !m[1] && !new RegExp(`^${PACK}$`).test(m[2]) && !new RegExp(`^${MEASURE}$`).test(m[2]),
+    (m) =>
+      !m[1] &&
+      !new RegExp(`^${PACK}$`).test(m[2]) &&
+      !new RegExp(`^${MEASURE}$`).test(m[2]) &&
+      // "para 20 escuelas", "tengo 3 tiendas", "de 2 colores": not what is being counted
+      !/(?:^|\s)(?:para|for|tengo|have|de|of|con|with)\s+$/.test(t.slice(0, m.index! + (m[0].length - m[0].trimStart().length))),
   );
   // The counted word must be a unit ("piezas", "unidades") or the product itself
   // ("Botellas de vidrio, 240 botellas"); any other word after a number
   // ("240 capacidad", "500 aprox") is not what is being counted.
   const UNIT_WORD = /^(?:piezas?|unidades?|units?|pieces?|pcs|pzas?|art[ií]culos?|items?)$/;
-  const STOP = /^(?:quiero|queremos|necesito|necesitamos|busco|buscamos|importar|comprar|cotizar|traer|pedir|unos?|unas?|para|con|sin|los|las|del|que|una|i|we|need|want|buy|import|quote|about|aprox\w*|approx\w*|around|some)$/;
+  const STOP = /^(?:quiero|queremos|necesito|necesitamos|busco|buscamos|importar|comprar|cotizar|traer|pedir|unos?|unas?|para|con|sin|los|las|del|que|una|i|we|need|want|buy|import|quote|about|aprox\w*|approx\w*|around|some|proveedor(?:es)?|suppliers?|precios?|prices?|productos?|products?|modelos?|models?|varios|varias|tipos?|types?|muestras?|samples?|cotizaci[oó]n(?:es)?|quotes?|contenedor(?:es)?|containers?|gracias|thanks|son|hola|hello|info|informaci[oó]n)$/;
   const words = t.match(/[a-záéíóúüñ]{3,}/g) || [];
   const head = words.find((w) => !STOP.test(w)) || "";
   const stem = (w: string) => w.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/(?:es|s)$/, "").slice(0, 5);
@@ -138,6 +173,27 @@ function readQuantity(description?: string): QtyRead {
  */
 export function quantityIntent(description?: string): "piece" | "pack" | "" {
   return readQuantity(description).intent;
+}
+
+/** The client's product noun ("Botellas de vidrio de 500 ml" → "botellas"), "" when unclear. */
+export function productNoun(description?: string): string {
+  const { intent, word } = readQuantity(description);
+  if (intent === "piece" && !/^(?:piezas?|unidades?|units?|pieces?|pcs|pzas?)$/.test(word)) return word;
+  const STOP = /^(?:quiero|queremos|necesito|necesitamos|busco|buscamos|importar|comprar|cotizar|traer|pedir|unos?|unas?|para|con|sin|los|las|del|que|una|i|we|need|want|buy|import|quote|some|about|proveedor(?:es)?|suppliers?|precios?|prices?|productos?|products?|modelos?|models?|varios|varias|tipos?|types?|muestras?|samples?|cotizaci[oó]n(?:es)?|quotes?|contenedor(?:es)?|containers?|gracias|thanks|son|hola|hello|info|informaci[oó]n|limpieza|cleaning)$/;
+  // "Productos de limpieza, 500 botellas": the plural noun counted after a number
+  const counted = [...String(description || "").toLowerCase().matchAll(/(?:^|[\s,;])(\S+\s+)?\d[\d.,]*\s+([a-záéíóúüñ]{3,}s)\b/g)]
+    .filter((m) => !/^(?:de|del|con|of|with|para|for|tengo|have|en|in|a)\s+$/.test(m[1] || ""))
+    .map((m) => m[2])
+    .filter((w) => !NOT_OTHER_ITEM.test(w) && !/^(?:tiendas|escuelas|sucursales|clientes|stores|schools|branches|customers|colores|colors|colours)$/.test(w))
+    .find((w) => !STOP.test(w) && !/^(?:piezas|unidades|units|pieces|pcs|cajas|sets|paquetes|bolsas|pares|docenas|kgs|kilos|gramos|litros|metros|toneladas|agujas|needles|horas|d[ií]as|meses|a[nñ]os)$/.test(w));
+  if (counted) return counted;
+  const of = String(description || "").toLowerCase().match(/\b(?:piezas?|unidades?|units?|pieces?)\s+(?:de|of)\s+([a-záéíóúüñ]{3,}s)\b/);
+  if (of) return of[1];
+  const words = (String(description || "").toLowerCase().match(/[a-záéíóúüñ]{3,}/g) || []).filter((w) => !STOP.test(w) && !/^(?:piezas?|unidades?|units?|pieces?)$/.test(w));
+  // the first plural noun ("Tengo 3 tiendas y quiero botellas" → "botellas"); only a
+  // plural reads naturally in "¿Cuántas botellas…?"
+  const w = words.find((x) => /s$/.test(x) && !/ss$/.test(x) && !NOT_OTHER_ITEM.test(x) && !/^(?:piezas|unidades|cajas|sets|paquetes|tiendas|escuelas|sucursales|clientes|stores|schools|branches|customers|colores|colors|colours|tengo|has|was|this|plus|less|yes|yes)$/.test(x)) || "";
+  return w;
 }
 
 /** The word the client counted with ("guantes", "lápices", "cajas"), "" when unclear. */

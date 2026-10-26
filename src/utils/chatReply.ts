@@ -79,7 +79,7 @@ const PACK_RE = "(sets?|juegos?|cajas?|boxes|box|paquetes?|packs?|estuches?|bols
 const packOf = (w: string) => PACKS.find(([r]) => r.test(w));
 // words that are not the counted item ("1,000 necesito", "500 para")
 const NOT_ITEM = /^(?:necesito|necesitas|necesita|quiero|quieres|compro|comprar|pido|pedir|son|hay|para|por|en|de|del|y|o|con|sin|que|cu[aá]nt[oa]s?|cada|total|unidades?|units?|i|need|want|buy|for|in|of|and|or|with|each|are|is|how|many|do|me|mi|mis|el|la|los|las|un|una|unos|unas|the|a|an|individual(?:es)?|sueltos?|sueltas?|single|loose)$/;
-const VERB_Q = /cu[aá]nt|how\s+many|how\s+much|necesit|alcanz|cubr|sobr|falt|enough|cover|need|left\s+over|spare|extra/;
+const VERB_Q = /cu[aá]nt|how\s+many|how\s+much|necesit|alcanz|cubr|sobr|falt|calcul|enough|cover|need|left\s+over|spare|extra|compute/;
 
 function normalizeNumbers(t: string): string {
   return t
@@ -100,13 +100,17 @@ export interface PackMath {
 }
 
 /** Reads a pack calculation in any wording, or null when the message isn't one. */
-export function packMath(text: string): PackMath | null {
+export function packMath(text: string, force = false): PackMath | null {
   let t = ` ${normalizeNumbers(String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ").replace(/\s+/g, " "))} `;
-  if (!VERB_Q.test(t)) return null;
+  if (!force && !VERB_Q.test(t)) return null;
   // money is not a quantity ("tengo US$500", "Q2,000", "300 dólares")
-  t = t.replace(/(?:us\$|usd|\$|\bq\.?)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:d[oó]lares|dollars|usd|quetzales|gtq)\b/g, " ");
+  t = t.replace(/(?:us\$|usd|\$|(?:^|\s)q\.?)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:d[oó]lares|dollars|usd|quetzales|gtq)\b/g, " ");
+  // samples are not part of the order ("y 2 sets de muestra")
+  t = t.replace(new RegExp(`\\d+\\s+${PACK_RE}\\s+(?:de\\s+)?(?:muestras?|samples?)\\b`, "g"), " ");
+  // a budget is money even without a currency ("presupuesto de 300")
+  t = t.replace(/(?:presupuesto|budget)\s+(?:de\s+|of\s+|es\s+de\s+|is\s+)?(?:unos\s+|about\s+)?\d+(?:[.,]\d+)?/g, " ");
   const N = "(\\d+(?:[.,]\\d+)?)";
-  const HAS = "(?:trae|traen|tiene|tienen|contiene|contienen|incluye|incluyen|lleva|llevan|viene\\s+con|vienen\\s+con|es\\s+de|son\\s+de|has|have|holds|hold|contains|contain|comes\\s+with|come\\s+with|includes|include)";
+  const HAS = "(?:trae|traen|tiene|tienen|contiene|contienen|incluye|incluyen|lleva|llevan|viene\\s+con|vienen\\s+con|llega\\s+con|llegan\\s+con|es\\s+de|son\\s+de|has|have|holds|hold|contains|contain|comes\\s+with|come\\s+with|includes|include)";
   const rules: [RegExp, number, number][] = [
     // [regex, group of the pack word, group of the size]
     [new RegExp(`(?:cada|each|every|un|una|1|per|por)\\s+${PACK_RE}\\s+${HAS}\\s+${N}`), 1, 2],
@@ -152,7 +156,7 @@ export function packMath(text: string): PackMath | null {
   const rest2 = given && packOf(given[2]) === pack ? rest.replace(given[0], " ") : rest;
   // the number of items wanted, and the word after it
   const nums = [...rest2.matchAll(/(\d+(?:[.,]\d+)?)(?:\s+([a-záéíóúüñ]+))?(?:\s+([a-záéíóúüñ]+))?/g)];
-  const w = nums.find((m) => Number(m[1]) > 0);
+  const w = nums.find((m) => Number(m[1]) > 0 && !/^(?:contenedor(?:es)?|containers?|modelos?|models?|d[ií]as|days|semanas|weeks|meses|months|a[nñ]os|years|horas|hours)$/.test(m[2] || ""));
   const wanted = w ? Number(w[1].replace(",", ".")) : NaN;
   let item = "";
   if (w) item = [w[2], w[3]].find((x) => x && !NOT_ITEM.test(x) && !packOf(x)) || "";
@@ -162,8 +166,13 @@ export function packMath(text: string): PackMath | null {
     if (a && !NOT_ITEM.test(a) && !packOf(a)) item = a;
   }
   if (!item && used) {
-    const after = used.match(/\d+\s+([a-záéíóúüñ]+)/);
+    const after = used.match(/\d+\s+([a-záéíóúüñ]+)/) || t.slice(t.indexOf(used) + used.length).match(/^\s*([a-záéíóúüñ]{3,})/);
     if (after && !NOT_ITEM.test(after[1]) && !packOf(after[1])) item = after[1];
+  }
+  if (!item) {
+    // "40 cajas de 100 guantes": the word after the pack phrase elsewhere in the message
+    const m2 = t.match(new RegExp(`${PACK_RE}\\s+(?:de|of)\\s+\\d+\\s+([a-záéíóúüñ]{3,})`));
+    if (m2 && !NOT_ITEM.test(m2[2]) && !packOf(m2[2])) item = m2[2];
   }
   if (Number.isFinite(packsGiven) && packsGiven > 0 && packsGiven <= 1e7) {
     if (Number.isFinite(wanted) && wanted > 0 && wanted <= 1e8)
@@ -173,6 +182,82 @@ export function packMath(text: string): PackMath | null {
   if (!(wanted > 0) || wanted > 1e8 || !Number.isInteger(wanted)) return null;
   const packs = Math.ceil(wanted / perPack);
   return { mode: "packs", perPack, packs, wanted, total: packs * perPack, extra: packs * perPack - wanted, pack, item };
+}
+
+/**
+ * Several pack calculations in one message ("500 lápices en sets de 12 y 300
+ * cuadernos en paquetes de 10"): each part is solved on its own. [] when the
+ * message holds fewer than two.
+ */
+export function packMathAll(text: string): PackMath[] {
+  const raw = String(text || "");
+  if (!VERB_Q.test(normalizeNumbers(raw.toLowerCase()))) return [];
+  const parts = raw
+    .split(/(?:[;.+]|,(?!\d)|\s(?:y|e|and|adem[aá]s|tambi[eé]n|plus))\s+(?=(?:(?:otros?|otras?|also|then|luego|tambi[eé]n|adem[aá]s|necesito|quiero|ocupo|i\s+need|i\s+want|need|want)\s+){0,2}\d|¿?\s*cu[aá]nt|how\s+many)/i)
+    .map((x) => x.trim())
+    .filter(Boolean);
+  if (parts.length < 2) return [];
+  const out: PackMath[] = [];
+  for (const part of parts) {
+    const m = packMath(part, true);
+    if (!m) continue;
+    // "…y otros 300 en sets de 24": the same item as the previous order
+    if (!m.item && out.length) m.item = out[out.length - 1].item;
+    out.push(m);
+  }
+  return out.length >= 2 ? out : [];
+}
+
+/** How many pack calculations the message seems to ask for (pack phrases with a size). */
+function packPhrases(text: string): number {
+  const t = normalizeNumbers(String(text || "").toLowerCase());
+  return (t.match(new RegExp(`${PACK_RE}\\s+(?:de|of|con|with|x)\\s*\\d+|\\d+\\s+(?:[a-záéíóúüñ]+\\s+){0,2}(?:por|per)\\s+${PACK_RE}\\b`, "g")) || []).length;
+}
+
+/**
+ * A follow-up to an earlier calculation: "¿Y los 300 cuadernos en paquetes de
+ * 10?" (complete), "¿y si cada set trae 30?" (new size) or "¿y para 800?" (new
+ * quantity), solved with what the earlier question already said.
+ */
+export function followUpMath(text: string, previous: string): PackMath | null {
+  const t = String(text || "").trim();
+  if (!t || t.length > 200) return null;
+  const all = packMathAll(previous);
+  // "¿Y los cuadernos?" after a message with several orders: that part again
+  if (!/\d/.test(t)) {
+    if (t.length > 45 || !/^\s*(?:¿\s*)?(?:y|e|and|what\s+about)\b/i.test(t) || replyKinds(t).length) return null;
+    const cands = all.length ? all : [packMath(previous, true)].filter((x): x is PackMath => !!x);
+    return cands.find((m) => m.item && sameProduct(m.item, t)) || null;
+  }
+  if (replyKinds(t).some((k) => k !== "cost")) return null;
+  // numbers that are days, years, money, containers or models are not a new order
+  if (/\d\s*(?:d[ií]as?|days?|semanas?|weeks?|meses|months?|a[nñ]os?|years?|horas?|hours?|contenedor(?:es)?|containers?|%)\b|us\$|\$|(?:^|\s)q\s*\d|\d\s*(?:d[oó]lares|dollars|quetzales|usd|gtq)\b|modelo|model|garant|guarant|flete|freight|pago|pagar|pay\b|precio|price|costo|cost|presupuesto|budget|tiendas?|escuelas?|sucursal(?:es)?|stores?|branch(?:es)?|clientes?|customers?/i.test(t)) return null;
+  const full = packMath(t, true);
+  if (full) return full;
+  const prev = all[0] || packMath(previous, true);
+  if (!prev) return null;
+  const items = prev.item || Lx("piezas", "pieces");
+  // "¿Y si son 50 sets?": a count of packs, checked against the earlier order
+  const given = normalizeNumbers(t.toLowerCase()).match(new RegExp(`(\\d+)\\s+${PACK_RE}\\b(?!\\s+(?:de|of|con|with|x)\\s*\\d)`));
+  if (given && packOf(given[2]) === prev.pack && !/\d+\s*(?:por|per)\s/.test(t)) {
+    const c = packMath(`¿alcanzan ${given[1]} ${prev.pack[2]} de ${prev.perPack} para ${prev.wanted || prev.total} ${items}?`, true);
+    if (c) return c;
+  }
+  // only a new pack size
+  const withQty = packMath(`${t} para ${prev.wanted || prev.total} ${items}`, true);
+  if (withQty && withQty.perPack !== prev.perPack) return withQty;
+  // only a new quantity
+  const n = normalizeNumbers(t.toLowerCase()).match(/(\d+)/);
+  if (n && /^\s*(?:¿\s*)?(?:y|e|and|what\s+about|y\s+si|y\s+para|y\s+con|and\s+for|and\s+if)\b/i.test(t)) {
+    const q = packMath(`${n[1]} ${prev.item || ""} en ${prev.pack[2]} de ${prev.perPack}`, true);
+    if (q) return q;
+  }
+  return null;
+}
+
+/** A complete question for a calculation, so later follow-ups can build on it. */
+export function mathStatement(m: PackMath): string {
+  return `cuántos ${m.pack[2]} necesito para ${m.mode === "packs" || m.mode === "check" ? m.wanted : m.total} ${m.item || "piezas"} en ${m.pack[2]} de ${m.perPack}`;
 }
 
 function packMathReply(m: PackMath): string {
@@ -212,20 +297,42 @@ function packMathReply(m: PackMath): string {
   ) + confirm;
 }
 
+/** One answer per calculation asked; says so when part of the message couldn't be read. */
+function mathReply(q: string): string {
+  const all = packMathAll(q);
+  if (all.length >= 2) {
+    const asked = packPhrases(q);
+    const lines = all.map((m, i) => `${i + 1}. ${m.item ? `${m.item[0].toUpperCase()}${m.item.slice(1)}: ` : ""}${packMathReply(m).replace(/ Confirma con el proveedor.*$| Confirm the real content.*$/, "")}`);
+    const missing = asked > all.length
+      ? " " + Lx("Una parte del mensaje no la pude leer como cálculo: escríbela por separado, con la cantidad y lo que trae cada empaque.", "I couldn't read one part of the message as a calculation: write it separately, with the quantity and what each pack holds.")
+      : "";
+    return `${Lx("Calculé cada pedido por separado:", "I calculated each order separately:")}\n${lines.join("\n")}\n${Lx("Confirma con el proveedor el contenido real de cada empaque y su pedido mínimo.", "Confirm the real content of each pack and the minimum order with the supplier.")}${missing}`;
+  }
+  const one = packMath(q)!;
+  if (packPhrases(q) >= 2)
+    return packMathReply(one) + " " + Lx(
+      "Tu mensaje parece pedir más de un cálculo y solo pude leer este; escribe el otro pedido por separado (cantidad y contenido de cada empaque).",
+      "Your message seems to ask for more than one calculation and I could only read this one; write the other order separately (quantity and content of each pack).",
+    );
+  return packMathReply(one);
+}
+
 export function replyKinds(text: string): string[] {
   const t = text.toLowerCase();
   const kinds: string[] = [];
-  if (packMath(text)) return ["math"];
+  // a calculation is answered, and so is anything else the message asks
+  const isMath = !!(packMathAll(text).length || packMath(text));
   if (/certificad|certificaci|certificate|certification|\bce\b|\bfda\b|\biso\b|\bul\b|\brohs\b|\bsgs\b|grado alimenticio|food[- ]grade|apto para alimentos|suitable for food/.test(t)) kinds.push("certificate");
   if (/proveedor|supplier|seller|vendedor|f[aá]brica|factory|confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit/.test(t)) kinds.push("supplier");
   // "Guarantee" goes to customs authorization only when the question is about the import itself
   const customsCtx = /importaci|aduana|autoriz|permiso|aprobad|aprobaci|liberaci|despacho|que pase|customs|import(?!ar\b|ing\b)|authoriz|permit|approv/.test(t);
   const guaranteeWord = /garantiz|garant[ií]a de que|asegur|sin problema|guarantee/.test(t);
-  if (customsCtx || (guaranteeWord && !kinds.includes("certificate"))) kinds.push("guarantee");
+  const permitWord = /permiso|autoriz|licencia|permit|authoriz|license/.test(t);
+  if ((customsCtx && (!isMath || guaranteeWord || permitWord)) || (guaranteeWord && !kinds.includes("certificate"))) kinds.push("guarantee");
   if (/\bdai\b|arancel|partida|impuesto|\biva\b|tributo|tariff|duty|duties|\btax/.test(t)) kinds.push("dai");
-  if (/cu[aá]nto\s+(?:tiempo|tarda|demora)|cu[aá]ntos\s+d[ií]as|tiempo\s+de\s+(?:tr[aá]nsito|env[ií]o|llegada)|tarda\s+en\s+llegar|how\s+long|transit\s+time|lead\s+time/.test(t)) kinds.push("transit");
-  else if (/precio|costo|cu[aá]nto|cotiz|price|cost|quote|how much/.test(t)) kinds.push("cost");
-  return kinds;
+  if (/cu[aá]nto\s+(?:tiempo|tarda|demora)|cu[aá]ntos\s+d[ií]as|cu[aá]ndo\s+(?:llega|llegar[ií]a|estar[ií]a)|when\s+(?:will\s+it\s+)?arrive|tiempo\s+de\s+(?:tr[aá]nsito|env[ií]o|llegada)|tarda\s+en\s+llegar|how\s+long|transit\s+time|lead\s+time/.test(t)) kinds.push("transit");
+  else if (isMath ? /precio|costo|cuest[ae]|cotiz|price|cost|quote|how much/.test(t) : /precio|costo|cu[aá]nto|cotiz|price|cost|quote|how much/.test(t)) kinds.push("cost");
+  return isMath ? ["math", ...kinds] : kinds;
 }
 
 function certificateReply(text: string, ctx: ChatCtx): string {
@@ -322,6 +429,8 @@ export interface ReplySpec {
   previous?: string; // product before this message ("" when unknown)
   reask?: string; // earlier question to answer again for the new product
   earlierFood?: boolean; // an earlier answer talked about food-contact materials
+  previousMath?: string; // the client's earlier calculation question, for follow-ups
+  mathText?: string; // this message's calculation, written in full (for later follow-ups)
   newQuantity?: number; // "quiero 2000 en vez de 500"
   oldQuantity?: number;
 }
@@ -395,6 +504,9 @@ export function buildReply(r: ReplySpec): string {
   }
   let q = r.text;
   let kinds = replyKinds(q);
+  // a follow-up to an earlier calculation ("¿Y los 300 cuadernos en paquetes de 10?")
+  const follow = !kinds.length && r.previousMath ? followUpMath(q, r.previousMath) : null;
+  if (follow) return [...parts, packMathReply(follow)].join("\n\n");
   // a bare product statement answers the earlier question again, now for this product
   if (!kinds.length && r.newProduct && r.reask) {
     q = r.reask;
@@ -403,7 +515,7 @@ export function buildReply(r: ReplySpec): string {
   if (!kinds.length && !r.newProduct) kinds = ["general"];
   kinds.forEach((k, i) => {
     let t =
-      k === "certificate" ? certificateReply(q, ctx) : k === "math" ? packMathReply(packMath(q)!) : (FIXED[k] ?? FIXED.general)();
+      k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : (FIXED[k] ?? FIXED.general)();
     if (i === 0 && !parts.length) t = t.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't");
     parts.push(t);
   });
