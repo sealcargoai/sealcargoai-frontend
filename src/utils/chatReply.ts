@@ -108,73 +108,142 @@ export interface PackMath {
   // a mixed set ("cada set trae 1 botella y 3 tazas"); target = the item the quantity counts, -1 = none
   kit?: { parts: { n: number; noun: string }[]; target: number };
   zero?: boolean; // the client wrote a pack content of 0
-  // the supplier's minimum order ("mínimo de 15 cajas", "MOQ 300 pares")
-  min?: { n: number; word: string; packs: number; need: number; applied: boolean };
+  // the purchase conditions applied: minimum order and multiples, in packs
+  cond?: { need: number; minPacks: number; lotPacks: number; mins: Cond[]; lots: Cond[]; unreadable: Cond[]; changed: boolean };
+  // conditions read but not applied (the calculation still needs data)
+  conds?: { mins: Cond[]; lots: Cond[] };
+  // data that can't be calculated as written: ask instead of guessing
+  invalid?: "conflictCond" | "badCond" | "negative" | "decimalQty" | "decimalContent" | "zeroQty" | "conflictSize" | "range" | "measure";
+  sizes?: number[]; // the different contents written for the same pack
 }
 
-// ── Minimum order: "mínimo de 15 cajas", "pedido mínimo 300 pares", "MOQ 50",
-// "pide 300 pares como mínimo", "minimum order 15 boxes" ───────────────────
-const MIN_FIRST: RegExp[] = [
-  /\b(?:(?:pedido|compra|orden|order)\s+)?(?:m[ií]nim[oa]s?|minimum)(?:\s+(?:de\s+)?(?:compra|pedido|orden|order|quantity|qty|cantidad))?(?:\s+(?:exigido|requerido|aceptado|que\s+(?:pide|exige|acepta|piden|exigen)))?(?:\s*(?::|=|es|son|ser[ií]a|de|del|of|is|are))*\s*(?:de\s+)?(\d+)(?:\s+([a-záéíóúüñ]+))?/,
-  /\bmoq\s*(?::|=|de|of|is|es)?\s*(?:de\s+)?(\d+)(?:\s+([a-záéíóúüñ]+))?/,
+// ── Purchase conditions the client states in the same message ────────────────
+// Minimum order ("mínimo de 15 cajas", "el mínimo del proveedor es 15 cajas",
+// "MOQ 300 pares", "pide 300 pares como mínimo", "no venden menos de 15 cajas")
+// and multiples ("solo venden en múltiplos de 6 cajas", "en lotes de 6",
+// "de 6 en 6 cajas"). Every condition is read, removed from the text before the
+// pack arithmetic (so its number is never taken as the quantity or a pack count)
+// and applied afterwards: no condition the client wrote is dropped.
+const MIN_KEY = "(?:m[ií]nim[oa]s?|minimum|moq)";
+const W = "[a-záéíóúüñ']+";
+// the client's own need is not the supplier's minimum ("necesito como mínimo 200")
+const NEED_VERB = /\b(?:necesit\w*|quiero|queremos|ocupo|ocupamos|requiero|requerimos|busco|buscamos|tengo|compro|comprar[eé]|pido|i\s+need|we\s+need|i\s+want|we\s+want)\b/;
+const MIN_RES: RegExp[] = [
+  // "mínimo del proveedor es 15 cajas", "pedido mínimo: 15", "compra mínima de 300 pares"
+  new RegExp(`\\b(?:(?:pedido|compra|orden|order)\\s+)?${MIN_KEY}\\b((?:\\s*[:=]?\\s*(?!\\d)${W}){0,6})\\s*[:=]?\\s*(\\d+(?:[.,]\\d+)?)(?:\\s+(${W}))?`, "g"),
   // "no venden menos de 15 cajas", "won't sell less than 15 boxes"
-  /\bno\s+(?:me\s+|nos\s+)?(?:vende|venden|acepta|aceptan|despacha|despachan|env[ií]a|env[ií]an|hace|hacen|fabrica|fabrican)\s+(?:pedidos\s+de\s+)?menos\s+de\s+(\d+)(?:\s+([a-záéíóúüñ]+))?/,
-  /\b(?:won'?t|doesn'?t|don'?t|does\s+not|do\s+not|will\s+not)\s+(?:sell|accept|ship)\s+(?:less|fewer)\s+than\s+(\d+)(?:\s+([a-z]+))?/,
-  // the supplier's own verbs: "el proveedor vende al menos 15 cajas", "exigen como mínimo 300 pares"
-  /\b(?:pide|piden|exige|exigen|vende|venden|acepta|aceptan|requiere|requieren|requires?|sells?|accepts?)\s+(?:un\s+)?(?:al\s+menos|como\s+m[ií]nimo|at\s+least|a\s+minimum\s+of)\s+(\d+)(?:\s+([a-záéíóúüñ]+))?/,
+  new RegExp(`\\bno\\s+(?:me\\s+|nos\\s+|te\\s+)?(?:vende|venden|acepta|aceptan|despacha|despachan|env[ií]a|env[ií]an|hace|hacen|fabrica|fabrican|surte|surten)\\s+(?:pedidos\\s+de\\s+)?menos\\s+de\\s+(\\d+(?:[.,]\\d+)?)(?:\\s+(${W}))?`, "g"),
+  new RegExp(`\\b(?:won'?t|doesn'?t|don'?t|does\\s+not|do\\s+not|will\\s+not)\\s+(?:sell|accept|ship)\\s+(?:less|fewer)\\s+than\\s+(\\d+(?:[.,]\\d+)?)(?:\\s+(${W}))?`, "g"),
+  // the supplier's verbs: "el proveedor vende al menos 15 cajas", "exigen como mínimo 300 pares"
+  new RegExp(`\\b(?:pide|piden|exige|exigen|vende|venden|acepta|aceptan|requiere|requieren|requires?|sells?|accepts?)\\s+(?:un\\s+)?(?:al\\s+menos|como\\s+m[ií]nimo|at\\s+least|a\\s+minimum\\s+of)\\s+(\\d+(?:[.,]\\d+)?)(?:\\s+(${W}))?`, "g"),
+  // "300 pares como mínimo", "15 cajas mínimo"
+  new RegExp(`(\\d+(?:[.,]\\d+)?)\\s+(${W})\\s+(?:como\\s+|as\\s+(?:a\\s+)?|at\\s+(?:a\\s+)?|de\\s+)?${MIN_KEY}\\b`, "g"),
 ];
-const MIN_AFTER = /(\d+)\s+([a-záéíóúüñ]+)\s+(?:como\s+|as\s+(?:a\s+)?|at\s+(?:a\s+)?|de\s+)?(?:m[ií]nimo|minimum|moq)\b/;
-function readMinimum(t: string): { n: number; word: string; text: string } | null {
-  for (const re of MIN_FIRST) {
-    const m = t.match(re);
-    // "necesito como mínimo 200 pares" is the client's own quantity, not the supplier's minimum
-    if (m && /(?:necesit\w*|quiero|queremos|ocupo|ocupamos|requiero|requerimos|busco|buscamos|compro|comprar[eé]|i\s+need|we\s+need|i\s+want|we\s+want)\s+(?:(?:un|una|como|al|de|por\s+lo|lo|at|a)\s+)*$/.test(t.slice(0, m.index))) continue;
-    if (m && Number(m[1]) > 0) {
-      // "mínimo 15 cajas. cada caja…": the word belongs to the minimum only if it isn't a connector
-      const word = m[2] && !CONNECT.test(m[2]) && !NOT_ITEM.test(m[2]) ? m[2] : "";
-      return { n: Number(m[1]), word, text: word ? m[0] : m[0].replace(/\s+[a-záéíóúüñ]+$/, "") };
+const LOT_RES: RegExp[] = [
+  new RegExp(`\\b(?:en\\s+|por\\s+)?m[uú]ltiplos?\\s+de\\s+(\\d+(?:[.,]\\d+)?)(?:\\s+(${W}))?`, "g"),
+  new RegExp(`\\b(?:en\\s+|por\\s+)?(?:lotes?|incrementos?|bloques?)\\s+(?:completos?\\s+)?de\\s+(\\d+(?:[.,]\\d+)?)(?:\\s+(${W}))?`, "g"),
+  new RegExp(`\\bde\\s+(\\d+)\\s+en\\s+\\1(?:\\s+(${W}))?`, "g"),
+  new RegExp(`\\b(?:in\\s+)?(?:multiples?|lots?|batches|increments?)\\s+of\\s+(\\d+(?:[.,]\\d+)?)(?:\\s+(${W}))?`, "g"),
+];
+export interface Cond { n: number; word: string; text: string }
+function readConds(t: string, res: RegExp[], kind: "min" | "lot"): { list: Cond[]; text: string } {
+  const list: Cond[] = [];
+  let rest = t;
+  for (const re of res) {
+    re.lastIndex = 0;
+    for (const m of [...rest.matchAll(re)]) {
+      const isFirst = kind === "min" && re === MIN_RES[0];
+      const window = isFirst ? m[1] || "" : "";
+      const numStr = isFirst ? m[2] : m[1];
+      let word = (isFirst ? m[3] : m[2]) || "";
+      const before = rest.slice(Math.max(0, (m.index ?? 0) - 40), m.index);
+      if (kind === "min") {
+        // "necesito como mínimo 200 pares": the client's quantity; "sin mínimo": no minimum
+        if (NEED_VERB.test(window) || /(?:necesit\w*|quiero|queremos|ocupo|requiero|busco|compro|i\s+need|we\s+need|i\s+want)\s+(?:(?:un|una|como|al|de|por\s+lo|lo|at|a)\s+)*$/.test(before)) continue;
+        if (/\b(?:sin|no\s+hay|no\s+tiene|no\s+piden?|no\s+exigen?|without|no)\s+(?:un\s+|el\s+)?(?:pedido\s+)?$/.test(before)) continue;
+        if (/\b(?:d[ií]as?|days?|semanas?|weeks?|meses|months?|horas?|hours?|%|d[oó]lares|dollars|usd|quetzales)\b/.test(word)) continue;
+      }
+      if (word && (CONNECT.test(word) || NOT_ITEM.test(word))) word = "";
+      const text = word ? m[0] : m[0].replace(new RegExp(`\\s+${W}$`), "");
+      list.push({ n: Number(numStr.replace(",", ".")), word, text });
+      rest = rest.replace(text, " ");
     }
   }
-  const a = t.match(MIN_AFTER);
-  if (a && Number(a[1]) > 0) return { n: Number(a[1]), word: a[2], text: a[0] };
-  return null;
+  return { list, text: rest };
 }
 const piecesOf = (u: QUnit) => (u === "pair" ? 2 : u === "dozen" ? 12 : 1);
+const gcd = (a: number, b: number): number => (b ? gcd(b, a % b) : a);
 
-/** The minimum order applied to a calculation: never fewer packs than the supplier sells. */
-function applyMinimum(m: PackMath, min: { n: number; word: string }): PackMath {
-  if (m.mode === "ask" || m.zero) return { ...m, min: { ...min, packs: 0, need: 0, applied: false } };
-  const minPackWord = !min.word || packOf(min.word) === m.pack;
-  let minPacks: number;
-  if (minPackWord) minPacks = min.n;
-  else if (m.kit) {
-    // "mínimo 300 botellas" in a mixed set: in sets of that item
-    const i = m.kit.parts.findIndex((p) => stemOf(p.noun) === stemOf(min.word));
-    if (i < 0) return m;
-    minPacks = Math.ceil(min.n / m.kit.parts[i].n);
-  } else {
-    if (packOf(min.word) && !PAIR_W.test(min.word) && !DOZ_W.test(min.word)) return m; // a minimum in another pack ("mínimo 2 contenedores") isn't comparable here
-    const resUnit: QUnit = m.unit === "pair" ? "pair" : m.unit === "dozen" ? "dozen" : "piece";
-    const minUnit = unitOf(min.word);
-    const factor = piecesOf(isPD(minUnit) ? minUnit : "piece") / piecesOf(resUnit);
-    minPacks = Math.ceil((min.n * factor) / m.perPack);
+/** A condition in packs of the calculation (null when it can't be compared). */
+function condPacks(m: PackMath, c: Cond, kind: "min" | "lot"): number | null {
+  if (!c.word || packOf(c.word) === m.pack) return c.n;
+  if (m.kit) {
+    const i = m.kit.parts.findIndex((p) => stemOf(p.noun) === stemOf(c.word));
+    if (i < 0) return null;
+    const k = m.kit.parts[i].n;
+    return kind === "min" ? Math.ceil(c.n / k) : (c.n * k) / gcd(c.n, k) / k;
   }
+  if (packOf(c.word) && !PAIR_W.test(c.word) && !DOZ_W.test(c.word)) return null; // "mínimo 2 contenedores"
+  const cu = unitOf(c.word);
+  // a noun must be the product itself ("45 zapatos"), not something else ("2 contenedores")
+  if (cu === "noun") {
+    const known = [m.item, m.conv?.perWord, m.conv?.wantedWord].filter(Boolean).map((x) => stemOf(x!));
+    if (!known.includes(stemOf(c.word))) return null;
+  }
+  // everything counted in single pieces: pairs × 2, dozens × 12
+  const resUnit: QUnit = m.unit === "pair" ? "pair" : m.unit === "dozen" ? "dozen" : "piece";
+  const packPieces = m.perPack * piecesOf(resUnit);
+  const condPieces = c.n * piecesOf(isPD(cu) ? cu : "piece");
+  if (kind === "min") return Math.ceil(condPieces / packPieces);
+  // a lot of N pieces with packs of P pieces: whole packs that are also whole lots
+  if (!Number.isInteger(condPieces) || condPieces <= 0) return null;
+  return condPieces / gcd(condPieces, packPieces);
+}
+
+/** Minimum and multiple applied together: the fewest whole packs that cover the need and meet both. */
+function applyConditions(m: PackMath, mins: Cond[], lots: Cond[]): PackMath {
+  if (!mins.length && !lots.length) return m;
+  if (m.mode === "ask" || m.zero || m.invalid) return { ...m, conds: { mins, lots } };
+  const minP = mins.map((c) => condPacks(m, c, "min"));
+  const lotP = lots.map((c) => condPacks(m, c, "lot"));
+  // two different minimums or multiples in one message: ask which one holds
+  const uniq = (xs: (number | null)[]) => [...new Set(xs.filter((x): x is number => x !== null))];
+  if (uniq(minP).length > 1 || uniq(lotP).length > 1)
+    return { ...m, mode: "ask", invalid: "conflictCond", conds: { mins, lots } };
+  const minPacks = uniq(minP)[0] ?? 0;
+  const lotPacks = uniq(lotP)[0] ?? 0;
+  const unreadable = [...mins.filter((_, i) => minP[i] === null), ...lots.filter((_, i) => lotP[i] === null)];
+  if (lotPacks && !Number.isInteger(lotPacks)) return { ...m, mode: "ask", invalid: "conflictCond", conds: { mins, lots } };
   const need = m.packs;
-  const info = { n: min.n, word: min.word, packs: minPacks, need, applied: false };
-  if (m.mode === "packs" && minPacks > m.packs) {
-    const packs = minPacks;
-    return { ...m, packs, total: packs * m.perPack, extra: packs * m.perPack - m.wanted, alt: undefined, min: { ...info, applied: true } };
+  let packs = Math.max(need, minPacks);
+  if (lotPacks > 0) packs = Math.ceil(packs / lotPacks) * lotPacks;
+  const cond = { need, minPacks, lotPacks, mins, lots, unreadable, changed: false };
+  if (m.mode === "packs" && packs !== need)
+    return { ...m, packs, total: packs * m.perPack, extra: packs * m.perPack - m.wanted, alt: undefined, cond: { ...cond, changed: true } };
+  // packs given ("¿alcanzan 10 cajas?"): the valid order nearest above
+  if (m.mode === "check" || m.mode === "total") {
+    let ok = Math.max(m.packs, minPacks);
+    if (lotPacks > 0) ok = Math.ceil(ok / lotPacks) * lotPacks;
+    return { ...m, cond: { ...cond, need: ok } };
   }
-  return { ...m, min: info };
+  return { ...m, cond };
 }
 
 /** Reads a pack calculation in any wording, or null when the message isn't one. */
 export function packMath(text: string, force = false): PackMath | null {
   const t0 = normalizeNumbers(String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ").replace(/\s+/g, " "));
   if (!force && !VERB_Q.test(` ${t0} `)) return null;
-  const min = readMinimum(t0);
-  const m = packMathCore(min ? t0.replace(min.text, " ") : t0, true);
-  return m && min ? applyMinimum(m, min) : m;
+  // a negative quantity, content or condition ("-200 pares") can't be calculated
+  if (/(?:^|[\s(:=,])[-−]\d/.test(t0) && new RegExp(`\\b${PACK_RE}\\b|pares|piezas|unidades|pieces|units`).test(t0))
+    return { mode: "ask", perPack: 0, packs: 0, wanted: 0, total: 0, extra: 0, pack: PACKS[1], item: "", invalid: "negative" };
+  const mins = readConds(` ${t0} `, MIN_RES, "min");
+  const lots = readConds(mins.text, LOT_RES, "lot");
+  const m = packMathCore(lots.text, true);
+  if (!m) return null;
+  // a condition with a negative, zero or decimal count can't be applied
+  const badCond = [...mins.list, ...lots.list].find((c) => !(c.n > 0) || !Number.isInteger(c.n));
+  if (badCond) return { ...m, mode: "ask", invalid: "badCond", conds: { mins: mins.list, lots: lots.list } };
+  return applyConditions(m, mins.list, lots.list);
 }
 
 // ── Units: pairs and dozens are not pieces ───────────────────────────────────
@@ -289,13 +358,19 @@ function packMathCore(text: string, force = false): PackMath | null {
   t = t.replace(/(?:us\$|usd|\$|(?:^|\s)q\.?)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:d[oó]lares|dollars|usd|quetzales|gtq)\b/g, " ");
   // the value being replaced is not part of the calculation: "paquetes de 16 en
   // lugar de 10", "300 en vez de 500", "24 per set instead of 12"
-  t = t.replace(new RegExp(`(?:en\\s+lugar\\s+de|en\\s+vez\\s+de|instead\\s+of|rather\\s+than|y\\s+no\\s+de|y\\s+no)\\s+(?:(?:los|las|el|la|the)\\s+)?(?:${PACK_RE}\\s+(?:de|of)\\s+)?\\d+(?:[.,]\\d+)?(?:\\s+(?:${PACK_RE}|[a-záéíóúüñ]+))?`, "g"), " ");
+  t = t.replace(new RegExp(`(?:en\\s+lugar\\s+de|en\\s+vez\\s+de|instead\\s+of|rather\\s+than|y\\s+no\\s+de|y\\s+no)\\s+(?:(?:los|las|el|la|the)\\s+)?(?:${PACK_RE}\\s+(?:de|of)\\s+)?\\d+(?:[.,]\\d+)?(?:\\s+(?:${PACK_RE}|[a-záéíóúüñ]+)(?![a-záéíóúüñ]))?`, "g"), " ");
   // samples are not part of the order ("y 2 sets de muestra")
   t = t.replace(new RegExp(`\\d+\\s+${PACK_RE}\\s+(?:de\\s+)?(?:muestras?|samples?)\\b`, "g"), " ");
   // a budget is money even without a currency ("presupuesto de 300")
   t = t.replace(/(?:presupuesto|budget)\s+(?:de\s+|of\s+|es\s+de\s+|is\s+)?(?:unos\s+|about\s+)?\d+(?:[.,]\d+)?/g, " ");
   // "cero lápices" is a content of 0, which gets its own answer
   t = t.replace(/\b(?:cero|zero)\b/g, "0");
+  // what the client says it is NOT ("40 zapatos individuales, no 40 pares") is no data
+  t = t.replace(/(?:[,;(]|\s)\s*(?:y\s+|pero\s+|o\s+sea\s+)?(?:no|not)\s+(?:son\s+|de\s+|trae\s+|traen\s+|are\s+)?\d+(?:[.,]\d+)?\s+[a-záéíóúüñ]+\)?/g, " ");
+  // a range ("200 a 300 pares", "entre 200 y 300") is not one quantity: ask
+  const range = t.match(/(?:entre\s+)?(\d+(?:[.,]\d+)?)\s*(?:-|–|a|o|to|or|y)\s*(\d+(?:[.,]\d+)?)\s+([a-záéíóúüñ]+)/);
+  if (range && Number(range[2]) > Number(range[1]) && Number(range[1]) > 0 && (/^\s*entre/.test(range[0]) || !/\s(?:y)\s/.test(range[0])) && !/^(?:d[ií]as|days|semanas|weeks|meses|months|a[nñ]os|years|horas|hours|por|per|cada|each)$/.test(range[3]))
+    return { mode: "ask", perPack: 0, packs: 0, wanted: 0, total: 0, extra: 0, pack: PACKS[1], item: range[3], invalid: "range", sizes: [Number(range[1]), Number(range[2])] };
   // a mixed set is counted by the item the quantity refers to
   const kit = kitMath(t);
   if (kit) return kit;
@@ -348,7 +423,22 @@ function packMathCore(text: string, force = false): PackMath | null {
     const word = q?.[2] && !NOT_ITEM.test(q[2]) && !CONNECT.test(q[2]) && !packOf(q[2]) ? q[2] : "";
     return { mode: "ask", perPack: 0, packs: 0, wanted: q && Number(q[1]) > 0 ? Number(q[1]) : 0, total: 0, extra: 0, pack, item: word, zero: true };
   }
+  if (pack && used && perPack > 0 && !Number.isInteger(perPack))
+    return { mode: "ask", perPack, packs: 0, wanted: 0, total: 0, extra: 0, pack, item: "", invalid: "decimalContent" };
   if (!pack || !(perPack > 1) || perPack > 1e6 || !Number.isInteger(perPack)) return null;
+  // two different contents written for the same pack ("cada caja trae 20 pares… cajas de 25 pares")
+  if (used) {
+    const sizes = new Set<number>();
+    for (const [re, pw, sz] of rules) {
+      for (const x of t.matchAll(new RegExp(re.source, "g"))) {
+        if (packOf(x[pw]) !== pack) continue;
+        const after = (sz === 1 ? x[0].replace(/^\s*\d+(?:[.,]\d+)?/, "") : "") + t.slice((x.index ?? 0) + x[0].length);
+        const w2 = after.match(/^\s*([a-záéíóúüñ]+)(?:\s+([a-záéíóúüñ]+))?/);
+        sizes.add(Number(x[sz].replace(",", ".")) * unitMult(w2 ? unitOf(w2[1], w2[2]) : ""));
+      }
+    }
+    if (sizes.size > 1) return { mode: "ask", perPack, packs: 0, wanted: 0, total: 0, extra: 0, pack, item: "", invalid: "conflictSize", sizes: [...sizes] };
+  }
   // the words that say what each pack holds: "cada caja trae 100 [guantes individuales]",
   // "cajas de 20 [pares]", "20 [pares] por caja"
   const usedAt = used ? t.indexOf(used) : -1;
@@ -371,7 +461,7 @@ function packMathCore(text: string, force = false): PackMath | null {
   const rest2 = given && packOf(given[2]) === pack ? rest.replace(given[0], " ") : rest;
   // the number of items wanted, and the word after it
   const nums = [...rest2.matchAll(/(\d+(?:[.,]\d+)?)(?:\s+([a-záéíóúüñ]+))?(?:\s+([a-záéíóúüñ]+))?/g)];
-  const w = nums.find((m) => Number(m[1]) > 0 && !/^(?:contenedor(?:es)?|containers?|modelos?|models?|d[ií]as|days|semanas|weeks|meses|months|a[nñ]os|years|horas|hours)$/.test(m[2] || ""));
+  const w = nums.find((m) => Number(m[1].replace(",", ".")) >= 0 && !(Number(m[1]) === 0 && nums.some((o) => Number(o[1]) > 0)) && !/^(?:contenedor(?:es)?|containers?|modelos?|models?|d[ií]as|days|semanas|weeks|meses|months|a[nñ]os|years|horas|hours)$/.test(m[2] || ""));
   let wanted = w ? Number(w[1].replace(",", ".")) : NaN;
   let item = "";
   if (w) item = [w[2], w[3]].find((x) => x && !NOT_ITEM.test(x) && !packOf(x)) || "";
@@ -435,6 +525,13 @@ function packMathCore(text: string, force = false): PackMath | null {
       return { mode: "check", perPack, packs: packsGiven, wanted, total: packsGiven * perPack, extra: packsGiven * perPack - wanted, pack, item, ...extras };
     return { mode: "total", perPack, packs: packsGiven, wanted: 0, total: packsGiven * perPack, extra: 0, pack, item, ...extras };
   }
+  const MEASURE_W = /^(?:kg|kgs|kilos?|kilogramos?|g|gramos?|toneladas?|tons?|t|lb|lbs|libras?|litros?|l|lts?|ml|galones?|gal|metros?|m|m2|m3|cm|mm|pies|ft|yardas?)$/;
+  if (w && MEASURE_W.test(w[2] || "") && !(cw && MEASURE_W.test(cw[1])))
+    return { mode: "ask", perPack, packs: 0, wanted, total: 0, extra: 0, pack, item: w[2], invalid: "measure" };
+  if (w && wanted === 0 && Number(w[1]) === 0)
+    return { mode: "ask", perPack, packs: 0, wanted: 0, total: 0, extra: 0, pack, item, invalid: "zeroQty" };
+  if (wanted > 0 && !Number.isInteger(wanted) && !MEASURE_W.test(w?.[2] || ""))
+    return { mode: "ask", perPack, packs: 0, wanted, total: 0, extra: 0, pack, item, invalid: "decimalQty" };
   if (!(wanted > 0) || wanted > 1e8 || !Number.isInteger(wanted)) return null;
   const packs = Math.ceil(wanted / perPack);
   if (alt && alt.packs === packs) alt = undefined;
@@ -489,11 +586,16 @@ export function followUpMath(text: string, previous: string): PackMath | null {
     return cands.find((m) => m.item && sameProduct(m.item, t)) || null;
   }
   if (replyKinds(t).some((k) => k !== "cost")) return null;
-  // "¿y si el mínimo es 12 cajas?": the earlier calculation with this minimum
-  const newMin = readMinimum(normalizeNumbers(t.toLowerCase().replace(/[¿?¡!]/g, " ")));
-  if (newMin) {
+  // "¿y si el mínimo es 12 cajas?", "¿y si venden en múltiplos de 6?": the earlier
+  // calculation with the new condition; the conditions not mentioned stay
+  const tn = ` ${normalizeNumbers(t.toLowerCase().replace(/[¿?¡!]/g, " "))} `;
+  const newMins = readConds(tn, MIN_RES, "min").list;
+  const newLots = readConds(tn, LOT_RES, "lot").list;
+  if (newMins.length || newLots.length) {
     const base = all.length ? null : packMath(previous, true);
-    return base ? packMath(`${mathStatement({ ...base, min: undefined })}. ${t}`, true) : null;
+    if (!base) return null;
+    const keep = condsOf(base);
+    return packMath(statementWith(base, { mins: newMins.length ? newMins : keep.mins, lots: newLots.length ? newLots : keep.lots }), true);
   }
   // numbers that are days, years, money, containers or models are not a new order
   if (/\d\s*(?:d[ií]as?|days?|semanas?|weeks?|meses|months?|a[nñ]os?|years?|horas?|hours?|contenedor(?:es)?|containers?|%)\b|us\$|\$|(?:^|\s)q\s*\d|\d\s*(?:d[oó]lares|dollars|quetzales|usd|gtq)\b|modelo|model|garant|guarant|flete|freight|pago|pagar|pay\b|precio|price|costo|cost|presupuesto|budget|tiendas?|escuelas?|sucursal(?:es)?|stores?|branch(?:es)?|clientes?|customers?/i.test(t)) return null;
@@ -520,7 +622,7 @@ export function followUpMath(text: string, previous: string): PackMath | null {
   };
   const items = prev.item || Lx("piezas", "pieces");
   const unitTail = prev.unit ? ` ${prev.item}` : "";
-  const mt = minTail(prev);
+  const mt = condTail(prev);
   // "¿Y si son 50 sets?": a count of packs, checked against the earlier order
   const given = normalizeNumbers(t.toLowerCase()).match(new RegExp(`(\\d+)\\s+${PACK_RE}\\b(?!\\s+(?:de|of|con|with|x)\\s*\\d)`));
   if (given && packOf(given[2]) === prev.pack && !/\d+\s*(?:por|per)\s/.test(t)) {
@@ -542,26 +644,76 @@ export function followUpMath(text: string, previous: string): PackMath | null {
 /** A mixed-set question with its content, for any quantity ("240 botellas", "50 sets"). */
 function kitStatement(m: PackMath, qty: string): string {
   const comp = m.kit!.parts.map((p) => `${p.n} ${p.noun}`).join(" y ");
-  return `cuántos ${m.pack[2]} necesito para ${qty.trim()} si cada ${m.pack[1]} trae ${comp}${minTail(m)}`;
+  return `cuántos ${m.pack[2]} necesito para ${qty.trim()} si cada ${m.pack[1]} trae ${comp}${condTail(m)}`;
 }
-/** The minimum written back into a statement, so follow-ups keep it. */
-const minTail = (m: PackMath) => (m.min ? `. pedido mínimo de ${m.min.n} ${m.min.word || m.pack[2]}` : "");
+/** The purchase conditions of a calculation (applied or only read). */
+function condsOf(m: PackMath): { mins: Cond[]; lots: Cond[] } {
+  return { mins: m.cond?.mins ?? m.conds?.mins ?? [], lots: m.cond?.lots ?? m.conds?.lots ?? [] };
+}
+/** The conditions written back into a statement, so follow-ups keep them. */
+function condTail(m: PackMath, c = condsOf(m)): string {
+  return [
+    ...c.mins.map((x) => `. pedido mínimo de ${x.n} ${x.word || m.pack[2]}`),
+    ...c.lots.map((x) => `. solo en múltiplos de ${x.n} ${x.word || m.pack[2]}`),
+  ].join("");
+}
+/** The same calculation with other conditions. */
+function statementWith(m: PackMath, c: { mins: Cond[]; lots: Cond[] }): string {
+  return mathStatement({ ...m, cond: undefined, conds: undefined }) + condTail(m, c);
+}
 
 /** A complete question for a calculation, so later follow-ups can build on it. */
 export function mathStatement(m: PackMath): string {
   if (m.kit)
     return kitStatement(m, m.mode === "packs" ? `${m.wanted} ${m.item}` : m.mode === "total" ? `${m.packs} ${m.pack[2]}` : m.wanted ? String(m.wanted) : "");
-  if (m.mode === "ask") return `cuántos ${m.pack[2]} necesito para ${m.wanted} ${m.item}${m.conv?.perWord ? ` de ${m.conv.perWord}` : ""}${minTail(m)}`;
+  if (m.mode === "ask" && m.invalid) return "";
+  if (m.mode === "ask") return `cuántos ${m.pack[2]} necesito para ${m.wanted} ${m.item}${m.conv?.perWord ? ` de ${m.conv.perWord}` : ""}${condTail(m)}`;
   // the unit goes with the pack content, so "501 pares en cajas de 20 pares" stays in pairs
-  return `cuántos ${m.pack[2]} necesito para ${m.mode === "packs" || m.mode === "check" ? m.wanted : m.total} ${m.item || "piezas"} en ${m.pack[2]} de ${m.perPack}${m.unit ? ` ${m.item}` : ""}${minTail(m)}`;
+  return `cuántos ${m.pack[2]} necesito para ${m.mode === "packs" || m.mode === "check" ? m.wanted : m.total} ${m.item || "piezas"} en ${m.pack[2]} de ${m.perPack}${m.unit ? ` ${m.item}` : ""}${condTail(m)}`;
 }
 
-/** "15 cajas" or "300 pares (15 cajas)"; says when the minimum's unit was assumed. */
-function minLabelOf(mi: NonNullable<PackMath["min"]>, pw: (n: number) => string): string {
+/** "15 cajas" or "300 pares (15 cajas)"; says when the condition's unit was assumed. */
+function condLabel(c: Cond, packs: number, pack: PackMath["pack"]): string {
   const f = (n: number) => n.toLocaleString("en-US");
-  if (!mi.word) return Lx(`${f(mi.n)} (tomado como ${f(mi.n)} ${pw(mi.n)}; confírmalo)`, `${f(mi.n)} (taken as ${f(mi.n)} ${pw(mi.n)}; confirm it)`);
-  if (packOf(mi.word) && !PAIR_W.test(mi.word) && !DOZ_W.test(mi.word)) return `${f(mi.n)} ${pw(mi.n)}`;
-  return `${f(mi.n)} ${mi.word} (${f(mi.packs)} ${pw(mi.packs)})`;
+  const pw = (n: number) => (n === 1 ? Lx(pack[1], pack[3]) : Lx(pack[2], pack[4]));
+  if (!c.word) return Lx(`${f(c.n)} (tomado como ${pw(2)}; confírmalo)`, `${f(c.n)} (taken as ${pw(2)}; confirm it)`);
+  if (packOf(c.word) === pack) return `${f(c.n)} ${pw(c.n)}`;
+  return `${f(c.n)} ${c.word} (${f(packs)} ${pw(packs)})`;
+}
+
+/**
+ * What the minimum and multiples did to the order, in words:
+ * lead = "pero el mínimo del proveedor es 15 cajas y solo vende en múltiplos de 6 cajas"
+ * ok = "Cumples el mínimo (15 cajas) y el múltiplo de 6 cajas."
+ */
+function condWords(m: PackMath): { lead: string; ok: string; unread: string } {
+  const c = m.cond;
+  if (!c) return { lead: "", ok: "", unread: "" };
+  const parts: string[] = [];
+  const okParts: string[] = [];
+  const minC = c.mins.find((x) => condPacks(m, x, "min") !== null);
+  const lotC = c.lots.find((x) => condPacks(m, x, "lot") !== null);
+  if (minC) {
+    const lbl = condLabel(minC, c.minPacks, m.pack);
+    parts.push(Lx(`el mínimo del proveedor es ${lbl}`, `the supplier's minimum is ${lbl}`));
+    okParts.push(Lx(`el mínimo (${lbl})`, `the minimum (${lbl})`));
+  }
+  if (lotC) {
+    const lbl = condLabel(lotC, c.lotPacks, m.pack);
+    parts.push(Lx(`solo vende en múltiplos de ${lbl}`, `it only sells in multiples of ${lbl}`));
+    okParts.push(Lx(`el múltiplo de ${lbl}`, `the multiple of ${lbl}`));
+  }
+  const unread = c.unreadable.length
+    ? Lx(
+        ` No pude aplicar «${c.unreadable.map((x) => `${x.n} ${x.word}`.trim()).join("», «")}» porque está en otra unidad; confírmalo con el proveedor.`,
+        ` I couldn't apply "${c.unreadable.map((x) => `${x.n} ${x.word}`.trim()).join('", "')}" because it's in another unit; confirm it with the supplier.`,
+      )
+    : "";
+  return {
+    lead: joinList(parts),
+    ok: okParts.length ? Lx(` Cumples ${joinList(okParts)}.`, ` You meet ${joinList(okParts)}.`) : "",
+    unread,
+  };
 }
 
 function kitReply(m: PackMath): string {
@@ -575,20 +727,20 @@ function kitReply(m: PackMath): string {
     ` Confirma con el proveedor el contenido real de cada ${pw(1)} y su pedido mínimo.`,
     ` Confirm the real content of each ${pw(1)} and the minimum order with the supplier.`,
   );
-  const mi = m.min;
-  const minLabel = mi ? minLabelOf(mi, pw) : "";
-  if (mi?.applied && m.mode === "packs") {
+  const cw = condWords(m);
+  if (m.cond?.changed && m.mode === "packs") {
     const p = k.parts[k.target];
+    const need = m.cond.need;
     return Lx(
-      `Por tus ${count(p.noun, m.wanted)} necesitarías ${f(mi.need)} ${pw(mi.need)}, pero el mínimo del proveedor es ${minLabel}: con ${f(m.packs)} ${pw(m.packs)} recibirías ${totals(m.packs)}, ${count(p.noun, m.extra)} más de las que necesitas, suponiendo que cada ${pw(1)} trae ${comp}.`,
-      `For your ${count(p.noun, m.wanted)} you'd need ${f(mi.need)} ${pw(mi.need)}, but the supplier's minimum is ${minLabel}: with ${f(m.packs)} ${pw(m.packs)} you'd receive ${totals(m.packs)}, ${count(p.noun, m.extra)} more than you need, assuming each ${pw(1)} holds ${comp}.`,
-    ) + confirm;
+      `Para ${count(p.noun, m.wanted)} necesitarías ${f(need)} ${pw(need)}, pero ${cw.lead}: debes pedir ${f(m.packs)} ${pw(m.packs)} y recibirías ${totals(m.packs)}, ${count(p.noun, m.extra)} más de las que necesitas, suponiendo que cada ${pw(1)} trae ${comp}.`,
+      `For ${count(p.noun, m.wanted)} you'd need ${f(need)} ${pw(need)}, but ${cw.lead}: you should order ${f(m.packs)} ${pw(m.packs)} and would receive ${totals(m.packs)}, ${count(p.noun, m.extra)} more than you need, assuming each ${pw(1)} holds ${comp}.`,
+    ) + cw.unread + confirm;
   }
-  const minEnd = !mi || !mi.packs
+  const minEnd = !m.cond
     ? ""
-    : m.mode === "total" && m.packs < mi.packs
-      ? Lx(` Ojo: el mínimo del proveedor es ${minLabel}.`, ` Note: the supplier's minimum is ${minLabel}.`)
-      : m.mode === "ask" ? "" : Lx(` Cumples el mínimo del proveedor (${minLabel}).`, ` You meet the supplier's minimum (${minLabel}).`);
+    : m.mode === "total" && m.packs !== m.cond.need
+      ? Lx(` Ojo: ${cw.lead}; para cumplirlo tendrías que pedir ${f(m.cond.need)} ${pw(m.cond.need)}.`, ` Note: ${cw.lead}; to meet it you'd have to order ${f(m.cond.need)} ${pw(m.cond.need)}.`) + cw.unread
+      : cw.ok + cw.unread;
   if (m.mode === "packs") {
     const p = k.parts[k.target];
     const extra = m.extra > 0 ? Lx(` (${count(p.noun, m.extra)} de más)`, ` (${count(p.noun, m.extra)} extra)`) : "";
@@ -619,7 +771,64 @@ function kitReply(m: PackMath): string {
   ) + confirm;
 }
 
+/** Data that can't be calculated as written: say why and ask for what's missing. */
+function invalidReply(m: PackMath): string {
+  const f = (n: number) => n.toLocaleString("en-US");
+  const one = Lx(m.pack[1], m.pack[3]);
+  const conds = condsOf(m);
+  const list = (cs: Cond[]) => cs.map((c) => `${f(c.n)} ${c.word}`.trim()).join(Lx(" y ", " and "));
+  switch (m.invalid) {
+    case "negative":
+      return Lx(
+        "Una cantidad, un contenido o un mínimo negativo no permite calcular. Escríbeme los datos en positivo: cantidad total y su unidad (piezas, pares, sets…), qué trae cada empaque y, si aplica, el pedido mínimo o los múltiplos.",
+        "A negative quantity, content or minimum can't be calculated. Send me the figures as positive numbers: total quantity and its unit (pieces, pairs, sets…), what each pack holds and, if any, the minimum order or multiples.",
+      );
+    case "zeroQty":
+      return Lx(
+        "La cantidad que necesitas aparece como 0, así que no hay nada que calcular. ¿Cuántas unidades (o pares, sets…) necesitas en total?",
+        "The quantity you need shows as 0, so there's nothing to calculate. How many units (or pairs, sets…) do you need in total?",
+      );
+    case "decimalQty":
+      return Lx(
+        `La cantidad ${f(m.wanted)} ${m.item} tiene decimales y no se puede pedir una fracción de ${m.item ? singularOf(m.item) : "pieza"}. ¿La cantidad es ${f(Math.floor(m.wanted))} o ${f(Math.ceil(m.wanted))}? Si es un peso o una medida, dime cuánto trae cada empaque en esa misma medida.`,
+        `The quantity ${f(m.wanted)} ${m.item} has decimals and you can't order a fraction of a ${m.item ? singularOf(m.item) : "piece"}. Is it ${f(Math.floor(m.wanted))} or ${f(Math.ceil(m.wanted))}? If it's a weight or a measure, tell me how much each pack holds in that same measure.`,
+      );
+    case "decimalContent":
+      return Lx(
+        `El contenido de cada ${one} (${f(m.perPack)}) tiene decimales; un empaque trae piezas completas. ¿Cuántas piezas (o pares) trae exactamente cada ${one}? Si ${f(m.perPack)} es un peso o una medida, indícame la unidad y el peso o medida que necesitas en total.`,
+        `The content of each ${one} (${f(m.perPack)}) has decimals; a pack holds whole pieces. Exactly how many pieces (or pairs) does each ${one} hold? If ${f(m.perPack)} is a weight or measure, tell me the unit and the total weight or measure you need.`,
+      );
+    case "measure":
+      return Lx(
+        `Pediste ${f(m.wanted)} ${m.item}, pero el empaque está indicado en piezas, no en ${m.item}. Para no adivinar, dime cuánto pesa o mide el contenido de cada ${one} (por ejemplo «cada ${one} trae 25 ${m.item}») o la cantidad en piezas.`,
+        `You asked for ${f(m.wanted)} ${m.item}, but the pack is given in pieces, not in ${m.item}. So I don't guess, tell me the weight or measure of each ${one}'s content (for example "each ${one} holds 25 ${m.item}") or the quantity in pieces.`,
+      );
+    case "range":
+      return Lx(
+        `Escribiste un rango (${f(m.sizes![0])} a ${f(m.sizes![1])} ${m.item}). Para darte un cálculo exacto necesito una sola cifra: ¿con cuál calculo? Si quieres, mándame las dos preguntas por separado.`,
+        `You wrote a range (${f(m.sizes![0])} to ${f(m.sizes![1])} ${m.item}). For an exact calculation I need one figure: which one should I use? You can also send the two questions separately.`,
+      );
+    case "conflictSize":
+      return Lx(
+        `Tu mensaje da contenidos distintos para cada ${one} (${m.sizes!.map(f).join(" y ")} piezas). ¿Cuál es el correcto? Con ese dato hago el cálculo; si son dos presentaciones diferentes, escríbelas por separado.`,
+        `Your message gives different contents for each ${one} (${m.sizes!.map(f).join(" and ")} pieces). Which one is right? With that I'll calculate; if they are two different presentations, send them separately.`,
+      );
+    case "conflictCond":
+      return Lx(
+        `Tu mensaje trae condiciones de compra que no coinciden${conds.mins.length > 1 ? ` (mínimos: ${list(conds.mins)})` : ""}${conds.lots.length > 1 ? ` (múltiplos: ${list(conds.lots)})` : ""}${conds.mins.length <= 1 && conds.lots.length <= 1 ? ` (${[...conds.mins, ...conds.lots].map((c) => `${f(c.n)} ${c.word}`.trim()).join(", ")}: no se pueden cumplir con empaques completos de este contenido)` : ""}. ¿Cuál es la condición vigente del proveedor? Confírmala y hago el cálculo.`,
+        `Your message has purchase conditions that don't match${conds.mins.length > 1 ? ` (minimums: ${list(conds.mins)})` : ""}${conds.lots.length > 1 ? ` (multiples: ${list(conds.lots)})` : ""}${conds.mins.length <= 1 && conds.lots.length <= 1 ? ` (${[...conds.mins, ...conds.lots].map((c) => `${f(c.n)} ${c.word}`.trim()).join(", ")}: they can't be met with whole packs of this content)` : ""}. Which condition does the supplier actually apply? Confirm it and I'll calculate.`,
+      );
+    case "badCond":
+      return Lx(
+        `El pedido mínimo o el múltiplo (${[...conds.mins, ...conds.lots].map((c) => `${c.n} ${c.word}`.trim()).join(", ")}) debe ser un número entero mayor que cero. ¿Cuál es la condición exacta del proveedor?`,
+        `The minimum order or multiple (${[...conds.mins, ...conds.lots].map((c) => `${c.n} ${c.word}`.trim()).join(", ")}) must be a whole number above zero. What is the supplier's exact condition?`,
+      );
+  }
+  return "";
+}
+
 function packMathReply(m: PackMath): string {
+  if (m.invalid) return invalidReply(m);
   if (m.kit) return kitReply(m);
   const items = m.item || Lx("piezas", "pieces");
   if (m.mode === "ask" && m.zero)
@@ -639,7 +848,20 @@ function packMathReply(m: PackMath): string {
     );
   }
   const one = singularOf(items);
-  const nn = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? one : items}`;
+  // a client counting pairs or dozens also sees the result in their unit:
+  // "600 zapatos (300 pares)"; an odd count says what is left loose
+  const cu = m.conv ? (PAIR_W.test(m.conv.wantedWord) ? 2 : DOZ_W.test(m.conv.wantedWord) ? 12 : 0) : 0;
+  const cuWord = m.conv?.wantedWord || "";
+  const inClientUnit = (n: number) => {
+    if (!cu || n <= 0) return "";
+    const whole = Math.floor(n / cu);
+    const rest = n - whole * cu;
+    const wWord = whole === 1 ? singularOf(cuWord) : cuWord;
+    return rest
+      ? Lx(` (${whole.toLocaleString("en-US")} ${wWord} y ${rest} ${rest === 1 ? one : items} suelt${rest === 1 ? "o" : "os"})`, ` (${whole.toLocaleString("en-US")} ${wWord} and ${rest} loose ${rest === 1 ? one : items})`)
+      : ` (${whole.toLocaleString("en-US")} ${wWord})`;
+  };
+  const nn = (n: number) => `${n.toLocaleString("en-US")} ${n === 1 ? one : items}${inClientUnit(n)}`;
   const pw = (n: number) => (n === 1 ? Lx(m.pack[1], m.pack[3]) : Lx(m.pack[2], m.pack[4]));
   const f = (n: number) => n.toLocaleString("en-US");
   const confirm = Lx(
@@ -657,6 +879,14 @@ function packMathReply(m: PackMath): string {
     if (c.perPack !== m.perPack)
       pre += Lx(`Cada ${pw(1)} de ${f(c.perPack)} ${c.perWord} trae ${f(m.perPack)} ${items}${by(c.perWord)}. `, `Each ${pw(1)} of ${f(c.perPack)} ${c.perWord} holds ${f(m.perPack)} ${items}${by(c.perWord)}. `);
   }
+  // counting single pieces as pairs assumes they make complete pairs
+  const pairNote =
+    c && (PAIR_W.test(c.wantedWord) || PAIR_W.test(c.perWord))
+      ? Lx(
+          ` Supone que los ${items} individuales forman pares completos y compatibles (lado, talla y modelo); confírmalo con el proveedor.`,
+          ` This assumes the single ${items} make complete, matching pairs (side, size and model); confirm it with the supplier.`,
+        )
+      : "";
   // the other reading when one side doesn't say its unit
   let post = "";
   const a = m.alt;
@@ -676,27 +906,26 @@ function packMathReply(m: PackMath): string {
       ` If each ${pw(1)} holds ${f(m.perPack)} single ${a.word || "pieces"} rather than ${f(m.perPack)} ${items}, it would be ${f(a.packs)} ${pw(a.packs)}.`,
     );
   const per = Lx(`${f(m.perPack)} ${items} por ${pw(1)}`, `${f(m.perPack)} ${items} per ${pw(1)}`);
-  // the supplier's minimum order
-  const mi = m.min;
-  const minLabel = mi ? minLabelOf(mi, pw) : "";
-  if (mi?.applied && m.mode === "packs")
+  // the supplier's minimum order and multiples
+  const cw = condWords(m);
+  if (m.cond?.changed && m.mode === "packs")
     return pre + Lx(
-      `Para ${nn(m.wanted)} necesitarías ${f(mi.need)} ${pw(mi.need)}, pero el mínimo del proveedor es ${minLabel}: comprarías ${f(m.packs)} ${pw(m.packs)} = ${nn(m.total)}, y te sobrarían ${nn(m.extra)}, suponiendo ${per}.`,
-      `For ${nn(m.wanted)} you'd need ${f(mi.need)} ${pw(mi.need)}, but the supplier's minimum is ${minLabel}: you'd buy ${f(m.packs)} ${pw(m.packs)} = ${nn(m.total)}, with ${nn(m.extra)} left over, assuming ${per}.`,
-    ) + confirm;
-  const minEnd = !mi || !mi.packs
+      `Para ${nn(m.wanted)} necesitarías ${f(m.cond.need)} ${pw(m.cond.need)}, pero ${cw.lead}: debes pedir ${f(m.packs)} ${pw(m.packs)} = ${nn(m.total)}, y te sobrarían ${nn(m.extra)}, suponiendo ${per}.`,
+      `For ${nn(m.wanted)} you'd need ${f(m.cond.need)} ${pw(m.cond.need)}, but ${cw.lead}: you should order ${f(m.packs)} ${pw(m.packs)} = ${nn(m.total)}, with ${nn(m.extra)} left over, assuming ${per}.`,
+    ) + cw.unread + pairNote + confirm;
+  const minEnd = !m.cond
     ? ""
-    : (m.mode === "check" || m.mode === "total") && m.packs < mi.packs
+    : (m.mode === "check" || m.mode === "total") && m.packs !== m.cond.need
       ? Lx(
-          ` Ojo: el mínimo del proveedor es ${minLabel}; para cumplirlo comprarías ${f(mi.packs)} ${pw(mi.packs)} = ${nn(mi.packs * m.perPack)}.`,
-          ` Note: the supplier's minimum is ${minLabel}; to meet it you'd buy ${f(mi.packs)} ${pw(mi.packs)} = ${nn(mi.packs * m.perPack)}.`,
-        )
-      : Lx(` Cumples el mínimo del proveedor (${minLabel}).`, ` You meet the supplier's minimum (${minLabel}).`);
+          ` Ojo: ${cw.lead}; para cumplirlo tendrías que pedir ${f(m.cond.need)} ${pw(m.cond.need)} = ${nn(m.cond.need * m.perPack)}.`,
+          ` Note: ${cw.lead}; to meet it you'd have to order ${f(m.cond.need)} ${pw(m.cond.need)} = ${nn(m.cond.need * m.perPack)}.`,
+        ) + cw.unread
+      : cw.ok + cw.unread;
   if (m.mode === "total")
     return pre + Lx(
       `${f(m.packs)} ${pw(m.packs)} de ${f(m.perPack)} son ${nn(m.total)}.`,
       `${f(m.packs)} ${pw(m.packs)} of ${f(m.perPack)} make ${nn(m.total)}.`,
-    ) + minEnd + confirm;
+    ) + minEnd + pairNote + confirm;
   if (m.mode === "check") {
     const need = Math.ceil(m.wanted / m.perPack);
     return pre + (m.extra >= 0
@@ -707,19 +936,19 @@ function packMathReply(m: PackMath): string {
       : Lx(
           `No alcanza: ${f(m.packs)} ${pw(m.packs)} de ${f(m.perPack)} son ${nn(m.total)}; te ${-m.extra === 1 ? "faltaría" : "faltarían"} ${nn(-m.extra)}. Necesitarías ${f(need)} ${pw(need)} (${nn(need * m.perPack)}).`,
           `It's not enough: ${f(m.packs)} ${pw(m.packs)} of ${f(m.perPack)} make ${nn(m.total)}; you'd be ${nn(-m.extra)} short. You'd need ${f(need)} ${pw(need)} (${nn(need * m.perPack)}).`,
-        )) + minEnd + confirm;
+        )) + minEnd + pairNote + confirm;
   }
   if (m.extra === 0)
     return pre + Lx(
       `Necesitarías ${f(m.packs)} ${pw(m.packs)}: exactamente ${nn(m.total)}, suponiendo ${per}.`,
       `You'd need ${f(m.packs)} ${pw(m.packs)}: exactly ${nn(m.total)}, assuming ${per}.`,
-    ) + post + minEnd + confirm;
+    ) + post + minEnd + pairNote + confirm;
   const less = m.packs - 1;
   const short = m.wanted - less * m.perPack;
   return pre + Lx(
     `Necesitarías ${f(m.packs)} ${pw(m.packs)}: ${nn(m.total)}, con ${nn(m.extra)} ${m.extra === 1 ? "adicional" : "adicionales"}, suponiendo ${per}.${less > 0 ? ` Con ${f(less)} ${pw(less)} tendrías ${nn(less * m.perPack)} y te ${short === 1 ? "faltaría" : "faltarían"} ${nn(short)}.` : ""}`,
     `You'd need ${f(m.packs)} ${pw(m.packs)}: ${nn(m.total)}, with ${nn(m.extra)} extra, assuming ${per}.${less > 0 ? ` With ${f(less)} ${pw(less)} you'd have ${nn(less * m.perPack)}, ${nn(short)} short.` : ""}`,
-  ) + post + minEnd + confirm;
+  ) + post + minEnd + pairNote + confirm;
 }
 
 /** One answer per calculation asked; says so when part of the message couldn't be read. */
@@ -742,9 +971,51 @@ function mathReply(q: string): string {
   return packMathReply(one);
 }
 
+// "¿Puedo asegurar que son 20 pares vendibles por caja?" with single pieces whose
+// side or size isn't stated: a question about the data, answered on its own
+const PAIR_DOUBT =
+  /(?:asegur|garantiz|seguro|segura|afirmar|confirmar|contar\s+con|saber\s+si|puedo\s+(?:decir|dar\s+por)|se\s+puede\s+(?:decir|asumir|asegurar)|forman?|equivalen?|cuentan?\s+como|ensure|guarantee|be\s+sure|assume|count\s+as|make\s+up)[^.?!]{0,80}\b(?:par(?:es)?|pairs?)\b|\b(?:par(?:es)?|pairs?)\b[^.?!]{0,40}(?:vendibles?|completos?|compatibles?|sellable|complete)/;
+const PAIR_DETAIL = /individual|suelt|izquierd|derech|talla|n[uú]mero|lado|single|left|right|\bsize|mismo\s+modelo/;
+export function pairDoubt(text: string): boolean {
+  const t = text.toLowerCase();
+  return PAIR_DOUBT.test(t) && PAIR_DETAIL.test(t);
+}
+function pairDoubtReply(text: string): string {
+  const t = normalizeNumbers(text.toLowerCase());
+  const f = (n: number) => n.toLocaleString("en-US");
+  const per = t.match(/(\d+)\s+([a-záéíóúüñ]+)\s+(?:individuales|sueltos|sueltas|single|individual)/);
+  const wantedPairs = t.match(/(\d+)\s+(?:pares|pairs)\b/);
+  const pieces = per ? Number(per[1]) : 0;
+  const noun = per?.[2] || Lx("piezas", "pieces");
+  const pairsPerBox = pieces && pieces % 2 === 0 ? pieces / 2 : 0;
+  const lead = Lx(
+    `No: con esa información no se puede asegurar${pairsPerBox ? ` que sean ${f(pairsPerBox)} pares vendibles por caja` : " cuántos pares vendibles trae cada caja"}. ${pieces ? `${f(pieces)} ${noun} individuales` : "Las piezas individuales"} solo forman pares completos si se confirma que:`,
+    `No: with that information you can't be sure${pairsPerBox ? ` there are ${f(pairsPerBox)} sellable pairs per box` : " how many sellable pairs each box holds"}. ${pieces ? `${f(pieces)} single ${noun}` : "Single pieces"} only make complete pairs if it is confirmed that:`,
+  );
+  const checks = Lx(
+    "\n1. La mitad son izquierdos y la mitad derechos (o que el modelo no tiene lado).\n2. Coinciden en talla, modelo y color dentro de cada caja.\n3. Vienen emparejados o identificados por par (no surtidos al azar).\nPide al proveedor el packing list por caja con tallas y lado, o fotos del empaque abierto.",
+    "\n1. Half are left and half are right (or the model has no side).\n2. They match in size, model and color within each box.\n3. They come paired or marked by pair (not randomly assorted).\nAsk the supplier for the per-box packing list with sizes and sides, or photos of an open box.",
+  );
+  const tail =
+    pairsPerBox && wantedPairs
+      ? Lx(
+          `\nSi se confirma, cada caja trae ${f(pairsPerBox)} pares y para ${f(Number(wantedPairs[1]))} pares necesitarías ${f(Math.ceil(Number(wantedPairs[1]) / pairsPerBox))} cajas; si no, los pares vendibles pueden ser menos y conviene pedir más cajas o una muestra antes de comprar.`,
+          `\nIf confirmed, each box holds ${f(pairsPerBox)} pairs and for ${f(Number(wantedPairs[1]))} pairs you'd need ${f(Math.ceil(Number(wantedPairs[1]) / pairsPerBox))} boxes; if not, the sellable pairs may be fewer, so consider more boxes or a sample before buying.`,
+        )
+      : pieces && pieces % 2 === 1
+        ? Lx(`\nAdemás, ${f(pieces)} es impar: aunque todo coincida, quedaría al menos 1 ${singularOf(noun)} sin pareja por caja.`, `\nAlso, ${f(pieces)} is odd: even if everything matches, at least 1 ${singularOf(noun)} per box would have no pair.`)
+        : "";
+  return lead + checks + tail;
+}
+
+// A question that looks like a calculation the parser couldn't read: ask for the data
+const MATH_ASK = new RegExp(`cu[aá]nt[oa]s\\s+(?:${PACK_RE}|piezas|pares|unidades|pieces|units)\\b|how\\s+many\\s+(?:${PACK_RE}|pieces|units)\\b|\\b(?:alcanza|alcanzan|me\\s+sobran?|sobrar[aá]n?|faltar[aá]n?|enough|left\\s+over)\\b`);
+
 export function replyKinds(text: string): string[] {
   const t = text.toLowerCase();
   const kinds: string[] = [];
+  // a question about whether single pieces make pairs is answered on its own
+  if (pairDoubt(text)) return ["pairs"];
   // a calculation is answered, and so is anything else the message asks
   const isMath = !!(packMathAll(text).length || packMath(text));
   if (/certificad|certificaci|certificate|certification|\bce\b|\bfda\b|\biso\b|\bul\b|\brohs\b|\bsgs\b|grado alimenticio|food[- ]grade|apto para alimentos|suitable for food/.test(t)) kinds.push("certificate");
@@ -752,12 +1023,16 @@ export function replyKinds(text: string): string[] {
   if ((isMath ? /confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit|seguro\s+el\s+proveedor/ : /proveedor|supplier|seller|vendedor|f[aá]brica|factory|confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit/).test(t)) kinds.push("supplier");
   // "Guarantee" goes to customs authorization only when the question is about the import itself
   const customsCtx = /importaci|aduana|autoriz|permiso|aprobad|aprobaci|liberaci|despacho|que pase|customs|import(?!ar\b|ing\b)|authoriz|permit|approv/.test(t);
-  const guaranteeWord = /garantiz|garant[ií]a de que|asegur|sin problema|guarantee/.test(t);
+  // "asegurar" alone ("¿puedo asegurar que son 20 pares?") is not about customs
+  const guaranteeWord = /garantiz|garant[ií]a de que|sin problema|guarantee/.test(t) || (customsCtx && /asegur/.test(t));
   const permitWord = /permiso|autoriz|licencia|permit|authoriz|license/.test(t);
   if ((customsCtx && (!isMath || guaranteeWord || permitWord)) || (guaranteeWord && !kinds.includes("certificate"))) kinds.push("guarantee");
   if (/\bdai\b|arancel|partida|impuesto|\biva\b|tributo|tariff|duty|duties|\btax/.test(t)) kinds.push("dai");
   if (/cu[aá]nto\s+(?:tiempo|tarda|demora)|cu[aá]ntos\s+d[ií]as|cu[aá]ndo\s+(?:llega|llegar[ií]a|estar[ií]a)|when\s+(?:will\s+it\s+)?arrive|tiempo\s+de\s+(?:tr[aá]nsito|env[ií]o|llegada)|tarda\s+en\s+llegar|how\s+long|transit\s+time|lead\s+time/.test(t)) kinds.push("transit");
   else if (isMath ? /precio|costo|cuest[ae]|cotiz|price|cost|quote|how much/.test(t) : /precio|costo|cu[aá]nto|cotiz|price|cost|quote|how much/.test(t)) kinds.push("cost");
+  // numbers and packs in a question the calculator couldn't read: ask rather than guess
+  const sizeOnly = new RegExp(`${PACK_RE}\\s+(?:de|of|con|with|x)\\s*\\d|(?:trae|traen|tiene|tienen|contiene|vienen?|has|holds|contains)\\s+\\d`).test(t);
+  if (!isMath && !sizeOnly && /\d/.test(t) && MATH_ASK.test(normalizeNumbers(t)) && !kinds.some((k) => k === "cost" || k === "transit")) kinds.unshift("mathUnclear");
   return isMath ? ["math", ...kinds] : kinds;
 }
 
@@ -839,6 +1114,11 @@ const FIXED: Record<string, () => string> = {
     Lx(
       "Puedo prepararte una estimación preliminar con los datos del formulario (producto, cantidad y, si lo tienes, volumen o peso). Un costo confirmado solo lo da una cotización de SEAL. Siguiente paso: continúa con el formulario.",
       "I can prepare a preliminary estimate with the form data (product, quantity and, if you have it, volume or weight). A confirmed cost only comes from a SEAL quote. Next step: continue with the form.",
+    ),
+  mathUnclear: () =>
+    Lx(
+      "No pude leer este cálculo con seguridad y prefiero no adivinar. Escríbemelo así: 1) cantidad total y su unidad (piezas, pares, sets…), 2) qué trae cada empaque y en qué unidad, y 3) si hay pedido mínimo o múltiplos. Ejemplo: «Necesito 200 pares; cada caja trae 20 pares; mínimo 15 cajas».",
+      "I couldn't read this calculation reliably and I'd rather not guess. Send it like this: 1) total quantity and its unit (pieces, pairs, sets…), 2) what each pack holds and in what unit, and 3) any minimum order or multiples. Example: \"I need 200 pairs; each box holds 20 pairs; minimum 15 boxes\".",
     ),
   general: () =>
     Lx(
@@ -957,11 +1237,67 @@ export function buildReply(r: ReplySpec): string {
   if (!kinds.length && !r.newProduct) kinds = ["general"];
   kinds.forEach((k, i) => {
     let t =
-      k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : (FIXED[k] ?? FIXED.general)();
+      k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
     if (i === 0 && !parts.length) t = t.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't");
     parts.push(t);
   });
   if (r.newProduct && !kinds.length)
     parts.push(Lx("Para orientarte con ese producto, continúa con el formulario.", "To guide you on that product, continue with the form."));
   return parts.join("\n\n");
+}
+
+/**
+ * The reply spec for a new client message, given the earlier ones: whether it is a
+ * calculation, a follow-up to an earlier one, a product statement or a quantity
+ * change. The chat page stores it and renders buildReply(spec) in the language in use.
+ */
+export function nextSpec(text: string, specs: ReplySpec[], currentProduct: string, currentQuantity: number): ReplySpec {
+  const kinds = replyKinds(text);
+  const isMath = kinds.includes("math");
+  // the latest earlier calculation this message follows ("¿Y los cuadernos?" can point further back)
+  let lastMath = "";
+  let follow: PackMath | null = null;
+  if (!isMath && !kinds.length)
+    for (const x of [...specs].reverse()) {
+      if (!x.mathText) continue;
+      follow = followUpMath(text, x.mathText);
+      if (follow) { lastMath = x.mathText; break; }
+    }
+  const single = isMath && !packMathAll(text).length ? packMath(text) : null;
+  // a calculation that still needs data is kept as the client wrote it
+  const mathText = isMath ? (single && mathStatement(single)) || text : follow ? mathStatement(follow) || undefined : undefined;
+  // a calculation is not a product statement nor a quantity change
+  const newProduct = mathText || kinds.includes("pairs") ? undefined : productFromMessage(text) || undefined;
+  // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
+  const mentioned = !newProduct && !mathText ? productMention(text) || undefined : undefined;
+  // only a certificate answer that asked "¿qué producto?" is answered again for the new product
+  const lastAi = specs[specs.length - 1];
+  const askedForProduct = !!lastAi && !lastAi.product && replyKinds(lastAi.reask || lastAi.text).includes("certificate");
+  const qc = mathText ? null : quantityChange(text);
+  return {
+    mathText,
+    previousMath: follow ? lastMath : undefined,
+    newQuantity: qc?.qty,
+    oldQuantity: qc ? qc.before || currentQuantity || undefined : undefined,
+    text,
+    product: newProduct || mentioned || currentProduct,
+    newProduct,
+    mentioned,
+    previous: currentProduct,
+    reask: askedForProduct ? lastAi.reask || lastAi.text : undefined,
+    earlierFood: specs.some((x) => (replyKinds(x.text).includes("certificate") || !!x.reask) && foodAdvice(x.product)),
+  };
+}
+
+/** A whole conversation, message by message, as the chat page answers it (used by tests). */
+export function replayConversation(messages: string[], query = ""): string[] {
+  const specs: ReplySpec[] = [];
+  return messages.map((text) => {
+    const lastNamed = [...specs].reverse().find((x) => x.newProduct || x.mentioned);
+    const currentProduct = lastNamed?.newProduct || lastNamed?.mentioned || query;
+    const currentQuantity = [...specs].reverse().find((x) => x.newQuantity)?.newQuantity || 0;
+    const spec = nextSpec(text, specs, currentProduct, currentQuantity);
+    specs.push(spec);
+    return buildReply(spec);
+  });
 }

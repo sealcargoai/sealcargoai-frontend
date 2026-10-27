@@ -329,8 +329,11 @@ export async function generateBeautifulExcel(
     detail:
       l.key === "freight" && data.costs.freightPending ? Lx("Por cotizar", "To be quoted") : l.detail,
     appliedRate:
-      RATE_BY_KEY[l.key] !== undefined
-        ? `${((RATE_BY_KEY[l.key] as number) * 100).toFixed(0)}%`
+      // the insurance minimum (US$250) applies when 1% of FOB is below it: say so instead of "1%"
+      l.key === "insurance" && data.costs.productCost > 0 && l.amount > data.costs.productCost * (data.insuranceRate || 0.01) * 1.0001
+        ? Lx("mín. US$250", "min. US$250")
+        : RATE_BY_KEY[l.key] !== undefined
+        ? `${((RATE_BY_KEY[l.key] as number) * 100).toFixed(0)}%${l.key === "duties" ? Lx(" ref.", " ref.") : ""}`
         : "—",
     amount: l.amount * (data.costs.exchangeRate || DEFAULT_FX),
     pending: l.key === "freight" && !!data.costs.freightPending,

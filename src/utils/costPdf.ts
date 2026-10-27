@@ -21,7 +21,9 @@ const MAP: Record<string, string> = {
 export function pdfSafe(text: string): string {
   return String(text ?? "")
     .replace(/[•–—→←≥≤‘’“”…✅⚠️]/g, (c) => MAP[c] ?? "")
-    .replace(/[^\x00-\xFF]/g, "") // anything else outside Latin-1
+    // anything else outside Latin-1 (e.g. Chinese characters in a title) can't be drawn
+    // by the PDF font: a run of them is marked instead of silently disappearing
+    .replace(/[^\x00-\xFF]+/g, (run) => (/[\p{L}\p{N}]/u.test(run) ? "[...]" : ""))
     .replace(/\s+\n/g, "\n");
 }
 
@@ -131,6 +133,14 @@ function drawCostPdf(d: CostPdfInput, tight: boolean): any {
     if (tl.length > 4) tl = [...tl.slice(0, 3), `${tl[3].slice(0, 80)}...`];
     text(tl, 58, y);
     y += RH * tl.length + (tight ? 2 : 3);
+  }
+  if (diff?.title && !diff.items.length) {
+    // same as the Excel: no differences found in the title is said, not left blank
+    doc.setTextColor(100, 116, 139);
+    const nl = wrap(Lx("No encontramos diferencias en el título; igual confirma los datos con el proveedor.", "We found no differences in the title; still confirm the data with the supplier."), W - 70);
+    text(nl, 58, y);
+    y += RH * nl.length + (tight ? 2 : 3);
+    doc.setTextColor(30, 41, 59);
   }
   if (diff?.items.length) {
     ensure(RH * 3);

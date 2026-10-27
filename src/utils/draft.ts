@@ -7,6 +7,8 @@ export function clearDraft(): void {
   try {
     sessionStorage.removeItem(DRAFT_KEY);
     sessionStorage.removeItem("seal_cost_choices");
+    // the chat of the previous case (its quantity changes would carry over)
+    sessionStorage.removeItem("seal_chat");
   } catch {
     /* storage unavailable */
   }

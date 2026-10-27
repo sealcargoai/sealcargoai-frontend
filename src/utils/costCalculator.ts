@@ -260,7 +260,8 @@ export function calculateCosts(
     },
     {
       key: "duties",
-      label: Lx("DAI (arancel)", "DAI (import duty)"),
+      // reference rate: the real one depends on the tariff heading
+      label: Lx("DAI (arancel) referencial", "DAI (import duty), reference"),
       detail: `${pct(rates.dutyRate)} ${shipping > 0 ? Lx("sobre valor CIF (FOB + flete + seguro)", "on CIF value (FOB + freight + insurance)") : Lx("sobre FOB + seguro (falta sumar el flete al CIF)", "on FOB + insurance (freight still to be added to CIF)")} ${formatQ(cif, rates.exchangeRate, 2)}`,
       amount: importDuties,
       color: "#60A5FA",
