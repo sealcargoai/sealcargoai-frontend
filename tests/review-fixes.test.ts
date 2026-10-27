@@ -76,13 +76,9 @@ describe("measure words are not found inside other words", () => {
 });
 
 import { calculateCosts, DEFAULT_RATES } from "../src/utils/costCalculator";
-describe("SEAL's fixed amounts say they include IVA", () => {
-  it("on screen, PDF and Excel (the line detail)", () => {
+describe("SEAL's fixed amounts already include IVA: no IVA is added on top", () => {
+  it("the IVA line is computed on CIF + DAI only", () => {
     const c = calculateCosts({ price: 2, quantity: 1000, volumeCbm: 0, weightKg: 0, saleUnit: "" }, DEFAULT_RATES);
-    expect(c.lines.find((l) => l.key === "customs")!.detail).toMatch(/IVA incluido/);
-    expect(c.lines.find((l) => l.key === "local")!.detail).toMatch(/IVA incluido/);
-    setLang("en");
-    const e = calculateCosts({ price: 2, quantity: 1000, volumeCbm: 0, weightKg: 0, saleUnit: "" }, DEFAULT_RATES);
-    expect(e.lines.find((l) => l.key === "customs")!.detail).toMatch(/VAT\) included/);
+    expect(c.taxes).toBeCloseTo((c.cif + c.importDuties) * DEFAULT_RATES.vatRate, 6);
   });
 });
