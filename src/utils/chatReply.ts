@@ -108,6 +108,73 @@ export interface PackMath {
   // a mixed set ("cada set trae 1 botella y 3 tazas"); target = the item the quantity counts, -1 = none
   kit?: { parts: { n: number; noun: string }[]; target: number };
   zero?: boolean; // the client wrote a pack content of 0
+  // the supplier's minimum order ("mínimo de 15 cajas", "MOQ 300 pares")
+  min?: { n: number; word: string; packs: number; need: number; applied: boolean };
+}
+
+// ── Minimum order: "mínimo de 15 cajas", "pedido mínimo 300 pares", "MOQ 50",
+// "pide 300 pares como mínimo", "minimum order 15 boxes" ───────────────────
+const MIN_FIRST: RegExp[] = [
+  /\b(?:(?:pedido|compra|orden|order)\s+)?(?:m[ií]nim[oa]s?|minimum)(?:\s+(?:de\s+)?(?:compra|pedido|orden|order|quantity|qty|cantidad))?(?:\s+(?:exigido|requerido|aceptado|que\s+(?:pide|exige|acepta|piden|exigen)))?(?:\s*(?::|=|es|son|ser[ií]a|de|del|of|is|are))*\s*(?:de\s+)?(\d+)(?:\s+([a-záéíóúüñ]+))?/,
+  /\bmoq\s*(?::|=|de|of|is|es)?\s*(?:de\s+)?(\d+)(?:\s+([a-záéíóúüñ]+))?/,
+  // "no venden menos de 15 cajas", "won't sell less than 15 boxes"
+  /\bno\s+(?:me\s+|nos\s+)?(?:vende|venden|acepta|aceptan|despacha|despachan|env[ií]a|env[ií]an|hace|hacen|fabrica|fabrican)\s+(?:pedidos\s+de\s+)?menos\s+de\s+(\d+)(?:\s+([a-záéíóúüñ]+))?/,
+  /\b(?:won'?t|doesn'?t|don'?t|does\s+not|do\s+not|will\s+not)\s+(?:sell|accept|ship)\s+(?:less|fewer)\s+than\s+(\d+)(?:\s+([a-z]+))?/,
+  // the supplier's own verbs: "el proveedor vende al menos 15 cajas", "exigen como mínimo 300 pares"
+  /\b(?:pide|piden|exige|exigen|vende|venden|acepta|aceptan|requiere|requieren|requires?|sells?|accepts?)\s+(?:un\s+)?(?:al\s+menos|como\s+m[ií]nimo|at\s+least|a\s+minimum\s+of)\s+(\d+)(?:\s+([a-záéíóúüñ]+))?/,
+];
+const MIN_AFTER = /(\d+)\s+([a-záéíóúüñ]+)\s+(?:como\s+|as\s+(?:a\s+)?|at\s+(?:a\s+)?|de\s+)?(?:m[ií]nimo|minimum|moq)\b/;
+function readMinimum(t: string): { n: number; word: string; text: string } | null {
+  for (const re of MIN_FIRST) {
+    const m = t.match(re);
+    // "necesito como mínimo 200 pares" is the client's own quantity, not the supplier's minimum
+    if (m && /(?:necesit\w*|quiero|queremos|ocupo|ocupamos|requiero|requerimos|busco|buscamos|compro|comprar[eé]|i\s+need|we\s+need|i\s+want|we\s+want)\s+(?:(?:un|una|como|al|de|por\s+lo|lo|at|a)\s+)*$/.test(t.slice(0, m.index))) continue;
+    if (m && Number(m[1]) > 0) {
+      // "mínimo 15 cajas. cada caja…": the word belongs to the minimum only if it isn't a connector
+      const word = m[2] && !CONNECT.test(m[2]) && !NOT_ITEM.test(m[2]) ? m[2] : "";
+      return { n: Number(m[1]), word, text: word ? m[0] : m[0].replace(/\s+[a-záéíóúüñ]+$/, "") };
+    }
+  }
+  const a = t.match(MIN_AFTER);
+  if (a && Number(a[1]) > 0) return { n: Number(a[1]), word: a[2], text: a[0] };
+  return null;
+}
+const piecesOf = (u: QUnit) => (u === "pair" ? 2 : u === "dozen" ? 12 : 1);
+
+/** The minimum order applied to a calculation: never fewer packs than the supplier sells. */
+function applyMinimum(m: PackMath, min: { n: number; word: string }): PackMath {
+  if (m.mode === "ask" || m.zero) return { ...m, min: { ...min, packs: 0, need: 0, applied: false } };
+  const minPackWord = !min.word || packOf(min.word) === m.pack;
+  let minPacks: number;
+  if (minPackWord) minPacks = min.n;
+  else if (m.kit) {
+    // "mínimo 300 botellas" in a mixed set: in sets of that item
+    const i = m.kit.parts.findIndex((p) => stemOf(p.noun) === stemOf(min.word));
+    if (i < 0) return m;
+    minPacks = Math.ceil(min.n / m.kit.parts[i].n);
+  } else {
+    if (packOf(min.word) && !PAIR_W.test(min.word) && !DOZ_W.test(min.word)) return m; // a minimum in another pack ("mínimo 2 contenedores") isn't comparable here
+    const resUnit: QUnit = m.unit === "pair" ? "pair" : m.unit === "dozen" ? "dozen" : "piece";
+    const minUnit = unitOf(min.word);
+    const factor = piecesOf(isPD(minUnit) ? minUnit : "piece") / piecesOf(resUnit);
+    minPacks = Math.ceil((min.n * factor) / m.perPack);
+  }
+  const need = m.packs;
+  const info = { n: min.n, word: min.word, packs: minPacks, need, applied: false };
+  if (m.mode === "packs" && minPacks > m.packs) {
+    const packs = minPacks;
+    return { ...m, packs, total: packs * m.perPack, extra: packs * m.perPack - m.wanted, alt: undefined, min: { ...info, applied: true } };
+  }
+  return { ...m, min: info };
+}
+
+/** Reads a pack calculation in any wording, or null when the message isn't one. */
+export function packMath(text: string, force = false): PackMath | null {
+  const t0 = normalizeNumbers(String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ").replace(/\s+/g, " "));
+  if (!force && !VERB_Q.test(` ${t0} `)) return null;
+  const min = readMinimum(t0);
+  const m = packMathCore(min ? t0.replace(min.text, " ") : t0, true);
+  return m && min ? applyMinimum(m, min) : m;
 }
 
 // ── Units: pairs and dozens are not pieces ───────────────────────────────────
@@ -215,8 +282,7 @@ function kitMath(t: string): PackMath | null {
   return { ...base, mode: "ask", packs: 0, wanted: W, total: 0 };
 }
 
-/** Reads a pack calculation in any wording, or null when the message isn't one. */
-export function packMath(text: string, force = false): PackMath | null {
+function packMathCore(text: string, force = false): PackMath | null {
   let t = ` ${normalizeNumbers(String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ").replace(/\s+/g, " "))} `;
   if (!force && !VERB_Q.test(t)) return null;
   // money is not a quantity ("tengo US$500", "Q2,000", "300 dólares")
@@ -423,6 +489,12 @@ export function followUpMath(text: string, previous: string): PackMath | null {
     return cands.find((m) => m.item && sameProduct(m.item, t)) || null;
   }
   if (replyKinds(t).some((k) => k !== "cost")) return null;
+  // "¿y si el mínimo es 12 cajas?": the earlier calculation with this minimum
+  const newMin = readMinimum(normalizeNumbers(t.toLowerCase().replace(/[¿?¡!]/g, " ")));
+  if (newMin) {
+    const base = all.length ? null : packMath(previous, true);
+    return base ? packMath(`${mathStatement({ ...base, min: undefined })}. ${t}`, true) : null;
+  }
   // numbers that are days, years, money, containers or models are not a new order
   if (/\d\s*(?:d[ií]as?|days?|semanas?|weeks?|meses|months?|a[nñ]os?|years?|horas?|hours?|contenedor(?:es)?|containers?|%)\b|us\$|\$|(?:^|\s)q\s*\d|\d\s*(?:d[oó]lares|dollars|quetzales|usd|gtq)\b|modelo|model|garant|guarant|flete|freight|pago|pagar|pay\b|precio|price|costo|cost|presupuesto|budget|tiendas?|escuelas?|sucursal(?:es)?|stores?|branch(?:es)?|clientes?|customers?/i.test(t)) return null;
   const full = packMath(t, true);
@@ -448,19 +520,20 @@ export function followUpMath(text: string, previous: string): PackMath | null {
   };
   const items = prev.item || Lx("piezas", "pieces");
   const unitTail = prev.unit ? ` ${prev.item}` : "";
+  const mt = minTail(prev);
   // "¿Y si son 50 sets?": a count of packs, checked against the earlier order
   const given = normalizeNumbers(t.toLowerCase()).match(new RegExp(`(\\d+)\\s+${PACK_RE}\\b(?!\\s+(?:de|of|con|with|x)\\s*\\d)`));
   if (given && packOf(given[2]) === prev.pack && !/\d+\s*(?:por|per)\s/.test(t)) {
-    const c = packMath(`¿alcanzan ${given[1]} ${prev.pack[2]} de ${prev.perPack}${unitTail} para ${prev.wanted || prev.total} ${items}?`, true);
+    const c = packMath(`¿alcanzan ${given[1]} ${prev.pack[2]} de ${prev.perPack}${unitTail} para ${prev.wanted || prev.total} ${items}?${mt}`, true);
     if (c) return keepUnit(c);
   }
   // only a new pack size
-  const withQty = keepUnit(packMath(`${t} para ${prev.wanted || prev.total} ${items}`, true));
+  const withQty = keepUnit(packMath(`${t} para ${prev.wanted || prev.total} ${items}${mt}`, true));
   if (withQty && withQty.pack === prev.pack && withQty.perPack !== prev.perPack) return withQty;
   // only a new quantity
   const n = normalizeNumbers(t.toLowerCase()).match(/(\d+)/);
   if (n && /^\s*(?:¿\s*)?(?:y|e|and|what\s+about|y\s+si|y\s+para|y\s+con|and\s+for|and\s+if)\b/i.test(t)) {
-    const q = packMath(`${n[1]} ${prev.item || ""} en ${prev.pack[2]} de ${prev.perPack}${unitTail}`, true);
+    const q = packMath(`${n[1]} ${prev.item || ""} en ${prev.pack[2]} de ${prev.perPack}${unitTail}${mt}`, true);
     if (q) return keepUnit(q);
   }
   return null;
@@ -469,16 +542,26 @@ export function followUpMath(text: string, previous: string): PackMath | null {
 /** A mixed-set question with its content, for any quantity ("240 botellas", "50 sets"). */
 function kitStatement(m: PackMath, qty: string): string {
   const comp = m.kit!.parts.map((p) => `${p.n} ${p.noun}`).join(" y ");
-  return `cuántos ${m.pack[2]} necesito para ${qty.trim()} si cada ${m.pack[1]} trae ${comp}`;
+  return `cuántos ${m.pack[2]} necesito para ${qty.trim()} si cada ${m.pack[1]} trae ${comp}${minTail(m)}`;
 }
+/** The minimum written back into a statement, so follow-ups keep it. */
+const minTail = (m: PackMath) => (m.min ? `. pedido mínimo de ${m.min.n} ${m.min.word || m.pack[2]}` : "");
 
 /** A complete question for a calculation, so later follow-ups can build on it. */
 export function mathStatement(m: PackMath): string {
   if (m.kit)
     return kitStatement(m, m.mode === "packs" ? `${m.wanted} ${m.item}` : m.mode === "total" ? `${m.packs} ${m.pack[2]}` : m.wanted ? String(m.wanted) : "");
-  if (m.mode === "ask") return `cuántos ${m.pack[2]} necesito para ${m.wanted} ${m.item}${m.conv?.perWord ? ` de ${m.conv.perWord}` : ""}`;
+  if (m.mode === "ask") return `cuántos ${m.pack[2]} necesito para ${m.wanted} ${m.item}${m.conv?.perWord ? ` de ${m.conv.perWord}` : ""}${minTail(m)}`;
   // the unit goes with the pack content, so "501 pares en cajas de 20 pares" stays in pairs
-  return `cuántos ${m.pack[2]} necesito para ${m.mode === "packs" || m.mode === "check" ? m.wanted : m.total} ${m.item || "piezas"} en ${m.pack[2]} de ${m.perPack}${m.unit ? ` ${m.item}` : ""}`;
+  return `cuántos ${m.pack[2]} necesito para ${m.mode === "packs" || m.mode === "check" ? m.wanted : m.total} ${m.item || "piezas"} en ${m.pack[2]} de ${m.perPack}${m.unit ? ` ${m.item}` : ""}${minTail(m)}`;
+}
+
+/** "15 cajas" or "300 pares (15 cajas)"; says when the minimum's unit was assumed. */
+function minLabelOf(mi: NonNullable<PackMath["min"]>, pw: (n: number) => string): string {
+  const f = (n: number) => n.toLocaleString("en-US");
+  if (!mi.word) return Lx(`${f(mi.n)} (tomado como ${f(mi.n)} ${pw(mi.n)}; confírmalo)`, `${f(mi.n)} (taken as ${f(mi.n)} ${pw(mi.n)}; confirm it)`);
+  if (packOf(mi.word) && !PAIR_W.test(mi.word) && !DOZ_W.test(mi.word)) return `${f(mi.n)} ${pw(mi.n)}`;
+  return `${f(mi.n)} ${mi.word} (${f(mi.packs)} ${pw(mi.packs)})`;
 }
 
 function kitReply(m: PackMath): string {
@@ -492,19 +575,33 @@ function kitReply(m: PackMath): string {
     ` Confirma con el proveedor el contenido real de cada ${pw(1)} y su pedido mínimo.`,
     ` Confirm the real content of each ${pw(1)} and the minimum order with the supplier.`,
   );
+  const mi = m.min;
+  const minLabel = mi ? minLabelOf(mi, pw) : "";
+  if (mi?.applied && m.mode === "packs") {
+    const p = k.parts[k.target];
+    return Lx(
+      `Por tus ${count(p.noun, m.wanted)} necesitarías ${f(mi.need)} ${pw(mi.need)}, pero el mínimo del proveedor es ${minLabel}: con ${f(m.packs)} ${pw(m.packs)} recibirías ${totals(m.packs)}, ${count(p.noun, m.extra)} más de las que necesitas, suponiendo que cada ${pw(1)} trae ${comp}.`,
+      `For your ${count(p.noun, m.wanted)} you'd need ${f(mi.need)} ${pw(mi.need)}, but the supplier's minimum is ${minLabel}: with ${f(m.packs)} ${pw(m.packs)} you'd receive ${totals(m.packs)}, ${count(p.noun, m.extra)} more than you need, assuming each ${pw(1)} holds ${comp}.`,
+    ) + confirm;
+  }
+  const minEnd = !mi || !mi.packs
+    ? ""
+    : m.mode === "total" && m.packs < mi.packs
+      ? Lx(` Ojo: el mínimo del proveedor es ${minLabel}.`, ` Note: the supplier's minimum is ${minLabel}.`)
+      : m.mode === "ask" ? "" : Lx(` Cumples el mínimo del proveedor (${minLabel}).`, ` You meet the supplier's minimum (${minLabel}).`);
   if (m.mode === "packs") {
     const p = k.parts[k.target];
     const extra = m.extra > 0 ? Lx(` (${count(p.noun, m.extra)} de más)`, ` (${count(p.noun, m.extra)} extra)`) : "";
     return Lx(
       `Necesitarías ${f(m.packs)} ${pw(m.packs)} para cubrir ${f(m.wanted)} ${pluralOf(m.item)}, suponiendo que cada ${pw(1)} trae ${comp}. En total recibirías ${totals(m.packs)}${extra}.`,
       `You'd need ${f(m.packs)} ${pw(m.packs)} to cover ${f(m.wanted)} ${pluralOf(m.item)}, assuming each ${pw(1)} holds ${comp}. In total you'd receive ${totals(m.packs)}${extra}.`,
-    ) + confirm;
+    ) + minEnd + confirm;
   }
   if (m.mode === "total")
     return Lx(
       `${f(m.packs)} ${pw(m.packs)}, si cada ${pw(1)} trae ${comp}, suman ${totals(m.packs)}.`,
       `${f(m.packs)} ${pw(m.packs)}, if each ${pw(1)} holds ${comp}, add up to ${totals(m.packs)}.`,
-    ) + confirm;
+    ) + minEnd + confirm;
   if (!m.wanted)
     return Lx(
       `Cada ${pw(1)} trae ${comp}. ¿Qué cantidad necesitas y de qué (${joinList([...k.parts.map((p) => pluralOf(p.noun)), pw(2)])})? Con ese dato te digo cuántos ${pw(2)} pedir.`,
@@ -579,11 +676,27 @@ function packMathReply(m: PackMath): string {
       ` If each ${pw(1)} holds ${f(m.perPack)} single ${a.word || "pieces"} rather than ${f(m.perPack)} ${items}, it would be ${f(a.packs)} ${pw(a.packs)}.`,
     );
   const per = Lx(`${f(m.perPack)} ${items} por ${pw(1)}`, `${f(m.perPack)} ${items} per ${pw(1)}`);
+  // the supplier's minimum order
+  const mi = m.min;
+  const minLabel = mi ? minLabelOf(mi, pw) : "";
+  if (mi?.applied && m.mode === "packs")
+    return pre + Lx(
+      `Para ${nn(m.wanted)} necesitarías ${f(mi.need)} ${pw(mi.need)}, pero el mínimo del proveedor es ${minLabel}: comprarías ${f(m.packs)} ${pw(m.packs)} = ${nn(m.total)}, y te sobrarían ${nn(m.extra)}, suponiendo ${per}.`,
+      `For ${nn(m.wanted)} you'd need ${f(mi.need)} ${pw(mi.need)}, but the supplier's minimum is ${minLabel}: you'd buy ${f(m.packs)} ${pw(m.packs)} = ${nn(m.total)}, with ${nn(m.extra)} left over, assuming ${per}.`,
+    ) + confirm;
+  const minEnd = !mi || !mi.packs
+    ? ""
+    : (m.mode === "check" || m.mode === "total") && m.packs < mi.packs
+      ? Lx(
+          ` Ojo: el mínimo del proveedor es ${minLabel}; para cumplirlo comprarías ${f(mi.packs)} ${pw(mi.packs)} = ${nn(mi.packs * m.perPack)}.`,
+          ` Note: the supplier's minimum is ${minLabel}; to meet it you'd buy ${f(mi.packs)} ${pw(mi.packs)} = ${nn(mi.packs * m.perPack)}.`,
+        )
+      : Lx(` Cumples el mínimo del proveedor (${minLabel}).`, ` You meet the supplier's minimum (${minLabel}).`);
   if (m.mode === "total")
     return pre + Lx(
       `${f(m.packs)} ${pw(m.packs)} de ${f(m.perPack)} son ${nn(m.total)}.`,
       `${f(m.packs)} ${pw(m.packs)} of ${f(m.perPack)} make ${nn(m.total)}.`,
-    ) + confirm;
+    ) + minEnd + confirm;
   if (m.mode === "check") {
     const need = Math.ceil(m.wanted / m.perPack);
     return pre + (m.extra >= 0
@@ -594,19 +707,19 @@ function packMathReply(m: PackMath): string {
       : Lx(
           `No alcanza: ${f(m.packs)} ${pw(m.packs)} de ${f(m.perPack)} son ${nn(m.total)}; te ${-m.extra === 1 ? "faltaría" : "faltarían"} ${nn(-m.extra)}. Necesitarías ${f(need)} ${pw(need)} (${nn(need * m.perPack)}).`,
           `It's not enough: ${f(m.packs)} ${pw(m.packs)} of ${f(m.perPack)} make ${nn(m.total)}; you'd be ${nn(-m.extra)} short. You'd need ${f(need)} ${pw(need)} (${nn(need * m.perPack)}).`,
-        )) + confirm;
+        )) + minEnd + confirm;
   }
   if (m.extra === 0)
     return pre + Lx(
       `Necesitarías ${f(m.packs)} ${pw(m.packs)}: exactamente ${nn(m.total)}, suponiendo ${per}.`,
       `You'd need ${f(m.packs)} ${pw(m.packs)}: exactly ${nn(m.total)}, assuming ${per}.`,
-    ) + post + confirm;
+    ) + post + minEnd + confirm;
   const less = m.packs - 1;
   const short = m.wanted - less * m.perPack;
   return pre + Lx(
     `Necesitarías ${f(m.packs)} ${pw(m.packs)}: ${nn(m.total)}, con ${nn(m.extra)} ${m.extra === 1 ? "adicional" : "adicionales"}, suponiendo ${per}.${less > 0 ? ` Con ${f(less)} ${pw(less)} tendrías ${nn(less * m.perPack)} y te ${short === 1 ? "faltaría" : "faltarían"} ${nn(short)}.` : ""}`,
     `You'd need ${f(m.packs)} ${pw(m.packs)}: ${nn(m.total)}, with ${nn(m.extra)} extra, assuming ${per}.${less > 0 ? ` With ${f(less)} ${pw(less)} you'd have ${nn(less * m.perPack)}, ${nn(short)} short.` : ""}`,
-  ) + post + confirm;
+  ) + post + minEnd + confirm;
 }
 
 /** One answer per calculation asked; says so when part of the message couldn't be read. */
@@ -635,7 +748,8 @@ export function replyKinds(text: string): string[] {
   // a calculation is answered, and so is anything else the message asks
   const isMath = !!(packMathAll(text).length || packMath(text));
   if (/certificad|certificaci|certificate|certification|\bce\b|\bfda\b|\biso\b|\bul\b|\brohs\b|\bsgs\b|grado alimenticio|food[- ]grade|apto para alimentos|suitable for food/.test(t)) kinds.push("certificate");
-  if (/proveedor|supplier|seller|vendedor|f[aá]brica|factory|confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit/.test(t)) kinds.push("supplier");
+  // in a calculation, "mi proveedor exige un mínimo" is context, not a question about the supplier
+  if ((isMath ? /confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit|seguro\s+el\s+proveedor/ : /proveedor|supplier|seller|vendedor|f[aá]brica|factory|confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit/).test(t)) kinds.push("supplier");
   // "Guarantee" goes to customs authorization only when the question is about the import itself
   const customsCtx = /importaci|aduana|autoriz|permiso|aprobad|aprobaci|liberaci|despacho|que pase|customs|import(?!ar\b|ing\b)|authoriz|permit|approv/.test(t);
   const guaranteeWord = /garantiz|garant[ií]a de que|asegur|sin problema|guarantee/.test(t);
