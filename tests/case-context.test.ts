@@ -50,3 +50,35 @@ describe("case context", () => {
     expect((globalThis as { dataLayer: { event: string }[] }).dataLayer.map((x) => x.event)).not.toContain("seal_lead_recibido");
   });
 });
+
+describe("the scenario on screen replaces the stored one (nothing inherited)", () => {
+  beforeEach(() => {
+    for (const k of Object.keys(store)) delete store[k];
+  });
+  it("machine with electric warnings, then gloves without warnings: the gloves case has none", async () => {
+    const { setCaseScenario, SCENARIO_KEYS } = await import("../src/utils/caseContext");
+    const keys = ["productDescription", "quantity", "budget", "destination", ...SCENARIO_KEYS];
+    setCaseScenario({ productDescription: "Molino trifásico 220 V 60 Hz", quantity: "1 unidad", budget: "US$3,000", supplierName: "Mill Co", price: "US$350.00 / unidad", priceSource: "publicado", warnings: ["Esta publicación indica monofásico; solicitaste trifásico", "50 Hz"], assumptions: ["a"] }, keys as never);
+    setCaseScenario({ productDescription: "Guantes de nitrilo", quantity: "100 cajas", supplierName: "Gloves Co", price: "US$0.05 / caja", priceSource: "usuario", publishedPrice: "US$0.04 / caja", warnings: [], assumptions: ["b"] }, keys as never);
+    const c = caseContext();
+    expect(c.warnings).toBeUndefined();
+    expect(c.budget).toBeUndefined();
+    expect(c).toMatchObject({ productDescription: "Guantes de nitrilo", supplierName: "Gloves Co", priceSource: "usuario", publishedPrice: "US$0.04 / caja", assumptions: ["b"] });
+    expect(JSON.stringify(c)).not.toMatch(/Molino|Mill Co|monofásico|50 Hz|US\$3,000/);
+  });
+  it("new results clear the supplier and estimate of the earlier search", async () => {
+    const { setCaseScenario, SCENARIO_KEYS } = await import("../src/utils/caseContext");
+    setCaseScenario({ supplierName: "Old Co", price: "US$1", warnings: ["w"], totalCostText: "Q1" }, SCENARIO_KEYS);
+    setCaseScenario({ productDescription: "Nuevo" }, ["productDescription", ...SCENARIO_KEYS]);
+    expect(caseContext()).toEqual({ productDescription: "Nuevo" });
+  });
+  it("a test record is not pushed as a commercial lead", async () => {
+    (globalThis as { dataLayer?: unknown[] }).dataLayer = [];
+    vi.stubGlobal("fetch", async (url: string) => (url.endsWith("/quote") ? new Response(JSON.stringify({ id: "SEAL-QA", duplicate: false, notified: true, test: true }), { status: 200 }) : new Response(null, { status: 204 })));
+    const r = await sendToSeal({ requestType: "x", source: "costos", name: "PRUEBA — NO ATENDER", email: "qa@example.com" });
+    expect(r.test).toBe(true);
+    const ev = (globalThis as { dataLayer: { event: string; seal_qa?: boolean }[] }).dataLayer;
+    expect(ev.map((x) => x.event)).toContain("seal_lead_qa");
+    expect(ev.map((x) => x.event)).not.toContain("seal_lead_recibido");
+  });
+});
