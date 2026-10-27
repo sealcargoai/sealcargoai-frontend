@@ -336,7 +336,8 @@ export async function generateBeautifulExcel(
         : RATE_BY_KEY[l.key] !== undefined
         ? `${((RATE_BY_KEY[l.key] as number) * 100).toFixed(0)}%${l.key === "duties" ? Lx(" ref.", " ref.") : ""}`
         : "—",
-    amount: l.amount * (data.costs.exchangeRate || DEFAULT_FX),
+    // cents, not float noise (53944.600000000006) when the cell is copied
+    amount: Math.round(l.amount * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100,
     pending: l.key === "freight" && !!data.costs.freightPending,
     isRate: RATE_BY_KEY[l.key] !== undefined,
     rateKey: l.key,
@@ -451,7 +452,7 @@ export async function generateBeautifulExcel(
     : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA");
   totalDetailCell.value = `${data.quantity.toLocaleString("en-US")} ${unitWordFor(data.costs.saleUnit, data.quantity)}`;
   totalRateCell.value = "—";
-  totalAmountCell.value = data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX);
+  totalAmountCell.value = Math.round(data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100;
   totalAmountCell.numFmt = qFmt(totalAmountCell.value as number);
   totalPctCell.value = "100%";
 
@@ -495,7 +496,7 @@ export async function generateBeautifulExcel(
   const perUnitEmpty = ws.getCell(`E${perUnitRowNum}`);
 
   perUnitLabel.value = Lx(`COSTO ESTIMADO POR ${unitWordFor(data.costs.saleUnit, 1).toUpperCase()}`, `ESTIMATED COST PER ${unitWordFor(data.costs.saleUnit, 1).toUpperCase()}`);
-  perUnitValue.value = data.costs.perUnit * (data.costs.exchangeRate || DEFAULT_FX);
+  perUnitValue.value = Math.round(data.costs.perUnit * (data.costs.exchangeRate || DEFAULT_FX) * 10000) / 10000;
   perUnitValue.numFmt = qFmt(perUnitValue.value as number);
 
   [perUnitLabel, perUnitValue, perUnitEmpty].forEach((cell, i) => {
