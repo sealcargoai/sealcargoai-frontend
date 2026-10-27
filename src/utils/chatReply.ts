@@ -182,6 +182,9 @@ export function tidy(raw: string): string {
   t = t
     .replace(new RegExp(`(\\d+(?:[.,]\\d+)?)\\s*([a-záéíóúüñ]+\\s*)?(?:x|/)\\s*${PACK_LOOSE}\\b`, "g"), (_, n, w, pk) => `${n} ${w ? w.trim() + " " : ""}por ${pk}`)
     .replace(new RegExp(`(?:^|\\s)(?:x|por|per)\\s+${PACK_LOOSE}\\s+(?:vienen|viene|van|trae|traen|hay|son|caben|come|comes|are|has|holds)\\s+(\\d+)`, "g"), (_, pk, n) => ` cada ${pk} trae ${n}`)
+    // "cada caja 10 sets", "cada caja: 10 sets", "cada caja con 10 sets", "each box 10 sets": the verb is implied
+    .replace(new RegExp(`\\bcada\\s+${PACK_LOOSE}\\s*(?:con\\s+|:\\s*|=\\s*)?(\\d+(?:[.,]\\d+)?)\\s+(?=[a-záéíóúüñ])`, "g"), (_, pk, n) => `cada ${pk} trae ${n} `)
+    .replace(new RegExp(`\\beach\\s+${PACK_LOOSE}\\s*(?:with\\s+|:\\s*|=\\s*)?(\\d+(?:[.,]\\d+)?)\\s+(?=[a-z])`, "g"), (_, pk, n) => `each ${pk} has ${n} `)
     .replace(/\b(\d+)-packs?\b/g, "packs of $1")
     // "kg bags", "750 ml bottles", "30 m rolls" (English order)
     .replace(/(\d+(?:\.\d+)?)\s*(kg|kgs|g|lb|lbs|l|lt|ml|m|cm|mm|gal|oz|m²|m³)\s+(bags?|bottles?|sacks?|rolls?|boxes|box|cans?|jars?|drums?|buckets?|pails?|jugs?|cases?|packs?)\b/g, "$3 of $1 $2")
@@ -1266,8 +1269,9 @@ function condWords(m: PackMath): { lead: string; ok: string; met: string; unread
   }
   const unread = c.unreadable.length
     ? Lx(
-        ` No pude aplicar «${c.unreadable.map((x) => `${x.n} ${x.word}`.trim()).join("», «")}» porque está en otra unidad; confírmalo con el proveedor.`,
-        ` I couldn't apply "${c.unreadable.map((x) => `${x.n} ${x.word}`.trim()).join('", "')}" because it's in another unit; confirm it with the supplier.`,
+        // ask instead of concluding that the units can't be compared
+        ` Para aplicar «${c.unreadable.map((x) => `${x.n} ${x.word}`.trim()).join("», «")}» necesito un dato: ${packOf(c.unreadable[0].word) ? `¿cuántos ${m.pack[2]} trae cada ${singularOf(c.unreadable[0].word) || c.unreadable[0].word}?` : `¿a cuántos ${m.item} equivalen ${c.unreadable[0].n} ${c.unreadable[0].word}?`} Con eso lo incluyo en el cálculo.`,
+        ` To apply "${c.unreadable.map((x) => `${x.n} ${x.word}`.trim()).join('", "')}" I need one more figure: ${packOf(c.unreadable[0].word) ? `how many ${m.pack[4]} does each ${singularOf(c.unreadable[0].word) || c.unreadable[0].word} hold?` : `how many ${tw(m.item)} are ${c.unreadable[0].n} ${tw(c.unreadable[0].word)}?`} With that I'll include it in the calculation.`,
       )
     : "";
   return {
@@ -1546,8 +1550,8 @@ function stockReply(m: PackMath): string {
   if (!Number.isFinite(s.packs))
     return insert(
       Lx(
-        ` No pude comparar las existencias (${f(s.n)} ${s.word}) con este pedido porque están en otra unidad; confírmalas con el proveedor.`,
-        ` I couldn't compare the stock (${f(s.n)} ${s.word}) with this order because it is in another unit; confirm it with the supplier.`,
+        ` Para comparar las existencias (${f(s.n)} ${s.word}) con este pedido necesito un dato: ${packOf(s.word) ? `¿cuántos ${m.pack[2]} trae cada ${singularOf(s.word) || s.word}?` : `¿a cuántos ${m.item} equivalen ${f(s.n)} ${s.word}?`} Con eso te digo si alcanzan.`,
+        ` To compare the stock (${f(s.n)} ${s.word}) with this order I need one more figure: ${packOf(s.word) ? `how many ${m.pack[4]} does each ${singularOf(s.word) || s.word} hold?` : `how many ${tw(m.item)} are ${f(s.n)} ${tw(s.word)}?`} With that I'll tell you if it's enough.`,
       ),
     );
   const have = s.packs;
@@ -1894,11 +1898,11 @@ export type ContactIntent = "contratar" | "hablar_persona" | "proforma" | "docum
 // most specific first: cargo already moving, then papers in hand, then asking for a person
 const INTENTS: [ContactIntent, RegExp][] = [
   ["carga_en_camino", /\bmi\s+(?:carga|mercader[ií]a|pedido|contenedor|embarque|env[ií]o|importaci[oó]n)\s+(?:ya\s+)?(?:viene|vienen|est[aá]\s+en\s+camino|sali[oó]|ya\s+sali[oó]|fue\s+embarcad[oa]|est[aá]\s+embarcad[oa]|est[aá]\s+(?:por\s+llegar|llegando|en\s+tr[aá]nsito)|va\s+a\s+llegar|lleg[aóo]|arriba|ya\s+est[aá]\s+en\s+(?:el\s+)?puerto)|\b(?:la\s+|el\s+)?(?:carga|mercader[ií]a|contenedor|embarque)\s+(?:ya\s+)?(?:viene|sali[oó]|est[aá]\s+en\s+camino|llega|arriba|lleg[oó])\b|\bya\s+(?:compr[eé]|pagu[eé]|embarc[oó]|embarcaron|viene\s+en\s+camino)(?![a-záéíóúñ])|\bmy\s+(?:cargo|shipment|order|container|goods)\s+(?:is\s+|has\s+|will\s+)?(?:already\s+)?(?:on\s+(?:its|the)\s+way|coming|shipped|arriving|arrives?|in\s+transit|left)|\bi\s+already\s+(?:bought|paid|shipped)\b/],
-  ["proforma", /\b(?:tengo|tenemos|ya\s+tengo|me\s+(?:enviaron|mandaron|dieron|pas[oó])|recib[ií](?:mos)?)\s+(?:una\s+|la\s+|mi\s+|el\s+)?(?:factura\s+)?(?:pro-?\s?forma|pi)\b|\bpro-?\s?forma\s+(?:del?|de\s+mi)\s+proveedor|\bi\s+(?:have|got|received)\s+(?:a\s+|the\s+|my\s+)?(?:proforma|pro-forma|pi)\b|\bproforma\s+invoice\b/],
+  ["proforma", /\b(?:tengo|tenemos|ya\s+tengo|me\s+(?:enviaron|mandaron|dieron|pas[oó])|recib[ií](?:mos)?)\s+(?:una\s+|la\s+|mi\s+|el\s+)?(?:factura\s+)?(?:pro-?\s?forma|pi)\b|\bpro-?\s?forma\s+(?:del?|de\s+mi)\s+proveedor|\bi\s+(?:have|got|received)\s+(?:a\s+|the\s+|my\s+)?(?:proforma|pro-forma|pi)\b|\bproforma\s+invoice\b|\brevis(?:i[oó]n|ar|e|en|ion)\s+(?:de\s+)?(?:la\s+|mi\s+|una\s+|el\s+|nuestra\s+)?(?:factura\s+)?pro-?\s?forma\b|\bpro-?\s?forma\s+(?:para\s+)?(?:que\s+)?(?:la\s+)?revis|\breview\s+(?:of\s+)?(?:my|the|our|a)\s+(?:proforma|pro-forma|pi)\b/],
   ["documentos", /\b(?:ya\s+)?(?:tengo|tenemos|cuento\s+con)\s+(?:(?:los|mis|todos\s+los|el|la)\s+)?(?:documentos|papeles|bl\b|b\/l|conocimiento\s+de\s+embarque|factura\s+comercial|lista\s+de\s+empaque|packing\s+list|gu[ií]a\s+a[eé]rea|certificado\s+de\s+origen)|\bi\s+(?:already\s+)?have\s+(?:the\s+|my\s+|all\s+the\s+)?(?:documents|paperwork|bill\s+of\s+lading|commercial\s+invoice|packing\s+list)\b/],
   ["hablar_persona", /\bhablar\s+con\s+(?:alguien|una\s+persona|un\s+humano|un[ao]?\s+(?:asesor|asesora|ejecutiv[oa]|agente|vendedor[a]?)|seal|ustedes|ventas|el\s+equipo)|\b(?:comunicarme|contactarme|contactar|contactarlos)\s+con\s+(?:alguien|seal|ustedes|un[ao]?\s+(?:asesor|asesora|ejecutiv[oa])|ventas)|\bque\s+me\s+(?:llamen|contacten|llame|contacte|escriban|asesoren|atiendan)\b|\b(?:ll[aá]m[ae]nme|cont[aá]ct[ae]nme|ll[aá]mame|cont[aá]ctame)\b|\b(?:un[ao]?\s+)?(?:ejecutiv[oa]|asesor[a]?|agente|alguien|persona)\s+(?:de\s+seal\s+)?(?:revise|revisen|atienda|me\s+atienda|me\s+contacte|me\s+llame|me\s+ayude|vea)\b|\bque\s+(?:seal|ustedes)\s+(?:revise|revisen|me\s+(?:contacte|contacten|llame|llamen|ayude|ayuden|atienda|atiendan))\b|\brevis(?:e|en|ar)\s+mi\s+caso\b|\b(?:talk|speak)\s+(?:to|with)\s+(?:someone|somebody|a\s+person|a\s+human|an?\s+(?:agent|advisor|rep(?:resentative)?)|sales|seal|your\s+team)\b|\b(?:someone|an?\s+(?:agent|executive|advisor))\s+(?:from\s+seal\s+)?(?:to\s+)?(?:review|check|look\s+at)\s+my\s+(?:case|shipment|cargo)\b|\b(?:call|contact)\s+me\b/],
   ["contratar", /\b(?:quiero|quisiera|deseo|queremos|quisi[eé]ramos|me\s+interesa|nos\s+interesa|c[oó]mo|d[oó]nde|puedo|podemos|necesito|necesitamos)\s+(?:\w+\s+)?contrat(?:ar|arlos|arles|arte|arlo)\b|\bcontrat(?:ar|arlos|arles)\s+(?:a\s+)?(?:seal|ustedes|sus\s+servicios|el\s+servicio)|\b(?:i\s+want\s+to|i'?d\s+like\s+to|how\s+(?:do|can)\s+i|can\s+i|we\s+want\s+to)\s+hire\b|\bhire\s+(?:you|seal|your\s+services)\b/],
-  ["ya_tiene_proveedor", /\bya\s+tengo\s+(?:mi\s+|un\s+|el\s+)?proveedor|\btengo\s+(?:mi\s+)?propio\s+proveedor|\bya\s+tenemos\s+(?:nuestro\s+|un\s+)?proveedor|\bno\s+(?:necesito|necesitamos|quiero|busco|buscamos)\s+(?:buscar\s+)?(?:otro\s+|un\s+|m[aá]s\s+)?proveedor(?:es)?\b|\bi\s+(?:already\s+)?have\s+(?:a|my\s+own|my)\s+supplier\b|\bi\s+don'?t\s+need\s+(?:to\s+(?:search|look)\s+for\s+)?(?:a\s+|another\s+)?suppliers?\b/],
+  ["ya_tiene_proveedor", /\bya\s+tengo\s+(?:mi\s+|un\s+|el\s+)?proveedor|\btengo\s+(?:mi\s+)?propio\s+proveedor|\bya\s+tenemos\s+(?:nuestro\s+|un\s+)?proveedor|\bno\s+(?:necesito|necesitamos|quiero|busco|buscamos|buscar)\s+(?:buscar\s+)?(?:otros?\s+|un\s+|m[aá]s\s+)?proveedor(?:es)?\b|\bi\s+(?:already\s+)?have\s+(?:a|my\s+own|my)\s+supplier\b|\bi\s+don'?t\s+need\s+(?:to\s+(?:search|look)\s+for\s+)?(?:a\s+|another\s+)?suppliers?\b/],
 ];
 // "todavía no quiero contratar", "aún no tengo proforma": a negation right before the
 // phrase cancels THAT phrase only ("…y no necesito buscar proveedores" cancels nothing else)
@@ -1969,6 +1973,31 @@ function requestStatusReply(sentCase?: string): string {
       );
 }
 
+// ── Product subtotal: "2,000 guantes a US$0.03 cada uno" → US$60 ─────────────
+// Only the product value with the price the client gives (not a quote, not the landed cost).
+const SUB_RE = /(?:^|[^\d.,])(\d{1,3}(?:[.,]\d{3})+|\d+)\s+([a-záéíóúüñ]+(?:\s+de\s+[a-záéíóúüñ]+)?)\s+(?:a|at|@|por|for)\s+(us\$\s*|usd\s*|\$\s*)?(\d+(?:[.,]\d+)?)\s*(us\$|usd|d[oó]lares?|dollars?)?\s*(cada\s+(?:un[oa]|pieza|unidad|par|kilo|metro)|c\/u|por\s+(?:unidad|pieza|par|kilo|metro)|la\s+(?:unidad|pieza)|el\s+(?:par|kilo|metro)|each|apiece|per\s+(?:unit|piece|pair))?/i;
+export function productSubtotal(text: string): { qty: number; word: string; price: number; total: number } | null {
+  const m = String(text || "").toLowerCase().match(SUB_RE);
+  if (!m) return null;
+  const [, q, word, cur1, p, cur2, per] = m;
+  // a price needs a currency or "cada uno / c/u / per unit"; "a 25 por caja" is pack content
+  if (!cur1 && !cur2 && !per) return null;
+  if (/^(?:cajas?|paquetes?|sets?|bolsas?|boxes|packs?)$/.test(word.split(/\s+/)[0]) && !per) return null;
+  const qty = Number(q.replace(/[.,](?=\d{3}(?:\D|$))/g, ""));
+  const price = Number(p.replace(",", "."));
+  if (!(qty > 0) || !(price > 0) || qty > 1e9) return null;
+  return { qty, word: word.trim(), price, total: Math.round(qty * price * 100) / 100 };
+}
+function subtotalReply(text: string): string {
+  const s = productSubtotal(text)!;
+  const n = (x: number) => x.toLocaleString("en-US");
+  const usd = (x: number, max = 4) => `US$${x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: max })}`;
+  return Lx(
+    `${n(s.qty)} ${s.word} × ${usd(s.price)} = ${usd(s.total, 2)} de producto, con el precio que indicaste. Es solo el valor del producto, no una cotización confirmada: el costo de importarlo suma además flete, seguro, impuestos (DAI e IVA) y gastos en destino. Si quieres, el formulario te da esa estimación completa.`,
+    `${n(s.qty)} ${tw(s.word)} × ${usd(s.price)} = ${usd(s.total, 2)} of product, using the price you gave. It's only the product value, not a confirmed quote: importing it also adds freight, insurance, taxes (DAI and IVA) and destination charges. If you want, the form gives you that full estimate.`,
+  );
+}
+
 export function replyKinds(text: string): string[] {
   // "¿ya llegó mi solicitud?" is answered on its own (it is not a new request)
   if (requestStatusQuestion(text)) return ["requestStatus"];
@@ -1980,6 +2009,14 @@ export function replyKinds(text: string): string[] {
 }
 
 function baseKinds(text: string): string[] {
+  // a product subtotal is answered, not sent to the general reply
+  // (a pack calculation in the same message wins: its quantities are the ones that count)
+  const inner = baseKindsInner(text);
+  if (productSubtotal(text) && !inner.includes("math")) return ["subtotal", ...inner.filter((k) => !["mathUnclear", "cost", "general"].includes(k))];
+  return inner;
+}
+
+function baseKindsInner(text: string): string[] {
   const t = text.toLowerCase();
   const kinds: string[] = [];
   // a question about whether single pieces make pairs is answered on its own
@@ -2114,6 +2151,7 @@ export interface ReplySpec {
   mathText?: string; // this message's calculation, written in full (for later follow-ups)
   combined?: string; // the calculation the client split over two messages ("500 piezas" + "vienen 24 por caja")
   sentCase?: string; // case number already sent from this tab (for "¿ya llegó mi solicitud?")
+  formUpdate?: boolean; // the client changed the product in the form (said once when back in the chat)
   newQuantity?: number; // "quiero 2000 en vez de 500"
   oldQuantity?: number;
 }
@@ -2161,6 +2199,11 @@ export function quantityChange(text: string): { qty: number; before: number } | 
 }
 
 export function buildReply(r: ReplySpec): string {
+  if (r.formUpdate)
+    return Lx(
+      `Actualizaste el producto en el formulario: ahora es «${r.newProduct}». Sigo con ese producto; lo que hablamos antes se conserva arriba.`,
+      `You updated the product in the form: it is now "${r.newProduct}". I'll continue with that product; what we discussed before is kept above.`,
+    );
   const ctx: ChatCtx = { product: r.product };
   const parts: string[] = [];
   if (r.newQuantity) {
@@ -2223,7 +2266,7 @@ export function buildReply(r: ReplySpec): string {
   if (!kinds.length && !r.newProduct) kinds = ["general"];
   kinds.forEach((k, i) => {
     let t =
-      k === "requestStatus" ? requestStatusReply(r.sentCase) : k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
+      k === "subtotal" ? subtotalReply(q) : k === "requestStatus" ? requestStatusReply(r.sentCase) : k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
     if (i === 0 && !parts.length) t = t.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't");
     // after the way to SEAL, no second path to the form: one next step
     if (kinds[0] === "contact" && k !== "contact")
@@ -2274,7 +2317,7 @@ export function nextSpec(text: string, specs: ReplySpec[], currentProduct: strin
     : isMath ? (single && mathStatement(single)) || text : follow ? mathStatement(follow) || undefined : undefined;
   // a calculation is not a product statement nor a quantity change
   // "quiero contratar a SEAL" names no product
-  const newProduct = mathText || kinds.includes("pairs") || kinds.includes("contact") ? undefined : productFromMessage(text) || undefined;
+  const newProduct = mathText || kinds.includes("pairs") || kinds.includes("contact") || kinds.includes("subtotal") ? undefined : productFromMessage(text) || undefined;
   // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
   const mentioned = !newProduct && !mathText && !kinds.includes("contact") ? productMention(text) || undefined : undefined;
   // only a certificate answer that asked "¿qué producto?" is answered again for the new product

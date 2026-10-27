@@ -11,6 +11,26 @@ export function clearDraft(): void {
     sessionStorage.removeItem("seal_chat");
     // the case SEAL would receive (supplier, price, warnings of the previous case)
     sessionStorage.removeItem("seal_case");
+    // the product the client last set, in the chat or in the form
+    sessionStorage.removeItem(PRODUCT_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+// The product in force, shared by the chat and the form: whichever the client
+// edited last wins, so going back and forth never brings an old product back.
+const PRODUCT_KEY = "seal_product";
+export function savedProduct(): string {
+  try {
+    return sessionStorage.getItem(PRODUCT_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+export function saveProduct(value: string): void {
+  try {
+    if (value && value.trim()) sessionStorage.setItem(PRODUCT_KEY, value.trim());
   } catch {
     /* storage unavailable */
   }
