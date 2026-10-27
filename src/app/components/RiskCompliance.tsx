@@ -258,8 +258,9 @@ export function getReviewTopics(productType: string, supplier: any, description 
   topics.push({
     title: T("El proveedor no ha sido verificado por SEAL", "The supplier has not been verified by SEAL"),
     why: T(
-      `Según la plataforma: ${badgeText(supplier)}. Las insignias y certificaciones las publica la plataforma o declara el proveedor.`,
-      `According to the platform: ${badgeText(supplier)}. Badges and certifications are published by the platform or declared by the supplier.`,
+      // badgeText already says it is the platform's badge
+      `${badgeText(supplier)}. Las insignias y certificaciones las publica la plataforma o declara el proveedor.`,
+      `${badgeText(supplier)}. Badges and certifications are published by the platform or declared by the supplier.`,
     ),
     action: T(
       "Pedir muestras y, si va a comprar, solicitar la verificación del proveedor en China.",
