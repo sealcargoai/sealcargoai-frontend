@@ -1890,36 +1890,59 @@ function bareMath(text: string): PackMath | null {
 // "Quiero contratar", "hablar con alguien", "tengo proforma", "mi carga ya viene"
 // (and "ya tengo proveedor") are answered with contact to SEAL before anything
 // else: they don't need a supplier search or general guidance.
-export type ContactIntent = "contratar" | "hablar_persona" | "proforma" | "carga_en_camino" | "ya_tiene_proveedor";
+export type ContactIntent = "contratar" | "hablar_persona" | "proforma" | "documentos" | "carga_en_camino" | "ya_tiene_proveedor";
+// most specific first: cargo already moving, then papers in hand, then asking for a person
 const INTENTS: [ContactIntent, RegExp][] = [
+  ["carga_en_camino", /\bmi\s+(?:carga|mercader[ií]a|pedido|contenedor|embarque|env[ií]o|importaci[oó]n)\s+(?:ya\s+)?(?:viene|vienen|est[aá]\s+en\s+camino|sali[oó]|ya\s+sali[oó]|fue\s+embarcad[oa]|est[aá]\s+embarcad[oa]|est[aá]\s+(?:por\s+llegar|llegando|en\s+tr[aá]nsito)|va\s+a\s+llegar|lleg[aóo]|arriba|ya\s+est[aá]\s+en\s+(?:el\s+)?puerto)|\b(?:la\s+|el\s+)?(?:carga|mercader[ií]a|contenedor|embarque)\s+(?:ya\s+)?(?:viene|sali[oó]|est[aá]\s+en\s+camino|llega|arriba|lleg[oó])\b|\bya\s+(?:compr[eé]|pagu[eé]|embarc[oó]|embarcaron|viene\s+en\s+camino)(?![a-záéíóúñ])|\bmy\s+(?:cargo|shipment|order|container|goods)\s+(?:is\s+|has\s+|will\s+)?(?:already\s+)?(?:on\s+(?:its|the)\s+way|coming|shipped|arriving|arrives?|in\s+transit|left)|\bi\s+already\s+(?:bought|paid|shipped)\b/],
   ["proforma", /\b(?:tengo|tenemos|ya\s+tengo|me\s+(?:enviaron|mandaron|dieron|pas[oó])|recib[ií](?:mos)?)\s+(?:una\s+|la\s+|mi\s+|el\s+)?(?:factura\s+)?(?:pro-?\s?forma|pi)\b|\bpro-?\s?forma\s+(?:del?|de\s+mi)\s+proveedor|\bi\s+(?:have|got|received)\s+(?:a\s+|the\s+|my\s+)?(?:proforma|pro-forma|pi)\b|\bproforma\s+invoice\b/],
-  ["carga_en_camino", /\bmi\s+(?:carga|mercader[ií]a|pedido|contenedor|embarque|env[ií]o|importaci[oó]n)\s+(?:ya\s+)?(?:viene|vienen|est[aá]\s+en\s+camino|sali[oó]|ya\s+sali[oó]|fue\s+embarcad[oa]|est[aá]\s+embarcad[oa]|est[aá]\s+(?:por\s+llegar|llegando|en\s+tr[aá]nsito)|va\s+a\s+llegar|lleg[aóo]|ya\s+est[aá]\s+en\s+(?:el\s+)?puerto)|\b(?:la\s+)?(?:carga|mercader[ií]a|contenedor)\s+ya\s+(?:viene|sali[oó]|est[aá]\s+en\s+camino)|\bya\s+(?:compr[eé]|pagu[eé]|embarc[oó]|embarcaron|viene\s+en\s+camino)(?![a-záéíóúñ])|\bmy\s+(?:cargo|shipment|order|container|goods)\s+(?:is\s+|has\s+)?(?:already\s+)?(?:on\s+(?:its|the)\s+way|coming|shipped|arriving|in\s+transit|left)|\bi\s+already\s+(?:bought|paid|shipped)\b/],
+  ["documentos", /\b(?:ya\s+)?(?:tengo|tenemos|cuento\s+con)\s+(?:(?:los|mis|todos\s+los|el|la)\s+)?(?:documentos|papeles|bl\b|b\/l|conocimiento\s+de\s+embarque|factura\s+comercial|lista\s+de\s+empaque|packing\s+list|gu[ií]a\s+a[eé]rea|certificado\s+de\s+origen)|\bi\s+(?:already\s+)?have\s+(?:the\s+|my\s+|all\s+the\s+)?(?:documents|paperwork|bill\s+of\s+lading|commercial\s+invoice|packing\s+list)\b/],
+  ["hablar_persona", /\bhablar\s+con\s+(?:alguien|una\s+persona|un\s+humano|un[ao]?\s+(?:asesor|asesora|ejecutiv[oa]|agente|vendedor[a]?)|seal|ustedes|ventas|el\s+equipo)|\b(?:comunicarme|contactarme|contactar|contactarlos)\s+con\s+(?:alguien|seal|ustedes|un[ao]?\s+(?:asesor|asesora|ejecutiv[oa])|ventas)|\bque\s+me\s+(?:llamen|contacten|llame|contacte|escriban|asesoren|atiendan)\b|\b(?:ll[aá]m[ae]nme|cont[aá]ct[ae]nme|ll[aá]mame|cont[aá]ctame)\b|\b(?:un[ao]?\s+)?(?:ejecutiv[oa]|asesor[a]?|agente|alguien|persona)\s+(?:de\s+seal\s+)?(?:revise|revisen|atienda|me\s+atienda|me\s+contacte|me\s+llame|me\s+ayude|vea)\b|\bque\s+(?:seal|ustedes)\s+(?:revise|revisen|me\s+(?:contacte|contacten|llame|llamen|ayude|ayuden|atienda|atiendan))\b|\brevis(?:e|en|ar)\s+mi\s+caso\b|\b(?:talk|speak)\s+(?:to|with)\s+(?:someone|somebody|a\s+person|a\s+human|an?\s+(?:agent|advisor|rep(?:resentative)?)|sales|seal|your\s+team)\b|\b(?:someone|an?\s+(?:agent|executive|advisor))\s+(?:from\s+seal\s+)?(?:to\s+)?(?:review|check|look\s+at)\s+my\s+(?:case|shipment|cargo)\b|\b(?:call|contact)\s+me\b/],
   ["contratar", /\b(?:quiero|quisiera|deseo|queremos|quisi[eé]ramos|me\s+interesa|nos\s+interesa|c[oó]mo|d[oó]nde|puedo|podemos|necesito|necesitamos)\s+(?:\w+\s+)?contrat(?:ar|arlos|arles|arte|arlo)\b|\bcontrat(?:ar|arlos|arles)\s+(?:a\s+)?(?:seal|ustedes|sus\s+servicios|el\s+servicio)|\b(?:i\s+want\s+to|i'?d\s+like\s+to|how\s+(?:do|can)\s+i|can\s+i|we\s+want\s+to)\s+hire\b|\bhire\s+(?:you|seal|your\s+services)\b/],
-  ["hablar_persona", /\bhablar\s+con\s+(?:alguien|una\s+persona|un\s+humano|un[ao]?\s+(?:asesor|asesora|ejecutiv[oa]|agente|vendedor[a]?)|seal|ustedes|ventas|el\s+equipo)|\b(?:comunicarme|contactarme|contactar|contactarlos)\s+con\s+(?:alguien|seal|ustedes|un[ao]?\s+(?:asesor|asesora|ejecutiv[oa])|ventas)|\bque\s+me\s+(?:llamen|contacten|llame|contacte|escriban|asesoren)\b|\b(?:ll[aá]m[ae]nme|cont[aá]ct[ae]nme|ll[aá]mame|cont[aá]ctame)\b|\b(?:talk|speak)\s+(?:to|with)\s+(?:someone|somebody|a\s+person|a\s+human|an?\s+(?:agent|advisor|rep(?:resentative)?)|sales|seal|your\s+team)\b|\b(?:call|contact)\s+me\b/],
-  ["ya_tiene_proveedor", /\bya\s+tengo\s+(?:mi\s+|un\s+|el\s+)?proveedor|\btengo\s+(?:mi\s+)?propio\s+proveedor|\bya\s+tenemos\s+(?:nuestro\s+|un\s+)?proveedor|\bi\s+(?:already\s+)?have\s+(?:a|my\s+own|my)\s+supplier\b/],
+  ["ya_tiene_proveedor", /\bya\s+tengo\s+(?:mi\s+|un\s+|el\s+)?proveedor|\btengo\s+(?:mi\s+)?propio\s+proveedor|\bya\s+tenemos\s+(?:nuestro\s+|un\s+)?proveedor|\bno\s+(?:necesito|necesitamos|quiero|busco|buscamos)\s+(?:buscar\s+)?(?:otro\s+|un\s+|m[aá]s\s+)?proveedor(?:es)?\b|\bi\s+(?:already\s+)?have\s+(?:a|my\s+own|my)\s+supplier\b|\bi\s+don'?t\s+need\s+(?:to\s+(?:search|look)\s+for\s+)?(?:a\s+|another\s+)?suppliers?\b/],
 ];
-// "todavía no quiero contratar", "aún no tengo proforma", "no quiero hablar con nadie"
-const NOT_YET = /\b(?:no|todav[ií]a\s+no|a[uú]n\s+no|not\s+yet|don'?t|do\s+not)\s+(?:\w+\s+){0,2}(?:quiero|quisiera|deseo|tengo|necesito|contrat|hablar|viene|want|have|need|hire|talk)/;
+// "todavía no quiero contratar", "aún no tengo proforma": a negation right before the
+// phrase cancels THAT phrase only ("…y no necesito buscar proveedores" cancels nothing else)
+const NEG_BEFORE = /(?:\bno|\btodav[ií]a\s+no|\ba[uú]n\s+no|\bnot\s+yet|\bdon'?t|\bdo\s+not|\bnunca)\s+(?:[a-záéíóúñ]+\s+){0,2}$/;
 export function contactIntent(text: string): ContactIntent | "" {
   const t = ` ${String(text || "").toLowerCase()} `;
-  if (NOT_YET.test(t)) return "";
-  for (const [k, re] of INTENTS) if (re.test(t)) return k;
+  for (const [k, re] of INTENTS) {
+    const g = new RegExp(re.source, "g");
+    for (let m = g.exec(t); m; m = g.exec(t)) {
+      // "no necesito buscar proveedores" is itself the signal: the client doesn't need a search
+      if (k === "ya_tiene_proveedor" && /^\s*(?:no|i\s+don)/.test(m[0])) return k;
+      if (!NEG_BEFORE.test(t.slice(Math.max(0, m.index - 30), m.index))) return k;
+      if (m[0].length === 0) g.lastIndex++;
+    }
+  }
   return "";
+}
+
+/** "Llega mañana", "hoy", "urgente": the client needs attention soon. */
+export function urgentContact(text: string): boolean {
+  return /\burgen(?:te|cia)\b|\burge\b|\bhoy(?:\s+mismo)?\b|\bma[ñn]ana\b|\bcuanto\s+antes\b|\blo\s+antes\s+posible\b|\besta\s+semana\b|\basap\b|\burgent(?:ly)?\b|\btoday\b|\btomorrow\b|\bthis\s+week\b/i.test(String(text || ""));
 }
 
 function contactReply(text: string): string {
   const k = contactIntent(text);
   const open: Record<ContactIntent, [string, string]> = {
     proforma: ["Con una proforma, lo mejor es que SEAL la revise directamente; no necesitas buscar proveedores aquí.", "With a proforma, the best step is for SEAL to review it directly; you don't need to search for suppliers here."],
-    carga_en_camino: ["Si tu carga ya viene en camino, SEAL te atiende directamente para la llegada y el despacho.", "If your cargo is already on its way, SEAL handles its arrival and customs clearance directly."],
+    documentos: ["Si ya tienes los documentos, lo mejor es que un ejecutivo de SEAL revise tu caso directamente; no necesitas buscar proveedores aquí.", "If you already have the documents, the best step is for a SEAL executive to review your case directly; you don't need to search for suppliers here."],
+    carga_en_camino: ["Si tu carga ya viene en camino, SEAL te atiende directamente para la llegada y el despacho; no necesitas buscar proveedores aquí.", "If your cargo is already on its way, SEAL handles its arrival and customs clearance directly; you don't need to search for suppliers here."],
     contratar: ["Perfecto, te conecto con SEAL.", "Great, I'll connect you with SEAL."],
-    hablar_persona: ["Claro, te conecto con una persona de SEAL.", "Sure, I'll connect you with someone at SEAL."],
+    hablar_persona: ["Claro, te conecto con un ejecutivo de SEAL.", "Sure, I'll connect you with a SEAL executive."],
     ya_tiene_proveedor: ["Si ya tienes proveedor, no necesitas buscar otro aquí: SEAL puede cotizarte la importación con ese proveedor.", "If you already have a supplier, you don't need to search for another here: SEAL can quote the import with that supplier."],
   };
   const [es, en] = k ? open[k] : open.hablar_persona;
+  // urgent: say how to flag it, without promising a response time or a customs outcome
+  const urgent = urgentContact(text)
+    ? Lx(
+        " Como es urgente, escribe en tu caso la fecha de llegada y qué documentos tienes. No puedo garantizarte desde aquí un tiempo de atención ni el resultado del despacho; para algo que no puede esperar, el WhatsApp de SEAL +502 5996 4664 es la vía más directa.",
+        " Since it's urgent, write the arrival date and which documents you have in your case. I can't guarantee a response time or the customs outcome from here; for something that can't wait, SEAL's WhatsApp +502 5996 4664 is the most direct channel.",
+      )
+    : Lx(" Si prefieres, escribe al WhatsApp de SEAL +502 5996 4664.", " If you prefer, message SEAL on WhatsApp +502 5996 4664.");
   return Lx(
-    `${es} Usa «Enviar mi caso a SEAL» aquí abajo: le llega a SEAL con lo que me contaste y te damos un número de caso. Si prefieres, escribe al WhatsApp de SEAL +502 5996 4664.`,
-    `${en} Use "Send my case to SEAL" below: SEAL receives it with what you told me and you get a case number. If you prefer, message SEAL on WhatsApp +502 5996 4664.`,
+    `${es} Usa «Enviar mi caso a SEAL» aquí abajo: le llega a SEAL con lo que me contaste y te damos un número de caso.${urgent}`,
+    `${en} Use "Send my case to SEAL" below: SEAL receives it with what you told me and you get a case number.${urgent}`,
   );
 }
 
@@ -2176,7 +2199,10 @@ export function buildReply(r: ReplySpec): string {
     let t =
       k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
     if (i === 0 && !parts.length) t = t.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't");
-    parts.push(t);
+    // after the way to SEAL, no second path to the form: one next step
+    if (kinds[0] === "contact" && k !== "contact")
+      t = t.split(/(?<=[.!?])\s+/).filter((x) => !/formulario|\bthe form\b|\bform\b/i.test(x)).join(" ").replace(/\s*Siguiente paso:\s*$|\s*Next step:\s*$/i, "").trim();
+    if (t) parts.push(t);
   });
   if (r.newProduct && !kinds.length)
     parts.push(Lx("Para orientarte con ese producto, continúa con el formulario.", "To guide you on that product, continue with the form."));

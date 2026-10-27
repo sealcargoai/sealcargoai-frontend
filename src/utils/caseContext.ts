@@ -14,7 +14,9 @@ export interface CaseContext {
   quantity?: string;
   supplierName?: string;
   supplierUrl?: string;
-  price?: string;
+  price?: string; // the price the estimate uses
+  priceSource?: "publicado" | "usuario"; // from the listing, or typed by the client
+  publishedPrice?: string; // the listing's price (kept when the client typed another)
   totalCostText?: string;
   budget?: string;
   destination?: string;
@@ -79,6 +81,7 @@ export interface SealResult {
   id?: string; // case number (SEAL-YYYYMMDD-XXXXXX)
   duplicate?: boolean; // it was already an open case: updated, not duplicated
   notified?: boolean; // SEAL's inbox got it (false = registered only: SEAL sees it in the registry)
+  caseUrl?: string; // signed page: what SEAL received and the case status
 }
 
 /** Sends the request to SEAL with the whole case (this screen's data wins over the stored one). */
@@ -93,7 +96,7 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
       body: JSON.stringify(body),
     });
     const j = res.ok ? await res.json().catch(() => ({})) : {};
-    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false };
+    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined };
     if (out.ok) {
       // a lead counts only once the server registered it
       track("solicitud_enviada", { seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "", seal_duplicate: out.duplicate });
