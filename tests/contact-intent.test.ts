@@ -210,3 +210,21 @@ describe("27-i: review request, subtotal, natural pack wordings", () => {
     expect(r).not.toMatch(/otra unidad/);
   });
 });
+
+describe("27-j: an order counted in the outer packs is boxes, never pieces", () => {
+  const last = (m: string) => replayConversation([m], "guantes").slice(-1)[0];
+  for (const m of [
+    "Cada set trae 12 y cada caja 10 sets, quiero 5 cajas",
+    "Quiero 5 cajas; cada caja tiene 10 sets de 12",
+    "5 cajas, cada caja con 10 sets y cada set con 12 piezas",
+    "necesito 5 cajas de 10 sets de 12",
+  ])
+    it(m, () => {
+      const r = last(m);
+      expect(r).toMatch(/5 cajas \(50 sets\) de 120 son 600 piezas/);
+      expect(r).not.toMatch(/Necesitarías 1 caja|115 piezas adicionales/);
+    });
+  it("pairs keep their unit", () => expect(last("5 masters, cada master trae 4 cajas de 12 pares")).toMatch(/240 pares/));
+  it("boxes of sets with no content per set: counted in sets", () => expect(last("quiero 5 cajas de 10 sets")).toMatch(/son 50 sets/));
+  it("an order in items still goes the long way", () => expect(last("Cada set trae 12 y cada caja 10 sets, necesito 500 piezas")).toMatch(/Necesitarías 5 cajas \(50 sets\): 600 piezas/));
+});
