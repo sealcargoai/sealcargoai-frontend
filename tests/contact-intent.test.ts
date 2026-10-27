@@ -50,7 +50,7 @@ describe("intent detection", () => {
 describe("SEAL contact comes first, before general answers", () => {
   it("open message: contact instead of the general reply", () => {
     const r = replayConversation(["Quiero hablar con alguien"])[0];
-    expect(r).toMatch(/^Claro, te conecto con una persona de SEAL/);
+    expect(r).toMatch(/^Claro, te conecto con un ejecutivo de SEAL/);
     expect(r).toMatch(/Enviar mi caso a SEAL/);
     expect(r).not.toMatch(/no respondo preguntas abiertas/);
   });
@@ -67,14 +67,16 @@ describe("SEAL contact comes first, before general answers", () => {
   it("contact first, the cost question still answered after it", () => {
     expect(replyKinds("Quiero contratar, ¿cuánto cuesta?")).toEqual(["contact", "cost"]);
     const r = replayConversation(["Quiero contratar, ¿cuánto cuesta?"])[0];
-    expect(r.indexOf("te conecto con SEAL")).toBeLessThan(r.indexOf("estimación preliminar"));
+    expect(r.indexOf("te conecto con SEAL")).toBeLessThan(r.indexOf("cotización de SEAL"));
+    // one next step: no second path to the form after the way to SEAL
+    expect(r).not.toMatch(/formulario/);
   });
   it("contact first even with a calculation", () => {
     expect(replyKinds("Mi carga ya viene: 300 piezas en cajas de 25, ¿cuántas cajas son?")[0]).toBe("contact");
   });
   it("in the middle of a conversation, without losing the product", () => {
     const r = replayConversation(["Quiero importar termos de acero", "Quiero hablar con alguien", "¿Necesito certificado?"]);
-    expect(r[1]).toMatch(/te conecto con una persona de SEAL/);
+    expect(r[1]).toMatch(/te conecto con un ejecutivo de SEAL/);
     expect(r[2]).toMatch(/termos/);
   });
   it("EN", () => {
@@ -85,5 +87,50 @@ describe("SEAL contact comes first, before general answers", () => {
   });
   it("not yet: the usual answer", () => {
     expect(replayConversation(["Todavía no quiero contratar, solo estoy viendo"])[0]).not.toMatch(/te conecto/);
+  });
+});
+
+// Víctor's report (27-b): urgent request with "no necesito buscar proveedores"
+describe("urgent request: attention prevails over the word 'proveedores'", () => {
+  const Q = "Mi carga llega mañana a Guatemala y necesito que un ejecutivo de SEAL revise mi caso hoy. Ya tengo documentos y no necesito buscar proveedores.";
+  it("detected as cargo on its way, contact first, nothing about suppliers or the form", () => {
+    expect(contactIntent(Q)).toBe("carga_en_camino");
+    expect(replyKinds(Q)).toEqual(["contact"]);
+    const r = replayConversation([Q])[0];
+    expect(r).toMatch(/^Si tu carga ya viene en camino, SEAL te atiende directamente/);
+    expect(r).toMatch(/Enviar mi caso a SEAL/);
+    expect(r).toMatch(/Como es urgente/);
+    expect(r).toMatch(/No puedo garantizarte desde aquí un tiempo de atención ni el resultado del despacho/);
+    expect(r).not.toMatch(/No puedo confirmar si un proveedor|formulario|índice referencial/);
+  });
+  it("same in a conversation that already talked about a product", () => {
+    const r = replayConversation(["Quiero importar termos de acero", Q]);
+    expect(r[1]).toMatch(/^Si tu carga ya viene en camino/);
+    expect(r[1]).not.toMatch(/No puedo confirmar si un proveedor/);
+  });
+  const more: [string, string][] = [
+    ["Necesito que un ejecutivo revise mi caso hoy", "hablar_persona"],
+    ["Que SEAL revise mi caso, ya tengo los documentos", "documentos"],
+    ["Ya tengo el BL y la factura comercial", "documentos"],
+    ["Mi contenedor llega el viernes", "carga_en_camino"],
+    ["El embarque llega mañana", "carga_en_camino"],
+    ["No necesito buscar proveedores", "ya_tiene_proveedor"],
+    ["No necesito proveedor, solo el despacho", "ya_tiene_proveedor"],
+    ["My shipment arrives tomorrow and I need someone from SEAL to review my case today", "carga_en_camino"],
+    ["I don't need to search for suppliers", "ya_tiene_proveedor"],
+    ["Aún no tengo proforma, pero quiero hablar con alguien", "hablar_persona"],
+    ["No tengo documentos todavía", ""],
+    ["No quiero hablar con nadie, solo ver precios", ""],
+  ];
+  for (const [q, k] of more) it(`${q} → ${k || "none"}`, () => expect(contactIntent(q)).toBe(k));
+  it("EN urgent", () => {
+    setLang("en");
+    const r = replayConversation(["My shipment arrives tomorrow and I need someone from SEAL to review my case today. I don't need to search for suppliers."])[0];
+    expect(r).toMatch(/^If your cargo is already on its way/);
+    expect(r).toMatch(/Since it's urgent/);
+    expect(r).not.toMatch(/reliable|the form/);
+  });
+  it("not urgent: no urgency sentence", () => {
+    expect(replayConversation(["Tengo proforma"])[0]).not.toMatch(/urgente/);
   });
 });
