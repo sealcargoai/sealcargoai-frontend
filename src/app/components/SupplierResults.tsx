@@ -31,6 +31,7 @@ import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils
 import { flagPrices, comparablePrice } from "../../utils/priceCheck";
 import { orderByUse, matchUse, wantedText } from "../../utils/useMatch";
 import { orderByMaterial, matchMaterial, partMaterialIssue } from "../../utils/materialMatch";
+import { orderByElectric, matchElectric } from "../../utils/electricMatch";
 import { flagComponents, orderByComponent, type ComponentFlag } from "../../utils/componentMatch";
 import { saleUnitInfo, unitWordFor, packSizeFromTitle } from "../../utils/saleUnit";
 import { descriptionIsDetailed } from "../../utils/descriptionCheck";
@@ -657,7 +658,7 @@ export function SupplierResults() {
   // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
   // Order: requested use first (a paint mill is not a corn mill), then specs, then the rest
   // Order: parts/accessories last, then requested use, material and specs
-  const displaySuppliers: Supplier[] = flagPrices(orderByComponent(flagComponents(orderByUse(orderByMaterial(orderBySpecs(
+  const displaySuppliers: Supplier[] = flagPrices(orderByComponent(flagComponents(orderByUse(orderByElectric(orderByMaterial(orderBySpecs(
     (apiData?.topSuppliers ?? []).map((s: Supplier, idx: number) => ({
       ...s,
       // Older results could carry 0 when the price text was "US$0.02-0.05": use the range midpoint
@@ -676,7 +677,7 @@ export function SupplierResults() {
       productName: s.productName ? decodeEntities(s.productName) : s.productName,
     })),
     reqSpecs,
-  ), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? ""), String(location.state?.productType ?? ""))).slice(0, 9), String(location.state?.productType ?? ""));
+  ), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? ""), String(location.state?.productType ?? ""))).slice(0, 9), String(location.state?.productType ?? ""));
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
@@ -724,6 +725,8 @@ export function SupplierResults() {
     matchMaterial(descriptionText, first.productName)?.status !== "other" &&
     // a title that mixes materials ("vinyl nitrile") is not taken on its own either
     !matchMaterial(descriptionText, first.productName)?.mixed &&
+    // another phase or voltage than the one asked is not taken on its own
+    matchElectric(descriptionText, first.productName)?.status !== "other" &&
     !partMaterialIssue(descriptionText, first.productName) &&
     // an option whose minimum order is above the client's order is not taken on its own
     !scenarioFor(first).moqNote &&
@@ -1053,6 +1056,8 @@ export function SupplierResults() {
                         ? Lx("parece para otro uso", "seems meant for another use")
                         : matchMaterial(descriptionText, first.productName)?.status === "other" || partMaterialIssue(descriptionText, first.productName)
                           ? Lx("indica otro material", "names another material")
+                        : matchElectric(descriptionText, first.productName)?.status === "other"
+                          ? Lx("indica otra fase o voltaje", "states another phase or voltage")
                         : matchMaterial(descriptionText, first.productName)?.mixed
                           ? Lx("menciona una mezcla de materiales", "names a blend of materials")
                         : scenarioFor(first).moqNote

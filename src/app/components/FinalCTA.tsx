@@ -24,6 +24,7 @@ import { LanguageToggle } from "./LanguageToggle";
 import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, sealDisclaimer, badgeText, TrustBadge, supplierPriceInfo } from "./SelectedSupplier";
 import { getReviewTopics } from "./RiskCompliance";
 import { buildCostPdf } from "../../utils/costPdf";
+import { listingDifferences } from "../../utils/differences";
 import { Lx, plural } from "../../utils/lang";
 import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
 import {
@@ -57,6 +58,7 @@ function generateReportPDF(data: {
   reportId: string;
   saveFile?: boolean;
   notes?: string[];
+  differences?: { title: string; items: string[] };
 }): string {
   return buildCostPdf({
     title: Lx("Informe de orientación para tu importación · costos estimados", "Guidance report for your import · estimated costs"),
@@ -67,6 +69,7 @@ function generateReportPDF(data: {
     priceNote: data.priceNote,
     costs: data.costs,
     notes: data.notes,
+    differences: data.differences,
     topics: getReviewTopics(data.productType, data.supplier, data.productDescription),
     disclaimer: sealDisclaimer(),
     reportId: data.reportId,
@@ -85,9 +88,11 @@ async function exportToExcel(data: {
   productType: string;
   costs: Costs;
   notes?: string[];
+  differences?: { title: string; items: string[] };
 }) {
   await generateBeautifulExcel({
     notes: data.notes,
+    differences: data.differences,
     reportTitle: Lx("Informe de orientación · costos estimados", "Guidance report · estimated costs"),
     priceNote: data.priceNote,
     supplierName: data.supplierName,
@@ -150,6 +155,8 @@ export function FinalCTA() {
     : Array.isArray(location.state?.reportNotes)
       ? location.state.reportNotes.map(String)
       : [];
+  // the listing title and what differs from the request: the same warnings as on screen
+  const reportDiffs = listingDifferences(productDescription, stateSupplier);
   const piecesPerUnitShown = rebuilt ? rebuilt.piecesPerUnit : Number(location.state?.piecesPerUnit) || 0;
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
   const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? Lx(" — estimación parcial, sin flete", " — partial estimate, without freight") : ""}`;
@@ -232,6 +239,7 @@ export function FinalCTA() {
   const handleDownloadReport = () => {
     generateReportPDF({
         notes: reportNotes,
+        differences: reportDiffs,
       supplierName,
       quantity,
       price,
@@ -249,6 +257,7 @@ export function FinalCTA() {
   const handleExcelExport = async () => {
     await exportToExcel({
       notes: reportNotes,
+        differences: reportDiffs,
       supplierName,
       quantity,
       price,
@@ -308,6 +317,7 @@ export function FinalCTA() {
     try {
       generateReportPDF({
         notes: reportNotes,
+        differences: reportDiffs,
         supplierName,
         quantity,
         price,
@@ -331,6 +341,7 @@ export function FinalCTA() {
     try {
       const pdfBase64 = generateReportPDF({
         notes: reportNotes,
+        differences: reportDiffs,
         supplierName,
         quantity,
         price,

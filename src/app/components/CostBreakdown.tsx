@@ -22,6 +22,7 @@ import {
   Tooltip,
 } from "recharts";
 import { buildCostPdf } from "../../utils/costPdf";
+import { listingDifferences } from "../../utils/differences";
 import { Lx } from "../../utils/lang";
 import { saleUnitInfo, unitWordFor, quantityIntent, productNoun } from "../../utils/saleUnit";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
@@ -63,9 +64,11 @@ function exportToPDF(
   productDescription: string,
   priceNote = "",
   notes: string[] = [],
+  differences?: { title: string; items: string[] },
 ) {
   buildCostPdf({
     notes,
+    differences,
     title: Lx("Escenario estimado de costos de importación (no es cotización)", "Estimated import cost scenario (not a quote)"),
     supplierName,
     productDescription,
@@ -87,9 +90,11 @@ async function exportToExcel(
   productType: string,
   priceNote = "",
   notes: string[] = [],
+  differences?: { title: string; items: string[] },
 ) {
   await generateBeautifulExcel({
     notes,
+    differences,
     reportTitle: Lx("Escenario estimado de costos de importación", "Estimated import cost scenario"),
     supplierName,
     productType,
@@ -319,6 +324,8 @@ export function CostBreakdown() {
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
   // Assumptions shown on screen that the PDF and Excel must keep
   const reportNotes = reportNotesFor(sc, costs.perUnit, Q);
+  // the listing title and what differs from the request: the same warnings as on screen
+  const reportDiffs = listingDifferences(productDescription, stateSupplier);
 
   // ── Chart data ────────────────────────────────────────────────────────────
   const costData = costs.lines
@@ -401,7 +408,7 @@ export function CostBreakdown() {
             </button>
             <button
               onClick={() =>
-                exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote, reportNotes)
+                exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote, reportNotes, reportDiffs)
               }
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-red-300 text-red-700 rounded-xl hover:bg-red-50 transition-all flex items-center gap-2 shadow-sm hover:shadow-md text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
             >
@@ -411,7 +418,7 @@ export function CostBreakdown() {
             </button>
             <button
               onClick={() =>
-                exportToExcel(costs, supplierName, quantity, price, destination, productDescription || productType, priceNote, reportNotes)
+                exportToExcel(costs, supplierName, quantity, price, destination, productDescription || productType, priceNote, reportNotes, reportDiffs)
               }
               className="px-3 sm:px-5 py-2 sm:py-2.5 border-2 border-green-300 text-green-700 rounded-xl hover:bg-green-50 transition-all flex items-center gap-2 shadow-sm hover:shadow-md text-xs sm:text-sm whitespace-nowrap flex-shrink-0"
             >
@@ -890,7 +897,7 @@ export function CostBreakdown() {
         <div className="mt-8 flex justify-center">
           <button
             onClick={() =>
-              exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote, reportNotes)
+              exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote, reportNotes, reportDiffs)
             }
             className="px-10 py-4 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-2xl hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center gap-3 shadow-xl hover:shadow-2xl text-lg font-semibold"
           >

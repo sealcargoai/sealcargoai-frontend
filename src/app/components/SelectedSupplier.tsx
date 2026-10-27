@@ -8,6 +8,7 @@ import { Lx } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, specLabel } from "../../utils/capacity";
 import { matchUse } from "../../utils/useMatch";
 import { matchMaterial, partMaterialIssue } from "../../utils/materialMatch";
+import { matchElectric } from "../../utils/electricMatch";
 import { componentText, type ComponentFlag } from "../../utils/componentMatch";
 
 const SPEC_TONE: Record<string, string> = {
@@ -25,7 +26,8 @@ export function SpecTags({ description, productName, warn = false, component }: 
   const use = matchUse(description, productName);
   const mat = matchMaterial(description, productName);
   const partIssue = partMaterialIssue(description, productName);
-  if (!m && !use && !mat && !component && !partIssue) return null;
+  const el = matchElectric(description, productName);
+  if (!m && !use && !mat && !component && !partIssue && !el) return null;
   const comp = component ? componentText(component) : null;
   const differs = !!m?.items.some((i) => i.status !== "meets");
   const otherUse = use?.status === "other";
@@ -78,6 +80,12 @@ export function SpecTags({ description, productName, warn = false, component }: 
             <span className="font-semibold">{comp.tag}</span>
           </span>
         )}
+        {el && (
+          <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[el.status === "match" ? "green" : el.status === "other" ? "red" : "slate"]}`}>
+            <span className="font-semibold">{el.text}</span>
+            {el.sub && <span className="opacity-80"> · {el.sub}</span>}
+          </span>
+        )}
         {partIssue && (
           <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE.red}`}>
             <span className="font-semibold">{partIssue.text}</span>
@@ -120,6 +128,14 @@ export function SpecTags({ description, productName, warn = false, component }: 
                 `Ojo: esta publicación parece destinada a ${use!.listed}, no a ${use!.asked}. El escenario de costos puede no corresponder a lo que buscas; vuelve a la lista y escoge una opción para el uso que necesitas.`,
                 `Note: this listing seems meant for ${use!.listed}, not ${use!.asked}. The cost scenario may not match what you're looking for; go back to the list and choose an option for the use you need.`,
               )}
+        </p>
+      )}
+      {warn && el?.status === "other" && (
+        <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
+          {Lx(
+            `Ojo: esta publicación ${el.text.replace(/^Alimentación eléctrica distinta: /, "")}. Un equipo con otra fase o voltaje puede no funcionar con tu instalación; confírmalo con el proveedor o escoge otra opción.`,
+            `Note: this listing ${el.text.replace(/^Different power supply: /, "")}. Equipment with another phase or voltage may not work with your installation; confirm it with the supplier or choose another option.`,
+          )}
         </p>
       )}
       {warn && partIssue && (
