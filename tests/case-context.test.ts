@@ -82,3 +82,23 @@ describe("the scenario on screen replaces the stored one (nothing inherited)", (
     expect(ev.map((x) => x.event)).not.toContain("seal_lead_recibido");
   });
 });
+
+describe("controlled test with real contact data from a QA session (?qa=1)", () => {
+  it("the server routes it as a customer case, but the site doesn't count a conversion", async () => {
+    store["seal_qa"] = "1";
+    (globalThis as { dataLayer?: unknown[] }).dataLayer = [];
+    let sent: Record<string, unknown> = {};
+    vi.stubGlobal("fetch", async (url: string, opt: { body: string }) => {
+      if (url.endsWith("/quote")) { sent = JSON.parse(opt.body); return new Response(JSON.stringify({ id: "SEAL-CTRL", duplicate: false, notified: true, test: false }), { status: 200 }); }
+      return new Response(null, { status: 204 });
+    });
+    (globalThis as { location?: unknown }).location = { search: "" };
+    const r = await sendToSeal({ requestType: "x", source: "costos", name: "Control interno SEAL", email: "administracion@seal.com.gt", message: "PRUEBA CONTROLADA — NO ATENDER COMERCIALMENTE" });
+    expect(r.test).toBe(false);
+    expect(sent.qa).toBeUndefined(); // nothing in the request changes the routing
+    const ev = (globalThis as { dataLayer: { event: string }[] }).dataLayer.map((x) => x.event);
+    expect(ev).toContain("seal_lead_qa");
+    expect(ev).not.toContain("seal_lead_recibido");
+    delete store["seal_qa"];
+  });
+});
