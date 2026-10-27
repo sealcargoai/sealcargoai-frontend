@@ -9,6 +9,8 @@ import { buildReply, nextSpec, type ReplySpec } from "../../utils/chatReply";
 interface Message {
   role: "user" | "ai";
   content: string;
+  id?: number; // ties a reply to the question it answers
+  pending?: boolean; // the reply is shown as "typing" for a moment
 }
 
 export function ChatInterface() {
@@ -47,7 +49,10 @@ export function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>(() => {
     try {
       const saved = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "null");
-      return saved && saved.query === (query || "") && Array.isArray(saved.messages) ? saved.messages : [];
+      // a reply that was still "typing" when the page reloaded is shown in full
+      return saved && saved.query === (query || "") && Array.isArray(saved.messages)
+        ? saved.messages.map((m: Message) => ({ ...m, pending: false }))
+        : [];
     } catch {
       return [];
     }
@@ -60,26 +65,40 @@ export function ChatInterface() {
     }
   }, [messages, query]);
   const [input, setInput] = useState("");
-  const specs = messages.filter((m) => m.role === "ai").map((m) => JSON.parse(m.content) as ReplySpec);
-  const lastNamed = [...specs].reverse().find((x) => x.newProduct || x.mentioned);
-  const currentProduct = lastNamed?.newProduct || lastNamed?.mentioned || String(query || "").trim();
+  const specsOf = (list: Message[]) => list.filter((m) => m.role === "ai").map((m) => JSON.parse(m.content) as ReplySpec);
   // quantity: the last one the client gave here, else the one in their request
   const initialQty = (() => {
     const m = String(query || "").replace(/(\d),(\d{3})/g, "$1$2").match(/\b(\d+)\s+(?!kg|kgs|t\b|l\b|litros|agujas|needles)/i);
     return m ? Number(m[1]) : 0;
   })();
-  const currentQuantity = [...specs].reverse().find((x) => x.newQuantity)?.newQuantity || initialQty;
+  const contextOf = (list: ReplySpec[]) => {
+    const lastNamed = [...list].reverse().find((x) => x.newProduct || x.mentioned);
+    return {
+      currentProduct: lastNamed?.newProduct || lastNamed?.mentioned || String(query || "").trim(),
+      currentQuantity: [...list].reverse().find((x) => x.newQuantity)?.newQuantity || initialQty,
+    };
+  };
+  const specs = specsOf(messages);
+  const { currentProduct, currentQuantity } = contextOf(specs);
 
   const handleSend = () => {
     if (!input.trim()) return;
     const text = input.trim();
-    // what the message is (calculation, follow-up, product, quantity change): utils/chatReply nextSpec
-    const spec = nextSpec(text, specs, currentProduct, currentQuantity);
-    setMessages([...messages, { role: "user", content: text }]);
+    const id = Date.now() + Math.random();
+    // The question and its reply are added together, right after the earlier ones:
+    // a second question sent while a reply is still "typing" is answered after it,
+    // with that reply already counted (a follow-up builds on it), never mixed up.
+    setMessages((prev) => {
+      const earlier = specsOf(prev);
+      const ctx = contextOf(earlier);
+      // what the message is (calculation, follow-up, product, quantity change): utils/chatReply nextSpec
+      const spec = nextSpec(text, earlier, ctx.currentProduct, ctx.currentQuantity);
+      return [...prev, { role: "user", content: text, id }, { role: "ai", content: JSON.stringify(spec), id, pending: true }];
+    });
     setInput("");
     setTimeout(() => {
-      setMessages((prev) => [...prev, { role: "ai", content: JSON.stringify(spec) }]);
-    }, 1000);
+      setMessages((prev) => prev.map((m) => (m.id === id && m.pending ? { ...m, pending: false } : m)));
+    }, 700);
   };
 
   return (
@@ -148,7 +167,7 @@ export function ChatInterface() {
         {/* Messages */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
           {[...intro, ...messages.map((m) => (m.role === "ai"
-            ? { ...m, content: buildReply(JSON.parse(m.content) as ReplySpec) }
+            ? { ...m, content: m.pending ? L("Escribiendo…", "Typing…") : buildReply(JSON.parse(m.content) as ReplySpec) }
             : m))].map((msg, i) => (
             <div
               key={i}
