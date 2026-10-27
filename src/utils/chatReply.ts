@@ -108,12 +108,15 @@ export interface PackMath {
   // a mixed set ("cada set trae 1 botella y 3 tazas"); target = the item the quantity counts, -1 = none
   kit?: { parts: { n: number; noun: string }[]; target: number };
   zero?: boolean; // the client wrote a pack content of 0
+  zeroOrder?: boolean; // the client wrote 0 packs ("0 cajas de 12"): the result is 0, and it is not an order
+  // a weight or measure counted in packs of that measure ("2.5 kg en bolsas de 1 kg")
+  measure?: { from?: string };
   // the purchase conditions applied: minimum order and multiples, in packs
   cond?: { need: number; minPacks: number; lotPacks: number; mins: Cond[]; lots: Cond[]; unreadable: Cond[]; changed: boolean };
   // conditions read but not applied (the calculation still needs data)
   conds?: { mins: Cond[]; lots: Cond[] };
   // data that can't be calculated as written: ask instead of guessing
-  invalid?: "conflictCond" | "badCond" | "negative" | "decimalQty" | "decimalContent" | "zeroQty" | "conflictSize" | "range" | "measure";
+  invalid?: "conflictCond" | "badCond" | "negative" | "decimalPacks" | "decimalQty" | "decimalContent" | "zeroQty" | "conflictSize" | "range" | "measure";
   sizes?: number[]; // the different contents written for the same pack
 }
 
@@ -203,7 +206,7 @@ function condPacks(m: PackMath, c: Cond, kind: "min" | "lot"): number | null {
 /** Minimum and multiple applied together: the fewest whole packs that cover the need and meet both. */
 function applyConditions(m: PackMath, mins: Cond[], lots: Cond[]): PackMath {
   if (!mins.length && !lots.length) return m;
-  if (m.mode === "ask" || m.zero || m.invalid) return { ...m, conds: { mins, lots } };
+  if (m.mode === "ask" || m.zero || m.invalid || m.zeroOrder) return { ...m, conds: { mins, lots } };
   const minP = mins.map((c) => condPacks(m, c, "min"));
   const lotP = lots.map((c) => condPacks(m, c, "lot"));
   // two different minimums or multiples in one message: ask which one holds
@@ -351,6 +354,63 @@ function kitMath(t: string): PackMath | null {
   return { ...base, mode: "ask", packs: 0, wanted: W, total: 0 };
 }
 
+// ── Weights and measures in packs of the same measure ────────────────────────
+// "2,5 kg en bolsas de 1 kg" is plain arithmetic in kilograms: whole bags only.
+// A weight against packs counted in pieces ("500 kg, cajas de 100 clavos") is
+// never guessed (see invalid "measure").
+const MEASURE_UNITS: Record<string, [string, number]> = {
+  kg: ["mass", 1], kgs: ["mass", 1], kilo: ["mass", 1], kilos: ["mass", 1], kilogramo: ["mass", 1], kilogramos: ["mass", 1],
+  g: ["mass", 0.001], gr: ["mass", 0.001], gramo: ["mass", 0.001], gramos: ["mass", 0.001],
+  t: ["mass", 1000], ton: ["mass", 1000], tons: ["mass", 1000], tonelada: ["mass", 1000], toneladas: ["mass", 1000],
+  lb: ["mass", 0.45359237], lbs: ["mass", 0.45359237], libra: ["mass", 0.45359237], libras: ["mass", 0.45359237],
+  l: ["volume", 1], lt: ["volume", 1], lts: ["volume", 1], litro: ["volume", 1], litros: ["volume", 1], ml: ["volume", 0.001],
+  gal: ["volume", 3.785411784], galon: ["volume", 3.785411784], "galón": ["volume", 3.785411784], galones: ["volume", 3.785411784],
+  m: ["length", 1], metro: ["length", 1], metros: ["length", 1], cm: ["length", 0.01], mm: ["length", 0.001],
+};
+// containers only counted as packs when their content is a weight, volume or length
+const CONTAINERS: [RegExp, string, string, string, string][] = [
+  [/^(?:botellas?|bottles?)$/, "botella", "botellas", "bottle", "bottles"],
+  [/^(?:sacos?|costal(?:es)?|sacks?)$/, "saco", "sacos", "sack", "sacks"],
+  [/^(?:frascos?|jars?)$/, "frasco", "frascos", "jar", "jars"],
+  [/^(?:latas?|cans?)$/, "lata", "latas", "can", "cans"],
+  [/^(?:bidones?|bid[oó]n|garraf(?:a|as|[oó]n|ones)|jugs?)$/, "bidón", "bidones", "jug", "jugs"],
+  [/^(?:cubetas?|baldes?|buckets?|pails?)$/, "cubeta", "cubetas", "bucket", "buckets"],
+  [/^(?:tambos?|tambores?|barriles?|barril|drums?|barrels?)$/, "tambo", "tambos", "drum", "drums"],
+];
+const CONTAINER_RE = "(botellas?|bottles?|sacos?|costal(?:es)?|sacks?|frascos?|jars?|latas?|cans?|bidones?|bid[oó]n|garraf(?:a|as|[oó]n|ones)|jugs?|cubetas?|baldes?|buckets?|pails?|tambos?|tambores?|barriles?|barril|drums?|barrels?)";
+const measureOf = (w?: string) => (w ? MEASURE_UNITS[w] : undefined);
+export const fmtMeasure = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 3 });
+
+function measureMath(t: string, used: string, pack: PackMath["pack"], perPack: number, unitWord: string, packsBefore: number): PackMath | null {
+  const [family, k] = measureOf(unitWord)!;
+  const base: PackMath = { mode: "ask", perPack, packs: 0, wanted: 0, total: 0, extra: 0, pack, item: unitWord, measure: {} };
+  if (!(perPack > 0)) return { ...base, zero: perPack === 0 };
+  // "3 bolsas de 1 kg": a number of packs
+  if (Number.isFinite(packsBefore)) {
+    if (packsBefore === 0) return { ...base, mode: "total", zeroOrder: true };
+    if (!Number.isInteger(packsBefore)) return { ...base, packs: packsBefore, invalid: "decimalPacks" };
+    return { ...base, mode: "total", packs: packsBefore, total: packsBefore * perPack };
+  }
+  const rest = t.replace(used, " ");
+  const q = [...rest.matchAll(/(\d+(?:[.,]\d+)?)\s*([a-záéíóúüñ]+)/g)].find((x) => measureOf(x[2])?.[0] === family);
+  if (!q) return base;
+  const W0 = Number(q[1].replace(",", "."));
+  if (W0 === 0) return { ...base, invalid: "zeroQty" };
+  // the quantity in the unit of the pack ("2500 g" in bags of "1 kg" = 2.5 kg)
+  const wanted = Math.round(((W0 * measureOf(q[2])![1]) / k) * 1e9) / 1e9;
+  const packs = Math.ceil(wanted / perPack - 1e-9);
+  const total = Math.round(packs * perPack * 1e9) / 1e9;
+  return {
+    ...base,
+    mode: "packs",
+    wanted,
+    packs,
+    total,
+    extra: Math.round((total - wanted) * 1e9) / 1e9,
+    measure: { from: measureOf(q[2])![1] !== k ? `${fmtMeasure(W0)} ${q[2]}` : undefined },
+  };
+}
+
 function packMathCore(text: string, force = false): PackMath | null {
   let t = ` ${normalizeNumbers(String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ").replace(/\s+/g, " "))} `;
   if (!force && !VERB_Q.test(t)) return null;
@@ -417,6 +477,25 @@ function packMathCore(text: string, force = false): PackMath | null {
     }
   }
   const pack = packOf(packWord);
+  // a pack measured in kg, litres or metres: arithmetic in that measure
+  if (pack && used) {
+    const at0 = t.indexOf(used);
+    const after0 = (sizeFirst ? used.replace(/^\s*\d+(?:[.,]\d+)?/, "") : "") + t.slice(at0 + used.length);
+    const mw = after0.match(/^\s*([a-záéíóúüñ]+)/);
+    if (mw && measureOf(mw[1])) {
+      const b0 = t.slice(0, at0).match(new RegExp(`${N}\\s*$`));
+      return measureMath(t, used, pack, perPack, mw[1], b0 && !sizeFirst ? Number(b0[1].replace(",", ".")) : NaN);
+    }
+  }
+  // a container sold by weight, volume or length ("botellas de 2 l", "sacos de 25 kg")
+  if (!pack || !used) {
+    const c = t.match(new RegExp(`${CONTAINER_RE}\\s+(?:de|of|con|with)\\s+${N}\\s*([a-záéíóúüñ]+)`));
+    if (c && measureOf(c[3])) {
+      const cp = CONTAINERS.find(([r]) => r.test(c[1]))!;
+      const b0 = t.slice(0, c.index).match(new RegExp(`${N}\\s*$`));
+      return measureMath(t, c[0], cp, Number(c[2].replace(",", ".")), c[3], b0 ? Number(b0[1].replace(",", ".")) : NaN);
+    }
+  }
   // a pack with nothing in it can't be calculated: ask for its real content
   if (pack && used && perPack === 0) {
     const q = t.replace(used, " ").match(/(\d+)(?:\s+([a-záéíóúüñ]+))?/);
@@ -451,13 +530,13 @@ function packMathCore(text: string, force = false): PackMath | null {
     const at = usedAt;
     const before = t.slice(0, at).match(new RegExp(`${N}\\s*$`));
     if (before && /^(?:sets?|juegos?|cajas?|boxes|box|paquetes?|packs?|estuches?|bolsas?|bags?|kits?|docenas?|dozens?|pares|par|pairs?|cartones|cart[oó]n|cartons?|rollos?|rolls?)/.test(used)) {
-      packsGiven = Number(before[1]);
+      packsGiven = Number(before[1].replace(",", "."));
       rest = t.slice(0, at - before[0].length) + " " + t.slice(at + used.length);
     } else rest = t.replace(used, " ");
   }
   // "40 cajas" elsewhere in the message
   const given = rest.match(new RegExp(`${N}\\s+${PACK_RE}\\b`));
-  if (!Number.isFinite(packsGiven) && given && packOf(given[2]) === pack) packsGiven = Number(given[1]);
+  if (!Number.isFinite(packsGiven) && given && packOf(given[2]) === pack) packsGiven = Number(given[1].replace(",", "."));
   const rest2 = given && packOf(given[2]) === pack ? rest.replace(given[0], " ") : rest;
   // the number of items wanted, and the word after it
   const nums = [...rest2.matchAll(/(\d+(?:[.,]\d+)?)(?:\s+([a-záéíóúüñ]+))?(?:\s+([a-záéíóúüñ]+))?/g)];
@@ -473,6 +552,16 @@ function packMathCore(text: string, force = false): PackMath | null {
   if (!item && used) {
     const after = used.match(/\d+\s+([a-záéíóúüñ]+)/) || t.slice(t.indexOf(used) + used.length).match(/^\s*([a-záéíóúüñ]{3,})/);
     if (after && !NOT_ITEM.test(after[1]) && !packOf(after[1])) item = after[1];
+  }
+  // "12 unidades", "500 piezas": the client's own unit word, not a generic "piezas"
+  if (!item) {
+    const UNIT_ITEM = /^(?:piezas?|unidades?|units?|pieces?|pcs)$/;
+    if (w && UNIT_ITEM.test(w[2] || "")) item = w[2]!;
+    else if (cw && UNIT_ITEM.test(cw[1])) item = cw[1];
+    else {
+      const askedU = t.match(/cu[aá]nt[oa]s\s+(piezas|unidades)|how\s+many\s+(pieces|units)/);
+      if (askedU) item = askedU[1] || askedU[2];
+    }
   }
   if (!item) {
     // "40 cajas de 100 guantes": the word after the pack phrase elsewhere in the message
@@ -520,6 +609,11 @@ function packMathCore(text: string, force = false): PackMath | null {
     }
   }
   const extras = { unit, conv, alt };
+  // "0 cajas de 12": the arithmetic is 0, and it is said that 0 is not an order
+  if (packsGiven === 0) return { mode: "total", perPack, packs: 0, wanted: 0, total: 0, extra: 0, pack, item, ...extras, zeroOrder: true };
+  // "2.5 cajas": packs are sold whole; show the two whole counts around it, never a fraction
+  if (Number.isFinite(packsGiven) && packsGiven > 0 && !Number.isInteger(packsGiven))
+    return { mode: "ask", perPack, packs: packsGiven, wanted: 0, total: 0, extra: 0, pack, item, ...extras, invalid: "decimalPacks" };
   if (Number.isFinite(packsGiven) && packsGiven > 0 && packsGiven <= 1e7) {
     if (Number.isFinite(wanted) && wanted > 0 && wanted <= 1e8)
       return { mode: "check", perPack, packs: packsGiven, wanted, total: packsGiven * perPack, extra: packsGiven * perPack - wanted, pack, item, ...extras };
@@ -666,7 +760,9 @@ function statementWith(m: PackMath, c: { mins: Cond[]; lots: Cond[] }): string {
 export function mathStatement(m: PackMath): string {
   if (m.kit)
     return kitStatement(m, m.mode === "packs" ? `${m.wanted} ${m.item}` : m.mode === "total" ? `${m.packs} ${m.pack[2]}` : m.wanted ? String(m.wanted) : "");
-  if (m.mode === "ask" && m.invalid) return "";
+  if ((m.mode === "ask" && m.invalid) || m.zeroOrder || (m.measure && m.mode === "ask")) return "";
+  if (m.measure)
+    return `cuántos ${m.pack[2]} necesito para ${m.mode === "total" ? `${m.packs} ${m.pack[2]}` : `${m.wanted} ${m.item}`} en ${m.pack[2]} de ${m.perPack} ${m.item}${condTail(m)}`;
   if (m.mode === "ask") return `cuántos ${m.pack[2]} necesito para ${m.wanted} ${m.item}${m.conv?.perWord ? ` de ${m.conv.perWord}` : ""}${condTail(m)}`;
   // the unit goes with the pack content, so "501 pares en cajas de 20 pares" stays in pairs
   return `cuántos ${m.pack[2]} necesito para ${m.mode === "packs" || m.mode === "check" ? m.wanted : m.total} ${m.item || "piezas"} en ${m.pack[2]} de ${m.perPack}${m.unit ? ` ${m.item}` : ""}${condTail(m)}`;
@@ -678,7 +774,7 @@ function condLabel(c: Cond, packs: number, pack: PackMath["pack"]): string {
   const pw = (n: number) => (n === 1 ? Lx(pack[1], pack[3]) : Lx(pack[2], pack[4]));
   if (!c.word) return Lx(`${f(c.n)} (tomado como ${pw(2)}; confírmalo)`, `${f(c.n)} (taken as ${pw(2)}; confirm it)`);
   if (packOf(c.word) === pack) return `${f(c.n)} ${pw(c.n)}`;
-  return `${f(c.n)} ${c.word} (${f(packs)} ${pw(packs)})`;
+  return `${f(c.n)} ${tw(c.word)} (${f(packs)} ${pw(packs)})`;
 }
 
 /**
@@ -771,6 +867,19 @@ function kitReply(m: PackMath): string {
   ) + confirm;
 }
 
+// Unit words the client typed, said in the language in use ("pares" ⇄ "pairs");
+// product nouns ("zapatos", "guantes") stay as written.
+const UNIT_WORDS: [string, string][] = [
+  ["pares", "pairs"], ["par", "pair"], ["piezas", "pieces"], ["pieza", "piece"], ["unidades", "units"], ["unidad", "unit"],
+  ["docenas", "dozens"], ["docena", "dozen"],
+];
+export function tw(word: string): string {
+  const w = String(word || "");
+  const en = Lx("es", "en") === "en";
+  const hit = UNIT_WORDS.find(([es, e]) => w === es || w === e);
+  return hit ? (en ? hit[1] : hit[0]) : w;
+}
+
 /** Data that can't be calculated as written: say why and ask for what's missing. */
 function invalidReply(m: PackMath): string {
   const f = (n: number) => n.toLocaleString("en-US");
@@ -788,6 +897,18 @@ function invalidReply(m: PackMath): string {
         "La cantidad que necesitas aparece como 0, así que no hay nada que calcular. ¿Cuántas unidades (o pares, sets…) necesitas en total?",
         "The quantity you need shows as 0, so there's nothing to calculate. How many units (or pairs, sets…) do you need in total?",
       );
+    case "decimalPacks": {
+      const lo = Math.floor(m.packs);
+      const hi = Math.ceil(m.packs);
+      const u = m.measure ? m.item : tw(m.item) || Lx("piezas", "pieces");
+      const pl = (n: number) => (n === 1 ? Lx(m.pack[1], m.pack[3]) : Lx(m.pack[2], m.pack[4]));
+      const val = (n: number) => (m.measure ? fmtMeasure(n * m.perPack) : f(n * m.perPack));
+      const opts = [lo, hi].filter((n) => n > 0).map((n) => `${n} ${pl(n)} = ${val(n)} ${u}`).join(Lx(" o ", " or "));
+      return Lx(
+        `${fmtMeasure(m.packs)} ${m.pack[2]} no es una cantidad que se pueda pedir: los empaques se venden enteros. Con ${m.pack[2]} de ${val(1)} ${u}: ${opts}. Dime la cantidad entera de ${m.pack[2]} que quieres y la calculo.`,
+        `${fmtMeasure(m.packs)} ${m.pack[4]} isn't a quantity you can order: packs are sold whole. With ${m.pack[4]} of ${val(1)} ${u}: ${opts}. Tell me the whole number of ${m.pack[4]} you want and I'll calculate it.`,
+      );
+    }
     case "decimalQty":
       return Lx(
         `La cantidad ${f(m.wanted)} ${m.item} tiene decimales y no se puede pedir una fracción de ${m.item ? singularOf(m.item) : "pieza"}. ¿La cantidad es ${f(Math.floor(m.wanted))} o ${f(Math.ceil(m.wanted))}? Si es un peso o una medida, dime cuánto trae cada empaque en esa misma medida.`,
@@ -827,10 +948,60 @@ function invalidReply(m: PackMath): string {
   return "";
 }
 
+function measureReply(m: PackMath): string {
+  const f = fmtMeasure;
+  const u = m.item;
+  const pw = (n: number) => (n === 1 ? Lx(m.pack[1], m.pack[3]) : Lx(m.pack[2], m.pack[4]));
+  // Spanish agreement: "bolsas completas", "sacos completos", "1 bolsa completa"
+  const fem = /a$/.test(m.pack[1]);
+  const whole = (n: number) => (fem ? "complet" + (n === 1 ? "a" : "as") : "complet" + (n === 1 ? "o" : "os"));
+  const assume = Lx(
+    ` Supone que el contenido neto de cada ${pw(1)} es exactamente ${f(m.perPack)} ${u} y que solo se venden ${pw(2)} ${whole(2)}; confirma el peso o la medida neta con el proveedor.`,
+    ` This assumes each ${pw(1)} holds exactly ${f(m.perPack)} ${u} net and that only whole ${pw(2)} are sold; confirm the net weight or measure with the supplier.`,
+  );
+  if (m.zeroOrder)
+    return Lx(
+      `0 ${pw(2)} × ${f(m.perPack)} ${u} = 0 ${u}. Un pedido de 0 ${pw(2)} no es una compra: si quieres hacer un pedido, indica una cantidad mayor que cero.`,
+      `0 ${pw(2)} × ${f(m.perPack)} ${u} = 0 ${u}. An order of 0 ${pw(2)} is not a purchase: if you want to order, enter a quantity above zero.`,
+    );
+  if (m.zero)
+    return Lx(`Un ${m.pack[1]} con 0 ${u} no permite calcular: ¿cuánto trae en realidad cada ${m.pack[1]}?`, `A ${m.pack[3]} holding 0 ${u} can't be calculated: how much does each ${m.pack[3]} actually hold?`);
+  if (m.mode === "ask")
+    return Lx(
+      `Cada ${pw(1)} trae ${f(m.perPack)} ${u}. ¿Cuánto necesitas en total (en ${u} u otra medida de peso o volumen)? Con ese dato te digo cuánt${fem ? "as" : "os"} ${pw(2)} ${whole(2)} pedir.`,
+      `Each ${pw(1)} holds ${f(m.perPack)} ${u}. How much do you need in total (in ${u} or another weight or volume unit)? With that I'll tell you how many whole ${pw(2)} to order.`,
+    );
+  if (m.mode === "total")
+    return Lx(
+      `${f(m.packs)} ${pw(m.packs)} × ${f(m.perPack)} ${u} = ${f(m.total)} ${u}.`,
+      `${f(m.packs)} ${pw(m.packs)} × ${f(m.perPack)} ${u} = ${f(m.total)} ${u}.`,
+    ) + assume;
+  const from = m.measure?.from ? Lx(`${m.measure.from} son ${f(m.wanted)} ${u}. `, `${m.measure.from} is ${f(m.wanted)} ${u}. `) : "";
+  const cw = condWords(m);
+  const lead = m.cond?.changed
+    ? Lx(
+        `Para ${f(m.wanted)} ${u} necesitarías ${f(m.cond.need)} ${pw(m.cond.need)}, pero ${cw.lead}: debes pedir ${f(m.packs)} ${pw(m.packs)} y recibirías ${f(m.total)} ${u}`,
+        `For ${f(m.wanted)} ${u} you'd need ${f(m.cond.need)} ${pw(m.cond.need)}, but ${cw.lead}: you should order ${f(m.packs)} ${pw(m.packs)} and would receive ${f(m.total)} ${u}`,
+      )
+    : Lx(
+        `Para ${f(m.wanted)} ${u} en ${pw(2)} de ${f(m.perPack)} ${u}, necesitarías ${f(m.packs)} ${pw(m.packs)} ${whole(m.packs)} y recibirías ${f(m.total)} ${u}`,
+        `For ${f(m.wanted)} ${u} in ${pw(2)} of ${f(m.perPack)} ${u}, you'd need ${f(m.packs)} whole ${pw(m.packs)} and would receive ${f(m.total)} ${u}`,
+      );
+  const extra = m.extra > 0 ? Lx(` (${f(m.extra)} ${u} más de lo que necesitas).`, ` (${f(m.extra)} ${u} more than you need).`) : ".";
+  return from + lead + extra + (m.cond?.changed ? "" : cw.ok) + cw.unread + assume;
+}
+
 function packMathReply(m: PackMath): string {
   if (m.invalid) return invalidReply(m);
+  if (m.measure) return measureReply(m);
   if (m.kit) return kitReply(m);
-  const items = m.item || Lx("piezas", "pieces");
+  const items = tw(m.item) || Lx("piezas", "pieces");
+  // "0 cajas de 12": the arithmetic, then what an order of 0 means
+  if (m.zeroOrder)
+    return Lx(
+      `0 ${m.pack[2]} × ${m.perPack.toLocaleString("en-US")} ${items} por ${m.pack[1]} = 0 ${items}. Un pedido de 0 ${m.pack[2]} no es una compra: si quieres hacer un pedido, indica una cantidad mayor que cero.`,
+      `0 ${m.pack[4]} × ${m.perPack.toLocaleString("en-US")} ${items} per ${m.pack[3]} = 0 ${items}. An order of 0 ${m.pack[4]} is not a purchase: if you want to order, enter a quantity above zero.`,
+    );
   if (m.mode === "ask" && m.zero)
     return Lx(
       `Un ${m.pack[1]} con 0 ${m.item || "piezas"} no permite calcular: ¿qué cantidad de ${m.item || "piezas"} trae en realidad cada ${m.pack[1]}? Escríbeme un número mayor que cero${m.wanted ? "" : " y la cantidad total que necesitas"}.`,
@@ -851,7 +1022,7 @@ function packMathReply(m: PackMath): string {
   // a client counting pairs or dozens also sees the result in their unit:
   // "600 zapatos (300 pares)"; an odd count says what is left loose
   const cu = m.conv ? (PAIR_W.test(m.conv.wantedWord) ? 2 : DOZ_W.test(m.conv.wantedWord) ? 12 : 0) : 0;
-  const cuWord = m.conv?.wantedWord || "";
+  const cuWord = tw(m.conv?.wantedWord || "");
   const inClientUnit = (n: number) => {
     if (!cu || n <= 0) return "";
     const whole = Math.floor(n / cu);
@@ -875,9 +1046,9 @@ function packMathReply(m: PackMath): string {
     const by = (w: string) =>
       PAIR_W.test(w) ? Lx(" (cada par son 2)", " (each pair is 2)") : DOZ_W.test(w) ? Lx(" (cada docena son 12)", " (each dozen is 12)") : "";
     if (Number.isFinite(c.wanted) && c.wanted !== m.wanted && m.mode !== "total")
-      pre += Lx(`${f(c.wanted)} ${c.wantedWord} son ${f(m.wanted)} ${items}${by(c.wantedWord)}. `, `${f(c.wanted)} ${c.wantedWord} are ${f(m.wanted)} ${items}${by(c.wantedWord)}. `);
+      pre += Lx(`${f(c.wanted)} ${tw(c.wantedWord)} son ${f(m.wanted)} ${items}${by(c.wantedWord)}. `, `${f(c.wanted)} ${tw(c.wantedWord)} are ${f(m.wanted)} ${items}${by(c.wantedWord)}. `);
     if (c.perPack !== m.perPack)
-      pre += Lx(`Cada ${pw(1)} de ${f(c.perPack)} ${c.perWord} trae ${f(m.perPack)} ${items}${by(c.perWord)}. `, `Each ${pw(1)} of ${f(c.perPack)} ${c.perWord} holds ${f(m.perPack)} ${items}${by(c.perWord)}. `);
+      pre += Lx(`Cada ${pw(1)} de ${f(c.perPack)} ${tw(c.perWord)} trae ${f(m.perPack)} ${items}${by(c.perWord)}. `, `Each ${pw(1)} of ${f(c.perPack)} ${tw(c.perWord)} holds ${f(m.perPack)} ${items}${by(c.perWord)}. `);
   }
   // counting single pieces as pairs assumes they make complete pairs
   const pairNote =
@@ -892,18 +1063,18 @@ function packMathReply(m: PackMath): string {
   const a = m.alt;
   if (a && c && a.kind === "contentPairs")
     post = Lx(
-      ` Si en realidad cada ${pw(1)} trae ${f(c.perPack)} ${a.word} (y no ${f(c.perPack)} ${c.perWord} individuales), ${a.packs === 1 ? "sería" : "serían"} ${f(a.packs)} ${pw(a.packs)}.`,
-      ` If each ${pw(1)} actually holds ${f(c.perPack)} ${a.word} (not ${f(c.perPack)} single ${c.perWord}), it would be ${f(a.packs)} ${pw(a.packs)}.`,
+      ` Si en realidad cada ${pw(1)} trae ${f(c.perPack)} ${tw(a.word)} (y no ${f(c.perPack)} ${tw(c.perWord)} individuales), ${a.packs === 1 ? "sería" : "serían"} ${f(a.packs)} ${pw(a.packs)}.`,
+      ` If each ${pw(1)} actually holds ${f(c.perPack)} ${tw(a.word)} (not ${f(c.perPack)} single ${tw(c.perWord)}), it would be ${f(a.packs)} ${pw(a.packs)}.`,
     );
   else if (a && c && a.kind === "wantedPairs")
     post = Lx(
-      ` Si tus ${f(c.wanted)} ${c.wantedWord} son en realidad ${f(c.wanted)} ${a.word}, ${a.packs === 1 ? "sería" : "serían"} ${f(a.packs)} ${pw(a.packs)}.`,
-      ` If your ${f(c.wanted)} ${c.wantedWord} are actually ${f(c.wanted)} ${a.word}, it would be ${f(a.packs)} ${pw(a.packs)}.`,
+      ` Si tus ${f(c.wanted)} ${tw(c.wantedWord)} son en realidad ${f(c.wanted)} ${tw(a.word)}, ${a.packs === 1 ? "sería" : "serían"} ${f(a.packs)} ${pw(a.packs)}.`,
+      ` If your ${f(c.wanted)} ${tw(c.wantedWord)} are actually ${f(c.wanted)} ${tw(a.word)}, it would be ${f(a.packs)} ${pw(a.packs)}.`,
     );
   else if (a && a.kind === "contentPieces")
     post = Lx(
-      ` Si cada ${pw(1)} trae ${f(m.perPack)} ${a.word || "piezas"} individuales y no ${f(m.perPack)} ${items}, ${a.packs === 1 ? "sería" : "serían"} ${f(a.packs)} ${pw(a.packs)}.`,
-      ` If each ${pw(1)} holds ${f(m.perPack)} single ${a.word || "pieces"} rather than ${f(m.perPack)} ${items}, it would be ${f(a.packs)} ${pw(a.packs)}.`,
+      ` Si cada ${pw(1)} trae ${f(m.perPack)} ${tw(a.word) || "piezas"} individuales y no ${f(m.perPack)} ${items}, ${a.packs === 1 ? "sería" : "serían"} ${f(a.packs)} ${pw(a.packs)}.`,
+      ` If each ${pw(1)} holds ${f(m.perPack)} single ${tw(a.word) || "pieces"} rather than ${f(m.perPack)} ${items}, it would be ${f(a.packs)} ${pw(a.packs)}.`,
     );
   const per = Lx(`${f(m.perPack)} ${items} por ${pw(1)}`, `${f(m.perPack)} ${items} per ${pw(1)}`);
   // the supplier's minimum order and multiples
@@ -1222,10 +1393,14 @@ export function buildReply(r: ReplySpec): string {
       const n = size[2] || size[3];
       return [
         ...parts,
-        Lx(
-          `Para calcular con ${size[1] ? `${size[1]} de ${n}` : `${n} por empaque`} necesito la cantidad total: ¿cuántas piezas quieres en total?`,
-          `To calculate with ${size[1] ? `${size[1]} of ${n}` : `${n} per pack`} I need the total quantity: how many pieces do you want in total?`,
-        ),
+        (() => {
+          // the pack word in the language in use ("cajas" ⇄ "boxes")
+          const pk = size[1] ? packOf(size[1]) : undefined;
+          return Lx(
+            `Para calcular con ${pk ? `${pk[2]} de ${n}` : `${n} por empaque`} necesito la cantidad total: ¿cuántas piezas quieres en total?`,
+            `To calculate with ${pk ? `${pk[4]} of ${n}` : `${n} per pack`} I need the total quantity: how many pieces do you want in total?`,
+          );
+        })(),
       ].join("\n\n");
     }
   }
