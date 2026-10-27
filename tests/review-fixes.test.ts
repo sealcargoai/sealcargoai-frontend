@@ -74,3 +74,15 @@ describe("measure words are not found inside other words", () => {
     expect(r.notes.join(" ")).toMatch(/vende por metro/);
   });
 });
+
+import { calculateCosts, DEFAULT_RATES } from "../src/utils/costCalculator";
+describe("SEAL's fixed amounts say they include IVA", () => {
+  it("on screen, PDF and Excel (the line detail)", () => {
+    const c = calculateCosts({ price: 2, quantity: 1000, volumeCbm: 0, weightKg: 0, saleUnit: "" }, DEFAULT_RATES);
+    expect(c.lines.find((l) => l.key === "customs")!.detail).toMatch(/IVA incluido/);
+    expect(c.lines.find((l) => l.key === "local")!.detail).toMatch(/IVA incluido/);
+    setLang("en");
+    const e = calculateCosts({ price: 2, quantity: 1000, volumeCbm: 0, weightKg: 0, saleUnit: "" }, DEFAULT_RATES);
+    expect(e.lines.find((l) => l.key === "customs")!.detail).toMatch(/VAT\) included/);
+  });
+});
