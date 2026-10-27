@@ -1,6 +1,6 @@
 import { ContactSeal } from "./ContactSeal";
 import { track } from "../../utils/funnel";
-import { sendToSeal, receiptText, rememberCase } from "../../utils/caseContext";
+import { sendToSeal, receiptText, setCaseScenario, SCENARIO_KEYS } from "../../utils/caseContext";
 import { supplierKey, loadCostChoices } from "../../utils/draft";
 import { qtyFrom, resolveScenario, type CostChoices } from "../../utils/scenario";
 import { useState, useEffect } from "react";
@@ -690,7 +690,11 @@ export function SupplierResults() {
   // funnel: results shown (once per browser and day on the server); the case so far
   useEffect(() => {
     if (isLiveData) track("resultados", { seal_results: displaySuppliers.length });
-    rememberCase({ productDescription: String(location.state?.productDescription ?? ""), quantity: String(navQuantity || ""), budget: navBudget ? `US$${navBudget}` : "", destination: "Guatemala" });
+    // new results: this search's data replaces the earlier one, and no supplier is chosen yet
+    setCaseScenario(
+      { productDescription: String(location.state?.productDescription ?? ""), quantity: String(navQuantity || ""), budget: navBudget ? `US$${navBudget}` : "", destination: "Guatemala" },
+      ["productDescription", "quantity", "budget", "destination", "product", ...SCENARIO_KEYS],
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

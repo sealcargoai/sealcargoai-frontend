@@ -64,11 +64,15 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     setOpen(true);
     track("contacto_abierto", { seal_source: source, seal_intent: intent });
   };
+  // a double click or Enter while sending never sends twice
+  const inFlight = useRef(false);
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (inFlight.current) return;
     if (name.trim().length < 2) return setError(L("Escribe tu nombre.", "Enter your name."));
     if (!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(email.trim())) return setError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
     setError("");
+    inFlight.current = true;
     setSending(true);
     const r = await sendToSeal({
       ...context,
@@ -81,6 +85,8 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
       message: message.trim(),
     });
     setSending(false);
+    inFlight.current = false;
+    // a confirmation only with a case number from the server; on failure what was written stays
     if (r.ok) return setResult(r);
     setError(
       r.status === 400

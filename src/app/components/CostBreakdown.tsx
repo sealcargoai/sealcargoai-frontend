@@ -1,4 +1,4 @@
-import { rememberCase } from "../../utils/caseContext";
+import { setCaseScenario, SCENARIO_KEYS } from "../../utils/caseContext";
 import { ContactSeal } from "./ContactSeal";
 import { supplierKey, loadCostChoices, saveCostChoices } from "../../utils/draft";
 import { componentText, type ComponentFlag } from "../../utils/componentMatch";
@@ -353,7 +353,8 @@ export function CostBreakdown() {
   // the case SEAL receives from any "talk to SEAL" button: what this screen shows
   const caseNow = {
     productDescription,
-    quantity: `${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${piecesPerUnit > 1 ? ` (${(quantity * piecesPerUnit).toLocaleString("en-US")} ${L("piezas", "pieces")})` : ""}`,
+    // quantity, unit, pack content and the equivalent in pieces
+    quantity: `${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${piecesPerUnit > 1 ? L(` de ${piecesPerUnit.toLocaleString("en-US")} piezas c/u = ${(quantity * piecesPerUnit).toLocaleString("en-US")} piezas`, ` of ${piecesPerUnit.toLocaleString("en-US")} pieces each = ${(quantity * piecesPerUnit).toLocaleString("en-US")} pieces`) : ""}`,
     supplierName,
     supplierUrl: stateSupplier?.productUrl || stateSupplier?.storeUrl || "",
     price: price > 0 ? `${formatUnitUSD(price)} / ${unitWordFor(unitInfo.unit, 1)}` : "",
@@ -366,7 +367,8 @@ export function CostBreakdown() {
     assumptions: [...sc.notes, ...reportNotes].filter((n, i, all) => n && all.indexOf(n) === i).slice(0, 12) as string[],
     warnings: reportDiffs.items.slice(0, 12),
   };
-  rememberCase(caseNow);
+  // the scenario on screen replaces the stored one (nothing inherited from another supplier)
+  setCaseScenario(caseNow, ["productDescription", "quantity", "budget", "destination", ...SCENARIO_KEYS]);
 
   // ── Chart data ────────────────────────────────────────────────────────────
   const costData = costs.lines

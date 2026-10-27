@@ -1,4 +1,4 @@
-import { sendToSeal, receiptText, rememberCase } from "../../utils/caseContext";
+import { sendToSeal, receiptText, setCaseScenario, SCENARIO_KEYS } from "../../utils/caseContext";
 import { inferCategory } from "../../utils/category";
 import { quantityWord } from "../../utils/saleUnit";
 import { plainNumber } from "../../utils/plainNumber";
@@ -267,6 +267,8 @@ export function ProductQualification() {
     const productCategory = inferCategory(productDescription);
 
     setIsLoading(true);
+    // a new search: the supplier and estimate of an earlier one no longer apply
+    setCaseScenario({}, SCENARIO_KEYS);
     setError("");
     setSearchFailed(false);
     setHelpSent("");
