@@ -98,6 +98,12 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
     const j = res.ok ? await res.json().catch(() => ({})) : {};
     const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined };
     if (out.ok) {
+      // the chat can answer "¿ya llegó mi solicitud?" with the real case number
+      try {
+        sessionStorage.setItem("seal_last_case", String(out.id));
+      } catch {
+        /* storage unavailable */
+      }
       // a lead counts only once the server registered it
       track("solicitud_enviada", { seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "", seal_duplicate: out.duplicate });
       if (!out.duplicate) pushDataLayer({ event: "seal_lead_recibido", seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "" });
@@ -125,4 +131,13 @@ export function receiptText(r: SealResult, L: (es: string, en: string) => string
     `Recibido. Tu número de caso es ${r.id}. Un ejecutivo de SEAL te contactará; si quieres adelantar, escríbenos por WhatsApp con ese número.`,
     `Received. Your case number is ${r.id}. A SEAL executive will contact you; to move faster, message us on WhatsApp with that number.`,
   );
+}
+
+/** The case number sent from this tab, if any. */
+export function lastSentCase(): string {
+  try {
+    return sessionStorage.getItem("seal_last_case") || "";
+  } catch {
+    return "";
+  }
 }

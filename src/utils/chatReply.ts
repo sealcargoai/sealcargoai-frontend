@@ -1946,7 +1946,32 @@ function contactReply(text: string): string {
   );
 }
 
+/** "¿Ya llegó mi solicitud?", "¿recibieron mi caso?", "did you get my request?" */
+export function requestStatusQuestion(text: string): boolean {
+  const t = ` ${String(text || "").toLowerCase()} `;
+  const thing = "(?:solicitud|caso|mensaje|consulta|formulario|petici[oó]n|cotizaci[oó]n|datos)";
+  return (
+    new RegExp(`\\b(?:ya\\s+)?(?:(?:me|nos|les?)\\s+)?(?:lleg[oó]|recibi(?:eron|ó|o|mos)|recibieron|se\\s+envi[oó]|qued[oó]\\s+(?:registrad|enviad)\\w*|est[aá]\\s+(?:registrad|enviad)\\w*|fue\\s+(?:recibid|enviad)\\w*)\\s+(?:ya\\s+)?(?:mi|la|el|nuestra|nuestro)\\s+${thing}`).test(t) ||
+    new RegExp(`\\b(?:mi|la|el|nuestra|nuestro)\\s+${thing}\\s+(?:ya\\s+)?(?:lleg[oó]|fue\\s+(?:recibid|enviad)\\w*|se\\s+envi[oó]|qued[oó]\\s+(?:registrad|enviad)\\w*|est[aá]\\s+(?:registrad|enviad)\\w*)`).test(t) ||
+    /\b(?:did|have)\s+you\s+(?:get|got|receive|received)\s+my\s+(?:request|case|message|form)|\bhas\s+my\s+(?:request|case|message)\s+(?:arrived|been\s+(?:received|sent))|\bwas\s+my\s+(?:request|case|message)\s+(?:received|sent)|\bdid\s+my\s+(?:request|case|message)\s+(?:arrive|go\s+through)/.test(t)
+  );
+}
+
+function requestStatusReply(sentCase?: string): string {
+  return sentCase
+    ? Lx(
+        `Sí: tu solicitud quedó registrada con el número de caso ${sentCase}. En la confirmación tienes el enlace para ver lo que recibió SEAL y el estado de tu caso.`,
+        `Yes: your request was registered with case number ${sentCase}. The confirmation has the link to see what SEAL received and your case status.`,
+      )
+    : Lx(
+        "Todavía no: aún debes completar y enviar el formulario «Enviar mi caso a SEAL» aquí abajo. Al enviarlo recibirás la confirmación con tu número de caso.",
+        "Not yet: you still need to fill in and send the \"Send my case to SEAL\" form below. Once you send it, you'll get the confirmation with your case number.",
+      );
+}
+
 export function replyKinds(text: string): string[] {
+  // "¿ya llegó mi solicitud?" is answered on its own (it is not a new request)
+  if (requestStatusQuestion(text)) return ["requestStatus"];
   const kinds = baseKinds(text);
   if (!contactIntent(text)) return kinds;
   // contact first; "ya tengo proveedor" is not a question about the supplier's reliability
@@ -2088,6 +2113,7 @@ export interface ReplySpec {
   previousMath?: string; // the client's earlier calculation question, for follow-ups
   mathText?: string; // this message's calculation, written in full (for later follow-ups)
   combined?: string; // the calculation the client split over two messages ("500 piezas" + "vienen 24 por caja")
+  sentCase?: string; // case number already sent from this tab (for "¿ya llegó mi solicitud?")
   newQuantity?: number; // "quiero 2000 en vez de 500"
   oldQuantity?: number;
 }
@@ -2197,7 +2223,7 @@ export function buildReply(r: ReplySpec): string {
   if (!kinds.length && !r.newProduct) kinds = ["general"];
   kinds.forEach((k, i) => {
     let t =
-      k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
+      k === "requestStatus" ? requestStatusReply(r.sentCase) : k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
     if (i === 0 && !parts.length) t = t.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't");
     // after the way to SEAL, no second path to the form: one next step
     if (kinds[0] === "contact" && k !== "contact")
