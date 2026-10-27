@@ -44,7 +44,11 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     ctx.product || ctx.productDescription ? `${L("Producto", "Product")}: ${String(ctx.product || ctx.productDescription).slice(0, 80)}` : "",
     ctx.quantity ? `${L("Cantidad", "Quantity")}: ${ctx.quantity}` : "",
     ctx.supplierName ? `${L("Proveedor", "Supplier")}: ${ctx.supplierName}` : "",
-    ctx.price ? `${L("Precio publicado", "Published price")}: ${ctx.price}` : "",
+    ctx.price
+      ? ctx.priceSource === "usuario"
+        ? `${L("Precio indicado por el usuario", "Price entered by the user")}: ${ctx.price}${ctx.publishedPrice && ctx.publishedPrice !== ctx.price ? L(` (publicado: ${ctx.publishedPrice})`, ` (published: ${ctx.publishedPrice})`) : ""}`
+        : `${L("Precio publicado", "Published price")}: ${ctx.price}`
+      : "",
     ctx.totalCostText ? `${L("Costo estimado", "Estimated cost")}: ${ctx.totalCostText}` : "",
     ctx.assumptions?.length ? L(`${ctx.assumptions.length} supuesto(s) de la estimación`, `${ctx.assumptions.length} estimate assumption(s)`) : "",
     ctx.warnings?.length ? L(`${ctx.warnings.length} advertencia(s) que viste`, `${ctx.warnings.length} warning(s) you saw`) : "",
@@ -127,6 +131,11 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
             {result ? (
               <div role="status" data-testid="seal-receipt" className="space-y-3">
                 <p className="text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg p-3">{receiptText(result, L)}</p>
+                {result.caseUrl && (
+                  <a href={result.caseUrl} target="_blank" rel="noopener noreferrer" className="block text-sm font-semibold text-[#0B3C5D] underline">
+                    {L("Ver lo que recibió SEAL y el estado de mi caso", "See what SEAL received and my case status")}
+                  </a>
+                )}
                 <a
                   href={`https://wa.me/50259964664?text=${encodeURIComponent(L(`Hola, mi número de caso es ${result.id}.`, `Hello, my case number is ${result.id}.`))}`}
                   target="_blank"

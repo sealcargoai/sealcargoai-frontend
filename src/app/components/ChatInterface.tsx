@@ -4,7 +4,7 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { buildReply, nextSpec, contactIntent, type ReplySpec } from "../../utils/chatReply";
+import { buildReply, nextSpec, contactIntent, urgentContact, type ReplySpec } from "../../utils/chatReply";
 import { ContactSeal } from "./ContactSeal";
 
 interface Message {
@@ -90,6 +90,10 @@ export function ChatInterface() {
   // whoever wants to move forward gets the way to SEAL right under that answer
   const userTexts = messages.filter((m) => m.role === "user").map((m) => m.content);
   const lastContact = [...messages].reverse().find((m) => m.role === "user" && contactIntent(m.content));
+  // the latest message asks for SEAL: one clear next step (the form stays as a small link)
+  const lastUser = [...messages].reverse().find((m) => m.role === "user");
+  const wantsSeal = !!lastContact && lastUser === lastContact;
+  const INTENT_LABEL: Record<string, string> = { contratar: "quiere contratar", hablar_persona: "pide que un ejecutivo revise su caso", proforma: "tiene proforma", documentos: "ya tiene documentos", carga_en_camino: "su carga ya viene", ya_tiene_proveedor: "ya tiene proveedor" };
   const chatCase = {
     product: currentProduct || undefined,
     // only a quantity the client stated here (one read from the request could be a size)
@@ -222,7 +226,7 @@ export function ChatInterface() {
                 variant="card"
                 className="mt-3"
                 intent={contactIntent(lastContact.content)}
-                requestType={`Chat: ${({ contratar: "quiere contratar", hablar_persona: "pide hablar con alguien", proforma: "tiene proforma", carga_en_camino: "su carga ya viene", ya_tiene_proveedor: "ya tiene proveedor" } as Record<string, string>)[contactIntent(lastContact.content)] || "contacto"}`}
+                requestType={`${urgentContact(lastContact.content) ? "URGENTE · " : ""}Chat: ${INTENT_LABEL[contactIntent(lastContact.content)] || "contacto"}`}
                 context={chatCase}
               />
             )}
@@ -231,6 +235,19 @@ export function ChatInterface() {
 
           <div ref={endRef} />
           {/* CTA Card */}
+          {wantsSeal ? (
+            <p className="text-xs text-slate-500 max-w-2xl">
+              {L("Si más adelante quieres comparar proveedores, ", "If later you want to compare suppliers, ")}
+              <button
+                type="button"
+                className="underline"
+                onClick={() => navigate("/qualify", { state: { query: currentProduct || query, name, email, descriptionCleaned } })}
+              >
+                {L("puedes usar el formulario", "you can use the form")}
+              </button>
+              .
+            </p>
+          ) : (
           <div className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-2xl p-6 max-w-2xl">
             <h3 className="font-semibold text-[#0B3C5D] mb-2">
               {t("chat.ctaTitle")}
@@ -254,6 +271,7 @@ export function ChatInterface() {
               <ArrowRight className="w-4 h-4" />
             </button>
           </div>
+          )}
         </div>
 
         {/* Input */}
