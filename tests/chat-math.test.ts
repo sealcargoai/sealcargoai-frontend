@@ -99,7 +99,7 @@ const C: Case[] = [
   [["Necesito 1,000 pares, cajas de 20 pares. ¿Cuántas cajas?"], [/50 cajas/]],
   [["Necesito 2 mil pares, cajas de 20 pares. ¿Cuántas cajas?"], [/100 cajas/]],
   [["Necesito 200 pares, cajas de 20 pares, mínimo 2.5 cajas. ¿Cuántas cajas?"], [/entero/], [/Necesitarías/]],
-  [["Necesito 200 pares, cajas de 30 pares, múltiplos de 45 zapatos. ¿Cuántas cajas?"], [/no coinciden|no se pueden cumplir|no pude aplicar|otra unidad/i]],
+  [["Necesito 200 pares, cajas de 30 pares, múltiplos de 45 zapatos. ¿Cuántas cajas?"], [/no coinciden|no se pueden cumplir|no pude aplicar|otra unidad|necesito un dato/i]],
   [["¿Cuántas cajas me alcanzan si son 20 pares y algo así como varias docenas?"], [/No pude leer|prefiero no adivinar|cuántos/i]],
   [["Sin mínimo, necesito 200 pares en cajas de 20 pares, ¿cuántas cajas?"], [/10 cajas/], [/mínimo del proveedor/]],
   [["El mínimo es de 15 días para producir; necesito 200 pares en cajas de 20 pares, ¿cuántas cajas?"], [/10 cajas/], [/mínimo del proveedor/]],

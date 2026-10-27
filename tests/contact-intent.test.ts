@@ -171,3 +171,42 @@ describe("asking whether the request arrived", () => {
     expect(r[1]).toMatch(/79/);
   });
 });
+
+// Víctor's report (27-h): review request with a negation, product subtotal, implied verbs
+describe("27-i: review request, subtotal, natural pack wordings", () => {
+  it("«revisión de la proforma por SEAL, no buscar proveedores» → SEAL first, nothing about reliability", () => {
+    const q = "Necesito revisión de la proforma por SEAL, no buscar proveedores";
+    expect(contactIntent(q)).toBe("proforma");
+    const r = replayConversation([q])[0];
+    expect(r).toMatch(/^Con una proforma, lo mejor es que SEAL la revise/);
+    expect(r).toMatch(/Enviar mi caso a SEAL/);
+    expect(r).not.toMatch(/confiable|índice referencial|formulario/);
+  });
+  for (const q of ["Quiero que SEAL revise mi proforma", "Pueden revisar la proforma que me mandaron?", "I need a review of my proforma"])
+    it(`${q} → proforma`, () => expect(contactIntent(q)).toBe("proforma"));
+  it("subtotal: 2,000 guantes a US$0.03 cada uno = US$60, not a quote", () => {
+    const r = replayConversation(["¿Cuánto serían 2,000 guantes a US$0.03 cada uno?"])[0];
+    expect(r).toMatch(/^2,000 guantes × US\$0\.03 = US\$60\.00 de producto, con el precio que indicaste/);
+    expect(r).toMatch(/no una cotización confirmada/);
+    expect(r).not.toMatch(/preguntas abiertas/);
+  });
+  for (const [q, total] of [["2000 guantes a 0.03 dólares c/u", "US\\$60\\.00"], ["Si compro 500 sillas a $12.50 cada una, ¿cuánto es?", "US\\$6,250\\.00"], ["1.500 piezas a US$2 por unidad", "US\\$3,000\\.00"]] as [string, string][])
+    it(`${q} → ${total}`, () => expect(replayConversation([q])[0]).toMatch(new RegExp(`= ${total} de producto`)));
+  it("pack content is not a price: «500 piezas a 25 por caja» stays a pack calculation", () => {
+    expect(replyKinds("Necesito 500 piezas a 25 por caja, ¿cuántas cajas?")[0]).toBe("math");
+  });
+  it("«cada set trae 12 y cada caja 10 sets» keeps the box→sets relation", () => {
+    const r = replayConversation(["Necesito 500 lápices. Cada set trae 12 y cada caja 10 sets. ¿Cuántas cajas?"])[0];
+    expect(r).toMatch(/Cada caja trae 10 sets de 12 lápices = 120 lápices\. Necesitarías 5 cajas/);
+  });
+  it("with a minimum in boxes: applied, not «otra unidad»", () => {
+    const r = replayConversation(["Necesito 1000 lápices; cada set trae 12, cada caja 10 sets, mínimo 5 cajas. ¿Cuántas cajas?"])[0];
+    expect(r).toMatch(/Necesitarías 9 cajas/);
+    expect(r).toMatch(/Cumples el mínimo de 5 cajas/);
+  });
+  it("if the relation is missing it asks instead of concluding", () => {
+    const r = replayConversation(["Necesito 1000 lápices; cada set trae 12, mínimo 5 cajas. ¿Cuántos sets?"])[0];
+    expect(r).toMatch(/necesito un dato: ¿cuántos sets trae cada caja\?/);
+    expect(r).not.toMatch(/otra unidad/);
+  });
+});
