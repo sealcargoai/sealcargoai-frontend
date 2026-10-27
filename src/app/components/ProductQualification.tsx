@@ -1,5 +1,6 @@
 import { inferCategory } from "../../utils/category";
 import { quantityWord } from "../../utils/saleUnit";
+import { plainNumber } from "../../utils/plainNumber";
 import { useState, useEffect } from "react";
 import { DRAFT_KEY } from "../../utils/draft";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
@@ -53,33 +54,43 @@ function loadDraft(): { formData?: Record<string, string>; step?: number } | nul
 
 /** Returns an error message for the field, or "" when valid. */
 function fieldError(name: string, value: string): string {
-  const v = value.trim();
+  const v = plainNumber(name, value);
   const n = Number(v);
+  // "50.000" could be fifty or fifty thousand: ask instead of guessing
+  if (name !== "quantity" && name !== "productType" && /^\d{1,3}(?:\.\d{3})+$/.test(v))
+    return Lx(
+      `¿${v} es ${Number(v.replace(/\./g, "")).toLocaleString("en-US")}? Escríbelo sin puntos de miles (por ejemplo ${v.replace(/\./g, "")}); usa punto solo para decimales.`,
+      `Is ${v} meant as ${Number(v.replace(/\./g, "")).toLocaleString("en-US")}? Write it without thousands points (for example ${v.replace(/\./g, "")}); use a point only for decimals.`,
+    );
+  if (name !== "productType" && v && !(name === "quantity" ? /^\d+$/ : /^\d+(?:\.\d+)?$/).test(v))
+    return name === "quantity"
+      ? Lx("Escribe solo el número entero, sin letras, decimales ni símbolos (por ejemplo 1000).", "Enter only the whole number, without letters, decimals or symbols (for example 1000).")
+      : Lx("Escribe solo el número, sin letras ni símbolos; usa punto para decimales (por ejemplo 3.5).", "Enter only the number, without letters or symbols; use a point for decimals (for example 3.5).");
   switch (name) {
     case "productType":
       // what gets searched is the cleaned text (sentences addressed to the tool are left out)
       if (!descriptionIsDetailed(v) || !descriptionIsDetailed(cleanDescription(v).text)) return descriptionDetailMessage();
-      if (v.length > LIMITS.productMax) return Lx(`Máximo ${LIMITS.productMax.toLocaleString()} caracteres.`, `Maximum ${LIMITS.productMax.toLocaleString()} characters.`);
+      if (v.length > LIMITS.productMax) return Lx(`Máximo ${LIMITS.productMax.toLocaleString("en-US")} caracteres.`, `Maximum ${LIMITS.productMax.toLocaleString("en-US")} characters.`);
       return "";
     case "quantity":
       if (!v) return Lx("La cantidad es obligatoria.", "Quantity is required.");
       if (!Number.isInteger(n) || n < 1) return Lx("Escribe una cantidad entera mayor a 0.", "Enter a whole number greater than 0.");
-      if (n > LIMITS.quantityMax) return Lx(`Máximo ${LIMITS.quantityMax.toLocaleString()} unidades.`, `Maximum ${LIMITS.quantityMax.toLocaleString()} units.`);
+      if (n > LIMITS.quantityMax) return Lx(`Máximo ${LIMITS.quantityMax.toLocaleString("en-US")} unidades.`, `Maximum ${LIMITS.quantityMax.toLocaleString("en-US")} units.`);
       return "";
     case "budget":
       if (!v) return "";
       if (!(n >= 1)) return Lx("El presupuesto de compra debe ser de al menos US$1.", "The purchase budget must be at least US$1.");
-      if (n > LIMITS.budgetMax) return Lx(`Máximo US$${LIMITS.budgetMax.toLocaleString()}.`, `Maximum US$${LIMITS.budgetMax.toLocaleString()}.`);
+      if (n > LIMITS.budgetMax) return Lx(`Máximo US$${LIMITS.budgetMax.toLocaleString("en-US")}.`, `Maximum US$${LIMITS.budgetMax.toLocaleString("en-US")}.`);
       return "";
     case "volumeCbm":
       if (!v) return "";
       if (!(n > 0)) return Lx("El volumen debe ser mayor a 0.", "Volume must be greater than 0.");
-      if (n > LIMITS.volumeMax) return Lx(`Máximo ${LIMITS.volumeMax.toLocaleString()} m³.`, `Maximum ${LIMITS.volumeMax.toLocaleString()} m³.`);
+      if (n > LIMITS.volumeMax) return Lx(`Máximo ${LIMITS.volumeMax.toLocaleString("en-US")} m³.`, `Maximum ${LIMITS.volumeMax.toLocaleString("en-US")} m³.`);
       return "";
     case "weightKg":
       if (!v) return "";
       if (!(n > 0)) return Lx("El peso debe ser mayor a 0.", "Weight must be greater than 0.");
-      if (n > LIMITS.weightMax) return Lx(`Máximo ${LIMITS.weightMax.toLocaleString()} kg.`, `Maximum ${LIMITS.weightMax.toLocaleString()} kg.`);
+      if (n > LIMITS.weightMax) return Lx(`Máximo ${LIMITS.weightMax.toLocaleString("en-US")} kg.`, `Maximum ${LIMITS.weightMax.toLocaleString("en-US")} kg.`);
       return "";
   }
   return "";
@@ -322,6 +333,14 @@ export function ProductQualification() {
         !suppliers?.noRelevantMatches &&
         (suppliers?.topSuppliers?.length ?? 0) > 0;
       if (userEmail && counted) recordSearch(userEmail, userName, productCategory, productDescription);
+      // the server's proof that this browser ran the search: needed to email the report
+      if (typeof suppliers?.reportToken === "string" && userEmail) {
+        try {
+          localStorage.setItem("seal_report_token", JSON.stringify({ email: String(userEmail).toLowerCase(), token: suppliers.reportToken }));
+        } catch {
+          /* storage unavailable: the report can still be downloaded */
+        }
+      }
       // the server says how many are left after this search
       if (typeof suppliers?.remainingSearches === "number") {
         setRemainingSearches(suppliers.remainingSearches);
@@ -494,7 +513,7 @@ export function ProductQualification() {
                 <div className="flex justify-between gap-3 text-xs text-slate-500">
                   <span>{t("qualification.productHelp")} {L("(qué es, para qué se usa y, si aplica, capacidad o material)", "(what it is, what it's for and, if relevant, capacity or material)")}</span>
                   <span className="shrink-0">
-                    {formData.productType.length.toLocaleString()}/{LIMITS.productMax.toLocaleString()}
+                    {formData.productType.length.toLocaleString("en-US")}/{LIMITS.productMax.toLocaleString("en-US")}
                   </span>
                 </div>
                 {showErr("productType")}
@@ -510,12 +529,17 @@ export function ProductQualification() {
                     {t("qualification.quantity")}
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="off"
                     value={formData.quantity}
                     onChange={(e) =>
                       setFormData({ ...formData, quantity: e.target.value })
                     }
-                    onBlur={() => touch("quantity")}
+                    onBlur={() => {
+                      setFormData((d) => ({ ...d, quantity: plainNumber("quantity", d.quantity) }));
+                      touch("quantity");
+                    }}
                     required
                     placeholder="1000"
                     min="1"
@@ -524,7 +548,7 @@ export function ProductQualification() {
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="text-xs text-slate-500 mt-1">
-                    <span>{L(`Obligatoria · número entero de 1 a ${LIMITS.quantityMax.toLocaleString()}`, `Required · whole number from 1 to ${LIMITS.quantityMax.toLocaleString()}`)}</span>
+                    <span>{L(`Obligatoria · número entero de 1 a ${LIMITS.quantityMax.toLocaleString("en-US")}`, `Required · whole number from 1 to ${LIMITS.quantityMax.toLocaleString("en-US")}`)}</span>
                   </p>
                   {showErr("quantity")}
                 </div>
@@ -536,19 +560,24 @@ export function ProductQualification() {
                     <span className="text-slate-400 font-normal">{L("(opcional)", "(optional)")}</span>
                   </label>
                   <input
-                    type="number"
+                    type="text"
+                    inputMode="decimal"
+                    autoComplete="off"
                     value={formData.budget}
                     onChange={(e) =>
                       setFormData({ ...formData, budget: e.target.value })
                     }
-                    onBlur={() => touch("budget")}
+                    onBlur={() => {
+                      setFormData((d) => ({ ...d, budget: plainNumber("budget", d.budget) }));
+                      touch("budget");
+                    }}
                     placeholder="50000"
                     min="1"
                     max={LIMITS.budgetMax}
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <p className="text-xs text-slate-500 mt-1">
-                    <span>{L(`Lo que piensas pagar al proveedor por toda la compra, sin flete ni impuestos (hasta US$${LIMITS.budgetMax.toLocaleString()})`, `What you plan to pay the supplier for the whole purchase, without freight or taxes (up to US$${LIMITS.budgetMax.toLocaleString()})`)}</span>
+                    <span>{L(`Lo que piensas pagar al proveedor por toda la compra, sin flete ni impuestos (hasta US$${LIMITS.budgetMax.toLocaleString("en-US")})`, `What you plan to pay the supplier for the whole purchase, without freight or taxes (up to US$${LIMITS.budgetMax.toLocaleString("en-US")})`)}</span>
                   </p>
                   {showErr("budget")}
                 </div>
@@ -559,14 +588,19 @@ export function ProductQualification() {
                       <span>{L("Volumen aproximado (m³)", "Approximate volume (m³)")}</span>
                     </label>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
                       step="0.01"
                       min="0"
                       value={formData.volumeCbm}
                       onChange={(e) =>
                         setFormData({ ...formData, volumeCbm: e.target.value })
                       }
-                      onBlur={() => touch("volumeCbm")}
+                      onBlur={() => {
+                      setFormData((d) => ({ ...d, volumeCbm: plainNumber("volumeCbm", d.volumeCbm) }));
+                      touch("volumeCbm");
+                    }}
                       max={LIMITS.volumeMax}
                       placeholder={L("ej. 3.5", "e.g. 3.5")}
                       className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -579,14 +613,19 @@ export function ProductQualification() {
                       <span>{L("Peso aproximado (kg)", "Approximate weight (kg)")}</span>
                     </label>
                     <input
-                      type="number"
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
                       step="1"
                       min="0"
                       value={formData.weightKg}
                       onChange={(e) =>
                         setFormData({ ...formData, weightKg: e.target.value })
                       }
-                      onBlur={() => touch("weightKg")}
+                      onBlur={() => {
+                      setFormData((d) => ({ ...d, weightKg: plainNumber("weightKg", d.weightKg) }));
+                      touch("weightKg");
+                    }}
                       max={LIMITS.weightMax}
                       placeholder={L("ej. 800", "e.g. 800")}
                       className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -649,13 +688,13 @@ export function ProductQualification() {
                       <span className="font-medium">
                         {t("qualification.quantity")}:
                       </span>{" "}
-                      {Number(formData.quantity || 0).toLocaleString()} {quantityWord(cleanDescription(formData.productType).text, Number(formData.quantity || 0)) || unitsWord(Number(formData.quantity || 0))}
+                      {Number(formData.quantity || 0).toLocaleString("en-US")} {quantityWord(cleanDescription(formData.productType).text, Number(formData.quantity || 0)) || unitsWord(Number(formData.quantity || 0))}
                     </p>
                     <p>
                       <span className="font-medium">
                         {t("qualification.budget")}:
                       </span>{" "}
-                      {formData.budget ? `US$${Number(formData.budget).toLocaleString()}` : L("No indicado", "Not provided")}
+                      {formData.budget ? `US$${Number(formData.budget).toLocaleString("en-US")}` : L("No indicado", "Not provided")}
                     </p>
                     <p>
                       <span className="font-medium">{L("Volumen / peso:", "Volume / weight:")}</span>{" "}
@@ -702,6 +741,14 @@ export function ProductQualification() {
                       return;
                     }
                     setError("");
+                    // the review and the search use the numbers in plain form ("1,000" → "1000")
+                    setFormData((d) => ({
+                      ...d,
+                      quantity: plainNumber("quantity", d.quantity),
+                      budget: plainNumber("budget", d.budget),
+                      volumeCbm: plainNumber("volumeCbm", d.volumeCbm),
+                      weightKg: plainNumber("weightKg", d.weightKg),
+                    }));
                     setStep(step + 1);
                   }}
                   aria-disabled={!stepValid}

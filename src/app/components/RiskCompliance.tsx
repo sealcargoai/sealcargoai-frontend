@@ -9,6 +9,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, badgeText } from "./SelectedSupplier";
 import { Lx } from "../../utils/lang";
+import { currentRates } from "../../utils/costCalculator";
 
 // ─── "Aspectos por revisar" ─────────────────────────────────────────────────
 // Orientation only: topics worth reviewing for an import into Guatemala, with
@@ -45,8 +46,8 @@ export function getReviewTopics(productType: string, supplier: any, description 
     {
       title: T("Clasificación arancelaria (partida SAC)", "Tariff classification (SAC heading)"),
       why: T(
-        "La partida define el DAI real y si se necesitan permisos. La estimación usa un DAI de referencia del 15%, que puede ser menor o mayor.",
-        "The heading sets the actual DAI duty and whether permits are needed. The estimate uses a reference DAI of 15%, which may be lower or higher.",
+        `La partida define el DAI real y si se necesitan permisos. La estimación usa un DAI de referencia del ${Math.round(currentRates().dutyRate * 100)}%, que puede ser menor o mayor.`,
+        `The heading sets the actual DAI duty and whether permits are needed. The estimate uses a reference DAI of ${Math.round(currentRates().dutyRate * 100)}%, which may be lower or higher.`,
       ),
       action: T(
         "Confirmar la partida con la ficha técnica del producto antes de comprar.",
@@ -347,6 +348,7 @@ export function RiskCompliance() {
                 <span>{L("← Costos", "← Costs")}</span>
               </button>
               <button
+                aria-label={L("Ver informe", "View report")}
                 onClick={goToReport}
                 className="px-2 sm:px-4 md:px-6 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-xl hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center gap-1 sm:gap-2 shadow-lg hover:shadow-xl text-xs sm:text-sm"
               >

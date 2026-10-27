@@ -133,8 +133,8 @@ export function SpecTags({ description, productName, warn = false, component }: 
       {warn && el?.status === "other" && (
         <p className="text-sm text-red-800 bg-red-50 border border-red-200 rounded-lg px-3 py-2 mt-2">
           {Lx(
-            `Ojo: esta publicación ${el.text.replace(/^Alimentación eléctrica distinta: /, "")}. Un equipo con otra fase o voltaje puede no funcionar con tu instalación; confírmalo con el proveedor o escoge otra opción.`,
-            `Note: this listing ${el.text.replace(/^Different power supply: /, "")}. Equipment with another phase or voltage may not work with your installation; confirm it with the supplier or choose another option.`,
+            `Ojo: ${el.text}. Un equipo con otra fase o voltaje puede no funcionar con tu instalación; confírmalo con el proveedor o escoge otra opción.`,
+            `Note: ${el.text}. Equipment with another phase or voltage may not work with your installation; confirm it with the supplier or choose another option.`,
           )}
         </p>
       )}
@@ -416,10 +416,10 @@ export function SelectedSupplierCard({ supplier, description = "", pending = fal
               {supplier.moq
                 ? /^\s*[\d.,]+\s*$/.test(String(supplier.moq))
                   ? supplier.saleUnit
-                    ? `${supplier.moq.toLocaleString()} ${unitWordFor(supplier.saleUnit, Number(supplier.moq))}`
+                    ? `${supplier.moq.toLocaleString("en-US")} ${unitWordFor(supplier.saleUnit, Number(supplier.moq))}`
                     : packSizeFromTitle(supplier.productName) > 1
-                      ? `${supplier.moq.toLocaleString()} ${Lx("(sin indicar si son piezas o sets)", "(not stated whether pieces or sets)")}`
-                      : `${supplier.moq.toLocaleString()} ${unitWordFor("piece", Number(supplier.moq))}`
+                      ? `${supplier.moq.toLocaleString("en-US")} ${Lx("(sin indicar si son piezas o sets)", "(not stated whether pieces or sets)")}`
+                      : `${supplier.moq.toLocaleString("en-US")} ${unitWordFor("piece", Number(supplier.moq))}`
                   : String(supplier.moq)
                 : Lx("N/D", "N/A")}
             </span>

@@ -712,8 +712,8 @@ export function SupplierResults() {
     const n = Number(String(s.moq ?? "").replace(/,/g, ""));
     if (!(n > 0)) return Lx("N/D", "N/A");
     const unit = (s as { saleUnit?: string }).saleUnit;
-    if (unit) return `${n.toLocaleString()} ${unitWordFor(unit, n)}`;
-    return packSizeFromTitle(s.productName) > 1 ? `${n.toLocaleString()} ${Lx("(¿piezas o sets?)", "(pieces or sets?)")}` : `${n.toLocaleString()} ${unitWordFor("piece", n)}`;
+    if (unit) return `${n.toLocaleString("en-US")} ${unitWordFor(unit, n)}`;
+    return packSizeFromTitle(s.productName) > 1 ? `${n.toLocaleString("en-US")} ${Lx("(¿piezas o sets?)", "(pieces or sets?)")}` : `${n.toLocaleString("en-US")} ${unitWordFor("piece", n)}`;
   };
   const first = displaySuppliers[0];
   const firstUsable =
@@ -893,6 +893,7 @@ export function SupplierResults() {
             </button>
             {/* Reduced button padding from py-2 to py-1.5 and sm:py-3 to sm:py-2 to fit perfectly in the shorter header */}
             <button
+                aria-label={t("suppliers.viewCostBreakdown")}
               onClick={goToCosts}
               className="px-3 sm:px-6 py-1.5 sm:py-2 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-xl hover:from-blue-700 hover:to-[#0a2f47] transition-all flex items-center gap-2 shadow-lg hover:shadow-xl text-xs sm:text-sm whitespace-nowrap"
             >
@@ -1490,7 +1491,7 @@ export function SupplierResults() {
                         <p className="text-xs text-slate-500">
                           {[
                             sc.ownPrice ? Lx("Con el precio que indicaste", "With the price you entered") : "",
-                            `${sc.quantity.toLocaleString()} ${unitWordFor(sc.unitInfo.unit, sc.quantity)}${sc.piecesPerUnit > 1 ? ` (${(sc.quantity * sc.piecesPerUnit).toLocaleString()} ${Lx("piezas", "pieces")})` : ""}`,
+                            `${sc.quantity.toLocaleString("en-US")} ${unitWordFor(sc.unitInfo.unit, sc.quantity)}${sc.piecesPerUnit > 1 ? ` (${(sc.quantity * sc.piecesPerUnit).toLocaleString("en-US")} ${Lx("piezas", "pieces")})` : ""}`,
                           ].filter(Boolean).join(" · ")}
                           {hasChoices ? Lx(" · mismo escenario del desglose", " · same scenario as the breakdown") : ""}
                         </p>

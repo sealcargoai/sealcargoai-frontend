@@ -200,6 +200,10 @@ export function CostBreakdown() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
         <div className="max-w-4xl mx-auto">
+          {/* the language can be changed here too, before the costs are shown */}
+          <div className="flex justify-end mb-2">
+            <LanguageToggle />
+          </div>
           <button onClick={() => navigate(-1)} className="mb-4 text-sm text-slate-600 hover:text-[#0B3C5D]">
             ← {L("Volver a proveedores", "Back to suppliers")}
           </button>
@@ -239,6 +243,10 @@ export function CostBreakdown() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
         <div className="max-w-4xl mx-auto">
+          {/* the language can be changed here too, before the costs are shown */}
+          <div className="flex justify-end mb-2">
+            <LanguageToggle />
+          </div>
           <button onClick={() => navigate(-1)} className="mb-4 text-sm text-slate-600 hover:text-[#0B3C5D]">
             ← {L("Volver a proveedores", "Back to suppliers")}
           </button>
@@ -268,6 +276,10 @@ export function CostBreakdown() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
         <div className="max-w-4xl mx-auto">
+          {/* the language can be changed here too, before the costs are shown */}
+          <div className="flex justify-end mb-2">
+            <LanguageToggle />
+          </div>
           <button onClick={() => navigate(-1)} className="mb-4 text-sm text-slate-600 hover:text-[#0B3C5D]">
             ← {L("Volver a proveedores", "Back to suppliers")}
           </button>
@@ -300,6 +312,10 @@ export function CostBreakdown() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-cyan-50 px-4 py-8">
         <div className="max-w-4xl mx-auto">
+          {/* the language can be changed here too, before the costs are shown */}
+          <div className="flex justify-end mb-2">
+            <LanguageToggle />
+          </div>
           <button
             onClick={() => navigate(-1)}
             className="mb-4 text-sm text-slate-600 hover:text-[#0B3C5D]"
@@ -413,6 +429,7 @@ export function CostBreakdown() {
               {t("cost.backToSuppliers")}
             </button>
             <button
+              aria-label={t("cost.exportPDF")}
               onClick={() =>
                 exportToPDF(costs, supplierName, quantity, price, productDescription, priceNote, reportNotes, reportDiffs)
               }
@@ -423,6 +440,7 @@ export function CostBreakdown() {
               <span className="sm:hidden">PDF</span>
             </button>
             <button
+              aria-label={t("cost.exportExcel")}
               onClick={() =>
                 exportToExcel(costs, supplierName, quantity, price, destination, productDescription || productType, priceNote, reportNotes, reportDiffs)
               }
@@ -433,6 +451,7 @@ export function CostBreakdown() {
               <span className="sm:hidden">Excel</span>
             </button>
             <button
+                aria-label={t("cost.riskAssessment")}
               onClick={() =>
                 navigate("/risk", {
                   state: {
@@ -484,7 +503,7 @@ export function CostBreakdown() {
           <p className="text-xs mt-1 font-medium">
             {isLiveData ? (
               <span className="text-green-600">
-                ✅ {t("cost.dynamicCalc")} — {quantity.toLocaleString()}{" "}
+                ✅ {t("cost.dynamicCalc")} — {quantity.toLocaleString("en-US")}{" "}
                 {unitWordFor(unitInfo.unit, quantity)} × {formatUnitUSD(Number(price))} ({formatUnitQ(Number(price), costs.exchangeRate)}) →{" "}
                 {t("cost.destination")} Guatemala
               </span>
@@ -516,6 +535,19 @@ export function CostBreakdown() {
             {sc.moqNote}
           </div>
         )}
+        {/* the same assumptions the PDF and Excel carry: what was converted or taken as given */}
+        {sc.notes.filter((n) => n !== sc.moqNote).length > 0 && (
+          <div role="note" data-testid="assumptions" className="bg-sky-50 border border-sky-200 rounded-xl p-4 text-sm text-sky-950 mb-6">
+            <div className="font-semibold mb-1">{L("Supuestos de este cálculo", "Assumptions in this calculation")}</div>
+            <ul className="list-disc pl-5 space-y-1">
+              {sc.notes
+                .filter((n) => n !== sc.moqNote)
+                .map((n, i) => (
+                  <li key={i}>{n}</li>
+                ))}
+            </ul>
+          </div>
+        )}
         <SupplierDisclaimer
           supplier={stateSupplier}
           productDescription={location.state?.productDescription ?? ""}
@@ -541,7 +573,7 @@ export function CostBreakdown() {
                 </div>
               )}
               <div className="text-blue-100 text-xs sm:text-base md:text-lg">
-                {quantity.toLocaleString()} {unitWordFor(unitInfo.unit, quantity)} •{" "}
+                {quantity.toLocaleString("en-US")} {unitWordFor(unitInfo.unit, quantity)} •{" "}
                 <span className="font-bold text-white">
                   {Q(costs.perUnit, 2)} {Lx("por", "per")} {unitWordFor(unitInfo.unit, 1)}
                   {piecesPerUnit > 1 && (
@@ -800,7 +832,7 @@ export function CostBreakdown() {
               {(() => {
                 // Small orders: fixed charges weigh more than the product itself
                 const ins = costs.lines.find((l) => l.key === "insurance")?.amount ?? 0;
-                const insuranceMin = ins > costs.productCost * 0.0101;
+                const insuranceMin = ins > costs.productCost * (costs.insuranceRate || 0.01) * 1.0001;
                 const fixed = costs.lines
                   .filter((l) => l.key === "insurance" || l.key === "customs" || l.key === "local")
                   .reduce((a, l) => a + l.amount, 0);
@@ -885,8 +917,8 @@ export function CostBreakdown() {
             <a
               href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
                 L(
-                  `Hola SEAL, quiero una cotización confirmada para ${quantity.toLocaleString()} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` de: ${productDescription.slice(0, 200)}` : ""} (escenario estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", sin flete" : ""}).`,
-                  `Hello SEAL, I'd like a confirmed quote for ${quantity.toLocaleString()} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` of: ${productDescription.slice(0, 200)}` : ""} (estimated scenario ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", without freight" : ""}).`,
+                  `Hola SEAL, quiero una cotización confirmada para ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` de: ${productDescription.slice(0, 200)}` : ""} (escenario estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", sin flete" : ""}).`,
+                  `Hello SEAL, I'd like a confirmed quote for ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` of: ${productDescription.slice(0, 200)}` : ""} (estimated scenario ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", without freight" : ""}).`,
                 ),
               )}`}
               target="_blank"
@@ -1120,24 +1152,24 @@ function SaleUnitNotice({
       </p>
       <div className="flex flex-col sm:flex-row gap-2">
         <button onClick={() => onMode("sets")} className={btn(mode === "sets")}>
-          {`${requested.toLocaleString()} ${unitWordFor(unit, requested)}`}
+          {`${requested.toLocaleString("en-US")} ${unitWordFor(unit, requested)}`}
           {packSize > 1 && (
             <span className="block text-xs font-normal">
-              {Lx(`= ${(requested * packSize).toLocaleString()} ${itemEs}`, `= ${(requested * packSize).toLocaleString()} ${itemEn}`)}
+              {Lx(`= ${(requested * packSize).toLocaleString("en-US")} ${itemEs}`, `= ${(requested * packSize).toLocaleString("en-US")} ${itemEn}`)}
             </span>
           )}
         </button>
         <button onClick={() => onMode("pieces")} className={btn(mode === "pieces")}>
           {countedLabel
-            ? `${requested.toLocaleString()} ${countedLabel} (${pieces.toLocaleString()} ${item || Lx("piezas", "pieces")})`
+            ? `${requested.toLocaleString("en-US")} ${countedLabel} (${pieces.toLocaleString("en-US")} ${item || Lx("piezas", "pieces")})`
             : item
-            ? `${requested.toLocaleString()} ${item}`
-            : Lx(`${requested.toLocaleString()} ${requested === 1 ? "pieza" : "piezas"}`, `${requested.toLocaleString()} ${requested === 1 ? "piece" : "pieces"}`)}
+            ? `${requested.toLocaleString("en-US")} ${item}`
+            : Lx(`${requested.toLocaleString("en-US")} ${requested === 1 ? "pieza" : "piezas"}`, `${requested.toLocaleString("en-US")} ${requested === 1 ? "piece" : "pieces"}`)}
           <span className="block text-xs font-normal">
             {packSize > 1
               ? Lx(
-                  `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} ${itemEs})`,
-                  `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} ${itemEn})`,
+                  `= ${sets.toLocaleString("en-US")} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString("en-US")} ${itemEs})`,
+                  `= ${sets.toLocaleString("en-US")} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString("en-US")} ${itemEn})`,
                 )
               : Lx(`necesitamos saber ${howMany.toLowerCase()} ${itemEs} trae cada ${one}`, `we need to know how many ${itemEn} each ${one} holds`)}
           </span>

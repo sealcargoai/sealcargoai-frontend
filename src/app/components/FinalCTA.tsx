@@ -108,6 +108,18 @@ async function exportToExcel(data: {
 }
 
 // ─── Component ───────────────────────────────────────────────────────────────
+export function newReportId(now = new Date()): string {
+  const d = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
+  const rnd = (() => {
+    try {
+      return crypto.getRandomValues(new Uint32Array(1))[0].toString(36);
+    } catch {
+      return Math.floor(Math.random() * 2 ** 32).toString(36);
+    }
+  })();
+  return `SEAL-${d}-${rnd.toUpperCase().padStart(6, "0").slice(-6)}`;
+}
+
 export function FinalCTA() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -194,7 +206,9 @@ export function FinalCTA() {
   // ── Modal state ───────────────────────────────────────────────────────────
   // One ID per report: the screen, the PDF and the email show the same one
   const [reportId] = useState<string>(
-    () => location.state?.reportId || `SEAL-${new Date().getFullYear()}-${String(Date.now()).slice(-4)}`,
+    // date + 6 random characters: two reports never share an ID (the old 4-digit
+    // suffix repeated every 10 seconds)
+    () => location.state?.reportId || newReportId(),
   );
   // Esc closes the quote and email forms
   useEffect(() => {
@@ -393,11 +407,21 @@ export function FinalCTA() {
                 return "";
               }
             })(),
+            // the token the search returned for that email (the server checks it)
+            reportToken: (() => {
+              try {
+                return JSON.parse(localStorage.getItem("seal_report_token") || "{}").token || "";
+              } catch {
+                return "";
+              }
+            })(),
             recipientName: emailRecipientName,
             pdfBase64,
             supplierName,
             totalCost: costs.totalCost,
             totalCostText,
+            // the email goes in the language the client is using
+            lang: Lx("es", "en"),
           }),
         },
       );
@@ -840,7 +864,7 @@ export function FinalCTA() {
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-5 text-sm">
               <p className="font-semibold text-[#0B3C5D]">{supplierName}</p>
               <p className="text-slate-600 mt-1">
-                {quantity.toLocaleString()} {unitWordFor(saleUnit, quantity)} • {costs.freightPending ? Lx("Total parcial:", "Partial total:") : Lx("Total estimado:", "Estimated total:")}{" "}
+                {quantity.toLocaleString("en-US")} {unitWordFor(saleUnit, quantity)} • {costs.freightPending ? Lx("Total parcial:", "Partial total:") : Lx("Total estimado:", "Estimated total:")}{" "}
                 {Q(costs.totalCost)}
                 {costs.freightPending ? Lx(" (sin flete)", " (without freight)") : ""}
               </p>

@@ -34,7 +34,7 @@ export function LandingPage() {
     e.preventDefault();
     const n = name.trim();
     const m = email.trim();
-    if (!queryOk) return setFormError(queryTrim.length > QUERY_MAX ? L(`Máximo ${QUERY_MAX.toLocaleString()} caracteres.`, `Maximum ${QUERY_MAX.toLocaleString()} characters.`) : descriptionDetailMessage());
+    if (!queryOk) return setFormError(queryTrim.length > QUERY_MAX ? L(`Máximo ${QUERY_MAX.toLocaleString("en-US")} caracteres.`, `Maximum ${QUERY_MAX.toLocaleString("en-US")} characters.`) : descriptionDetailMessage());
     if (n.length < NAME_MIN) return setFormError(L("Escribe tu nombre completo.", "Enter your full name."));
     if (!EMAIL_RE.test(m)) return setFormError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
     setFormError("");
@@ -152,7 +152,7 @@ export function LandingPage() {
                           : L("Puedes detallar más en el siguiente paso", "You can add more detail in the next step")}
                       </span>
                       <span className="shrink-0">
-                        {query.length.toLocaleString()}/{QUERY_MAX.toLocaleString()}
+                        {query.length.toLocaleString("en-US")}/{QUERY_MAX.toLocaleString("en-US")}
                       </span>
                     </div>
                   )}
