@@ -1,4 +1,5 @@
 import ExcelJS from "exceljs";
+import { differencesHeading, differencesFootnote } from "./differences";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
@@ -104,6 +105,8 @@ export interface ExcelExportData {
   vatRate: number;
   insuranceRate: number;
   notes?: string[]; // assumptions (pieces per set, price basis, minimum order…)
+  // the listing title and its differences with the request (same warnings as on screen)
+  differences?: { title: string; items: string[] };
 }
 
 const DEFAULT_FX = 7.9;
@@ -530,6 +533,36 @@ export async function generateBeautifulExcel(
     ws.getRow(r).height = Math.max(18, Math.ceil(n.length / 95) * 15);
     notesEnd = r;
   });
+
+  // ═══ DIFFERENCES AND DATA TO CONFIRM (same warnings as on screen) ═══════
+  const diff = data.differences;
+  if (diff && (diff.title || diff.items.length)) {
+    let r = notesEnd + 2;
+    ws.mergeCells(`A${r}:E${r}`);
+    const h = ws.getCell(`A${r}`);
+    h.value = differencesHeading().toUpperCase();
+    h.font = { name: "Arial", size: 11, bold: true, color: { argb: "FFFFFFFF" } };
+    h.alignment = { vertical: "middle", horizontal: "left", indent: 1 };
+    h.fill = { type: "pattern", pattern: "solid", fgColor: { argb: diff.items.length ? "FFB45309" : "FF3B82F6" } };
+    ws.getRow(r).height = 22;
+    const lines = [
+      ...(diff.title ? [`${Lx("Título publicado", "Published title")}: ${diff.title}`] : []),
+      ...(diff.items.length ? diff.items.map((x) => `• ${x}`) : [Lx("No encontramos diferencias en el título; igual confirma los datos con el proveedor.", "We found no differences in the title; still confirm the data with the supplier.")]),
+      differencesFootnote(),
+    ];
+    lines.forEach((text, i) => {
+      r += 1;
+      ws.mergeCells(`A${r}:E${r}`);
+      const c = ws.getCell(`A${r}`);
+      c.value = text;
+      const isItem = text.startsWith("•");
+      c.font = { name: "Arial", size: i === lines.length - 1 ? 9 : 10, italic: i === lines.length - 1, color: { argb: isItem ? "FF7F1D1D" : "FF334155" }, bold: i === 0 && !!diff.title };
+      c.alignment = { vertical: "middle", horizontal: "left", wrapText: true, indent: 1 };
+      c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: isItem ? "FFFEF2F2" : "FFF8FAFC" } };
+      ws.getRow(r).height = Math.max(18, Math.ceil(text.length / 95) * 15);
+    });
+    notesEnd = r;
+  }
 
   // ═══ FOOTER (after per-unit row) ══════════════════════════════════════════════════
   const f1 = notesEnd + 2;

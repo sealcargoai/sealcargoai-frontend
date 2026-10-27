@@ -5,6 +5,7 @@
 // - Keeps the client's own product description, presents the total as a
 //   preliminary scenario and lists the variables that can change it.
 import jsPDF from "jspdf";
+import { differencesHeading, differencesFootnote } from "./differences";
 import autoTable from "jspdf-autotable";
 import { drawCompanyInfoBox, drawCompanyFooter } from "./reportExports";
 import { formatQ, formatUSD, formatUnitUSD, formatUnitQ, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
@@ -34,6 +35,8 @@ export interface CostPdfInput {
   costs: CostResult;
   topics?: { title: string }[];
   notes?: string[]; // assumptions (pieces per set, price basis, minimum order…)
+  // the listing title and its differences with the request (same warnings as on screen)
+  differences?: { title: string; items: string[] };
   disclaimer: string;
   reportId?: string;
   fileName: string;
@@ -117,6 +120,40 @@ function drawCostPdf(d: CostPdfInput, tight: boolean): any {
   if (desc.length > 8) desc = [...desc.slice(0, 7), `${desc[7].slice(0, 80)}...`];
   text(desc, 58, y);
   y += RH * desc.length + (tight ? 2 : 4);
+
+  // The listing as published, and what differs from the request or must be confirmed
+  const diff = d.differences;
+  if (diff?.title) {
+    doc.setFont("helvetica", "bold");
+    text(`${Lx("Publicación", "Listing")}:`, 14, y);
+    doc.setFont("helvetica", "normal");
+    let tl = wrap(diff.title, W - 70);
+    if (tl.length > 4) tl = [...tl.slice(0, 3), `${tl[3].slice(0, 80)}...`];
+    text(tl, 58, y);
+    y += RH * tl.length + (tight ? 2 : 3);
+  }
+  if (diff?.items.length) {
+    ensure(RH * 3);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(153, 27, 27);
+    text(`${differencesHeading()}:`, 14, y);
+    y += RH;
+    doc.setFont("helvetica", "normal");
+    for (const n of diff.items) {
+      const lines = wrap(`- ${n}`, W - 30);
+      ensure(RH * lines.length + 2);
+      text(lines, 18, y);
+      y += RH * lines.length;
+    }
+    doc.setTextColor(100, 116, 139);
+    doc.setFontSize(tight ? 7.5 : 8);
+    const fl = wrap(differencesFootnote(), W - 30);
+    ensure(RH * fl.length);
+    text(fl, 18, y);
+    y += RH * fl.length + (tight ? 2 : 4);
+    doc.setFontSize(tight ? 8.5 : 9);
+    doc.setTextColor(30, 41, 59);
+  }
 
   // Assumptions behind the quantity and price (same as on screen)
   if (d.notes?.length) {

@@ -107,6 +107,7 @@ export interface PackMath {
   alt?: { packs: number; kind: "contentPairs" | "contentPieces" | "wantedPairs"; word: string };
   // a mixed set ("cada set trae 1 botella y 3 tazas"); target = the item the quantity counts, -1 = none
   kit?: { parts: { n: number; noun: string }[]; target: number };
+  zero?: boolean; // the client wrote a pack content of 0
 }
 
 // ── Units: pairs and dozens are not pieces ───────────────────────────────────
@@ -227,6 +228,8 @@ export function packMath(text: string, force = false): PackMath | null {
   t = t.replace(new RegExp(`\\d+\\s+${PACK_RE}\\s+(?:de\\s+)?(?:muestras?|samples?)\\b`, "g"), " ");
   // a budget is money even without a currency ("presupuesto de 300")
   t = t.replace(/(?:presupuesto|budget)\s+(?:de\s+|of\s+|es\s+de\s+|is\s+)?(?:unos\s+|about\s+)?\d+(?:[.,]\d+)?/g, " ");
+  // "cero lápices" is a content of 0, which gets its own answer
+  t = t.replace(/\b(?:cero|zero)\b/g, "0");
   // a mixed set is counted by the item the quantity refers to
   const kit = kitMath(t);
   if (kit) return kit;
@@ -235,6 +238,8 @@ export function packMath(text: string, force = false): PackMath | null {
   const rules: [RegExp, number, number][] = [
     // [regex, group of the pack word, group of the size]
     [new RegExp(`(?:cada|each|every|un|una|1|per|por)\\s+${PACK_RE}\\s+${HAS}\\s+${N}`), 1, 2],
+    // "en cada caja hay 40", "en cada set vienen 12", "in each box there are 50"
+    [new RegExp(`(?:cada|each|every)\\s+${PACK_RE}\\s+(?:hay|vienen|viene|van|va|caben|cabe|entran|entra|traer[aá]n?|there\\s+are|there\\s+is|are|is|fit|fits|go)\\s+${N}`), 1, 2],
     [new RegExp(`${PACK_RE}\\s+${HAS}\\s+${N}`), 1, 2],
     [new RegExp(`${PACK_RE}\\s+(?:de|of|con|with|x)\\s*${N}`), 1, 2],
     [new RegExp(`${PACK_RE}\\s+(?:vienen|viene|come|comes|son|are)\\s+(?:de|of|con|with|en)\\s+${N}`), 1, 2],
@@ -271,6 +276,12 @@ export function packMath(text: string, force = false): PackMath | null {
     }
   }
   const pack = packOf(packWord);
+  // a pack with nothing in it can't be calculated: ask for its real content
+  if (pack && used && perPack === 0) {
+    const q = t.replace(used, " ").match(/(\d+)(?:\s+([a-záéíóúüñ]+))?/);
+    const word = q?.[2] && !NOT_ITEM.test(q[2]) && !CONNECT.test(q[2]) && !packOf(q[2]) ? q[2] : "";
+    return { mode: "ask", perPack: 0, packs: 0, wanted: q && Number(q[1]) > 0 ? Number(q[1]) : 0, total: 0, extra: 0, pack, item: word, zero: true };
+  }
   if (!pack || !(perPack > 1) || perPack > 1e6 || !Number.isInteger(perPack)) return null;
   // the words that say what each pack holds: "cada caja trae 100 [guantes individuales]",
   // "cajas de 20 [pares]", "20 [pares] por caja"
@@ -514,6 +525,11 @@ function kitReply(m: PackMath): string {
 function packMathReply(m: PackMath): string {
   if (m.kit) return kitReply(m);
   const items = m.item || Lx("piezas", "pieces");
+  if (m.mode === "ask" && m.zero)
+    return Lx(
+      `Un ${m.pack[1]} con 0 ${m.item || "piezas"} no permite calcular: ¿qué cantidad de ${m.item || "piezas"} trae en realidad cada ${m.pack[1]}? Escríbeme un número mayor que cero${m.wanted ? "" : " y la cantidad total que necesitas"}.`,
+      `A ${m.pack[3]} holding 0 ${m.item || "pieces"} can't be calculated: how many ${m.item || "pieces"} does each ${m.pack[3]} actually hold? Send me a number above zero${m.wanted ? "" : " and the total quantity you need"}.`,
+    );
   if (m.mode === "ask") {
     const pw2 = Lx(m.pack[2], m.pack[4]);
     const noun = m.conv?.perWord || "";
