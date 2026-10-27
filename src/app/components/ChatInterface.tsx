@@ -7,6 +7,7 @@ import { LanguageToggle } from "./LanguageToggle";
 import { buildReply, nextSpec, contactIntent, urgentContact, requestStatusQuestion, type ReplySpec } from "../../utils/chatReply";
 import { lastSentCase } from "../../utils/caseContext";
 import { ContactSeal } from "./ContactSeal";
+import { savedProduct, saveProduct } from "../../utils/draft";
 
 interface Message {
   role: "user" | "ai";
@@ -21,19 +22,31 @@ export function ChatInterface() {
   const location = useLocation();
   const { query, name, email, descriptionCleaned } = location.state || {};
   const { t, L } = useLanguage();
+  // The conversation of this case is kept while the client goes to the form and back
+  // (a new case from the start screen clears it). Its intro keeps the request it began with.
+  const CHAT_KEY = "seal_chat";
+  const savedChat = (() => {
+    try {
+      const v = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "null");
+      return v && Array.isArray(v.messages) ? (v as { query?: string; messages: Message[] }) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const startQuery = savedChat?.messages.length && typeof savedChat.query === "string" ? savedChat.query : String(query || "");
 
   // Assistant texts are resolved at render time so they follow the ES / EN switch
   const intro: Message[] = [
     {
       role: "ai",
       content: L(
-        `${name ? `Hola, ${name}.` : "Hola."} Soy el asistente de orientación de SEAL. Puedo ayudarte a organizar la información de tu importación, explorar posibles proveedores y revisar algunos aspectos que conviene considerar.${query ? ` Tu consulta: "${query}".` : ""}${descriptionCleaned ? " Dejé fuera una parte del texto que no describe el producto; la herramienta no garantiza proveedores." : ""}`,
-        `${name ? `Hi, ${name}.` : "Hi."} I'm SEAL's guidance assistant. I can help you organize the information for your import, explore possible suppliers and review some aspects worth considering.${query ? ` Your request: "${query}".` : ""}${descriptionCleaned ? " I left out part of the text that doesn't describe the product; the tool does not guarantee suppliers." : ""}`,
+        `${name ? `Hola, ${name}.` : "Hola."} Soy el asistente de orientación de SEAL. Puedo ayudarte a organizar la información de tu importación, explorar posibles proveedores y revisar algunos aspectos que conviene considerar.${startQuery ? ` Tu consulta: "${startQuery}".` : ""}${descriptionCleaned ? " Dejé fuera una parte del texto que no describe el producto; la herramienta no garantiza proveedores." : ""}`,
+        `${name ? `Hi, ${name}.` : "Hi."} I'm SEAL's guidance assistant. I can help you organize the information for your import, explore possible suppliers and review some aspects worth considering.${startQuery ? ` Your request: "${startQuery}".` : ""}${descriptionCleaned ? " I left out part of the text that doesn't describe the product; the tool does not guarantee suppliers." : ""}`,
       ),
     },
     {
       role: "ai",
-      content: query
+      content: startQuery
         ? L(
             "Con tu consulta ya tengo el producto. En el formulario confirmamos la cantidad y, si lo tienes, el volumen o el peso; el destino es Guatemala. También puedes preguntarme aquí.",
             "With your request I already have the product. In the form we confirm the quantity and, if you have it, the volume or weight; the destination is Guatemala. You can also ask me here.",
@@ -46,46 +59,46 @@ export function ChatInterface() {
   ];
   // "ai" entries hold a reply spec (JSON); the text is built at render (ES / EN)
   // from the product the client actually named
-  // The conversation survives a reload of this tab (same request)
-  const CHAT_KEY = "seal_chat";
+  const specsOf = (list: Message[]) => list.filter((m) => m.role === "ai").map((m) => JSON.parse(m.content) as ReplySpec);
+  // quantity: the last one the client gave here, else the one in their request
+  const initialQty = (() => {
+    // "500 ml", "20 kg", "12 V" are sizes, not the quantity
+    const m = String(startQuery || "").replace(/(\d),(\d{3})/g, "$1$2").match(/\b(\d+)\s*(?!\s*(?:ml|l|lt|lts|litros?|kg|kgs|g|gr|grs|gramos?|oz|lb|lbs|libras?|t|ton|toneladas?|cm|mm|m|mts?|metros?|pulgadas?|in|ft|pies|w|v|kw|kva|hp|hz|mah|gb|tb|agujas|needles|%|"|x\s*\d)\b)(?=\s|$)/i);
+    return m ? Number(m[1]) : 0;
+  })();
+  const contextOf = (list: ReplySpec[]) => {
+    const lastNamed = [...list].reverse().find((x) => x.newProduct || x.mentioned);
+    return {
+      currentProduct: lastNamed?.newProduct || lastNamed?.mentioned || String(startQuery || "").trim(),
+      currentQuantity: [...list].reverse().find((x) => x.newQuantity)?.newQuantity || initialQty,
+    };
+  };
   const [messages, setMessages] = useState<Message[]>(() => {
-    try {
-      const saved = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "null");
-      // a reply that was still "typing" when the page reloaded is shown in full
-      return saved && saved.query === (query || "") && Array.isArray(saved.messages)
-        ? saved.messages.map((m: Message) => ({ ...m, pending: false }))
-        : [];
-    } catch {
-      return [];
+    // a reply that was still "typing" when the page reloaded is shown in full
+    const list: Message[] = (savedChat?.messages || []).map((m: Message) => ({ ...m, pending: false }));
+    // the client changed the product in the form: the chat continues with it, and says so
+    const inForm = savedProduct();
+    const here = contextOf(specsOf(list)).currentProduct;
+    const norm = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
+    if (inForm && norm(inForm) !== norm(here)) {
+      const spec: ReplySpec = { text: "", product: inForm, newProduct: inForm, previous: here, formUpdate: true };
+      list.push({ role: "ai", content: JSON.stringify(spec), id: Date.now() });
     }
+    return list;
   });
   useEffect(() => {
     try {
-      sessionStorage.setItem(CHAT_KEY, JSON.stringify({ query: query || "", messages }));
+      sessionStorage.setItem(CHAT_KEY, JSON.stringify({ query: startQuery, messages }));
     } catch {
       /* storage unavailable */
     }
-  }, [messages, query]);
+  }, [messages, startQuery]);
   const [input, setInput] = useState("");
   // the newest answer (and the way to SEAL under it) comes into view
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (messages.length) endRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
   }, [messages]);
-  const specsOf = (list: Message[]) => list.filter((m) => m.role === "ai").map((m) => JSON.parse(m.content) as ReplySpec);
-  // quantity: the last one the client gave here, else the one in their request
-  const initialQty = (() => {
-    // "500 ml", "20 kg", "12 V" are sizes, not the quantity
-    const m = String(query || "").replace(/(\d),(\d{3})/g, "$1$2").match(/\b(\d+)\s*(?!\s*(?:ml|l|lt|lts|litros?|kg|kgs|g|gr|grs|gramos?|oz|lb|lbs|libras?|t|ton|toneladas?|cm|mm|m|mts?|metros?|pulgadas?|in|ft|pies|w|v|kw|kva|hp|hz|mah|gb|tb|agujas|needles|%|"|x\s*\d)\b)(?=\s|$)/i);
-    return m ? Number(m[1]) : 0;
-  })();
-  const contextOf = (list: ReplySpec[]) => {
-    const lastNamed = [...list].reverse().find((x) => x.newProduct || x.mentioned);
-    return {
-      currentProduct: lastNamed?.newProduct || lastNamed?.mentioned || String(query || "").trim(),
-      currentQuantity: [...list].reverse().find((x) => x.newQuantity)?.newQuantity || initialQty,
-    };
-  };
   const specs = specsOf(messages);
   const { currentProduct, currentQuantity } = contextOf(specs);
   // whoever wants to move forward gets the way to SEAL right under that answer
@@ -118,6 +131,8 @@ export function ChatInterface() {
       const ctx = contextOf(earlier);
       // what the message is (calculation, follow-up, product, quantity change): utils/chatReply nextSpec
       const spec = nextSpec(text, earlier, ctx.currentProduct, ctx.currentQuantity);
+      // the product named here is the one the form will use
+      if (spec.newProduct) saveProduct(spec.newProduct);
       // "¿ya llegó mi solicitud?": answered with the case actually sent from this tab, if any
       if (requestStatusQuestion(text)) spec.sentCase = lastSentCase() || undefined;
       return [...prev, { role: "user", content: text, id }, { role: "ai", content: JSON.stringify(spec), id, pending: true }];

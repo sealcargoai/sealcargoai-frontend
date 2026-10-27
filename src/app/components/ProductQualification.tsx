@@ -3,7 +3,7 @@ import { inferCategory } from "../../utils/category";
 import { quantityWord } from "../../utils/saleUnit";
 import { plainNumber } from "../../utils/plainNumber";
 import { useState, useEffect } from "react";
-import { DRAFT_KEY } from "../../utils/draft";
+import { DRAFT_KEY, savedProduct, saveProduct } from "../../utils/draft";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
 import { useNavigate, useLocation } from "react-router";
 import {
@@ -121,7 +121,10 @@ export function ProductQualification() {
   // A saved draft (same session) is restored so nothing typed is lost after an
   // error or a reload. A new query coming from the start screen wins.
   const draft = loadDraft();
-  const useDraft = !!draft?.formData && (!userQuery || draft.formData.productType === userQuery);
+  // the draft of this case is always kept (a new case from the start screen clears it);
+  // the product is the one the client set last, in the chat or here
+  const useDraft = !!draft?.formData;
+  const currentProduct = savedProduct() || (useDraft ? draft!.formData!.productType : "") || userQuery;
   const [step, setStep] = useState(useDraft && draft?.step ? draft.step : 1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -135,6 +138,7 @@ export function ProductQualification() {
     volumeCbm: "", // optional — used to quote ocean freight
     weightKg: "",  // optional
     ...(useDraft ? draft!.formData : {}),
+    productType: currentProduct,
     // a quantity the client gave in the chat ("quiero 2000 en vez de 500")
     ...(location.state?.quantity && Number(location.state.quantity) >= 1 ? { quantity: String(Number(location.state.quantity)) } : {}),
   });
@@ -142,6 +146,7 @@ export function ProductQualification() {
   useEffect(() => {
     try {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ formData, step }));
+      saveProduct(formData.productType);
     } catch {
       /* storage unavailable */
     }
@@ -415,7 +420,7 @@ export function ProductQualification() {
             <button
               onClick={() =>
                 // back to this case's chat (same request, so its conversation is restored)
-                navigate("/chat", { state: { query: userQuery, name: userName, email: userEmail, descriptionCleaned: !!location.state?.descriptionCleaned } })
+                navigate("/chat", { state: { query: formData.productType || userQuery, name: userName, email: userEmail, descriptionCleaned: !!location.state?.descriptionCleaned } })
               }
               className="text-slate-600 hover:text-[#0B3C5D] flex items-center gap-2 font-medium transition-colors"
             >
