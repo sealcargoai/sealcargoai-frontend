@@ -1,3 +1,4 @@
+import { sendToSeal, receiptText, rememberCase } from "../../utils/caseContext";
 import { useEffect, useState } from "react";
 import { cleanSupplier } from "../../utils/text";
 import { qtyFrom, resolveScenario, priceNoteFor, reportNotesFor } from "../../utils/scenario";
@@ -307,12 +308,7 @@ export function FinalCTA() {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const res = await fetch(
-        `${import.meta.env.VITE_API_URL || "http://localhost:3001"}/api/email/quote`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
+      const res = await sendToSeal({
             name: quoteName,
             email: quoteEmail,
             phone: quotePhone,
@@ -328,16 +324,15 @@ export function FinalCTA() {
             destination,
             budget: stateBudget ? `US$${stateBudget}` : "",
             supplierUrl: stateSupplier?.productUrl || stateSupplier?.storeUrl || "",
-          }),
-        },
-      );
+            source: "informe",
+          });
       if (res.status === 429) {
         // the email endpoint allows a few requests per hour: retrying now won't work
         alert(L(`Se alcanzó el límite de envíos por ahora. Escríbenos al WhatsApp de SEAL ${SEAL_COMPANY.phone} y te atendemos de inmediato.`, `The sending limit was reached for now. Message SEAL on WhatsApp ${SEAL_COMPANY.phone} and we'll help you right away.`));
         return;
       }
       if (!res.ok) throw new Error("Failed");
-      alert(t("final.quoteSuccess"));
+      alert(`${t("final.quoteSuccess")}\n\n${receiptText(res, L)}`);
       setShowQuoteModal(false);
       setQuoteName("");
       setQuoteEmail("");

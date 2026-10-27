@@ -1,6 +1,9 @@
+import { ContactSeal } from "./ContactSeal";
+import { track } from "../../utils/funnel";
+import { sendToSeal, receiptText, rememberCase } from "../../utils/caseContext";
 import { supplierKey, loadCostChoices } from "../../utils/draft";
 import { qtyFrom, resolveScenario, type CostChoices } from "../../utils/scenario";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router";
 import {
   Star,
@@ -101,7 +104,7 @@ function MorePlatforms({
   const [email, setEmail] = useState(stored.email);
   const [notes, setNotes] = useState("");
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState("");
   const [error, setError] = useState("");
 
   // what the client rules out ("no para carne ni pintura") is not searched for
@@ -114,10 +117,7 @@ function MorePlatforms({
     setSending(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/email/quote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await sendToSeal({
           requestType: "Proveedor de otra plataforma",
           name,
           email,
@@ -128,14 +128,14 @@ function MorePlatforms({
           quantity,
           budget,
           destination,
-        }),
-      });
+          source: "resultados",
+        });
       if (res.status === 400) {
         setError(Lx("Revisa tu correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSent(true);
+      setSent(receiptText(res, Lx));
     } catch {
       setError(Lx(`No se pudo enviar. Llámanos al ${SEAL_COMPANY.phone}.`, `Could not send. Call us at ${SEAL_COMPANY.phone}.`));
     } finally {
@@ -174,7 +174,7 @@ function MorePlatforms({
       <div className="mt-5 pt-5 border-t border-slate-200">
         {sent ? (
           <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-sm text-green-800">
-            ✅ {Lx("Recibimos el proveedor. Un ejecutivo de SEAL te cotiza flete y nacionalización.", "We received the supplier. A SEAL executive will quote freight and customs clearance.")}
+            ✅ {sent}
           </div>
         ) : !open ? (
           <button
@@ -271,7 +271,7 @@ function NoResults({
   const [company, setCompany] = useState("");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState("");
   const [error, setError] = useState("");
 
   const allFiltered = totalAnalyzed > 0;
@@ -281,10 +281,7 @@ function NoResults({
     setSending(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/email/quote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await sendToSeal({
           requestType: "Búsqueda asistida de proveedores",
           name,
           email,
@@ -295,14 +292,14 @@ function NoResults({
           quantity,
           budget,
           destination,
-        }),
-      });
+          source: "resultados",
+        });
       if (res.status === 400) {
         setError(Lx("Revisa tu correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSent(true);
+      setSent(receiptText(res, Lx));
     } catch {
       setError(
         Lx(`No se pudo enviar la solicitud. Llámanos o escríbenos al ${SEAL_COMPANY.phone}.`, `Could not send the request. Call us at ${SEAL_COMPANY.phone}.`),
@@ -364,7 +361,7 @@ function NoResults({
               <div className="font-semibold mb-1 flex items-center gap-2">
                 <CheckCircle className="w-5 h-5" /> {Lx("Solicitud recibida", "Request received")}
               </div>
-              {Lx("Un ejecutivo de SEAL te contactará para darle seguimiento a tu búsqueda.", "A SEAL executive will contact you to follow up on your search.")}
+              {sent}
             </div>
           ) : (
             <form onSubmit={submit} className="space-y-4">
@@ -690,6 +687,12 @@ export function SupplierResults() {
   const navBudget = location.state?.budget ?? "";
   const navDestination = location.state?.destination ?? "GT";
   const navProductType = location.state?.productType ?? "";
+  // funnel: results shown (once per browser and day on the server); the case so far
+  useEffect(() => {
+    if (isLiveData) track("resultados", { seal_results: displaySuppliers.length });
+    rememberCase({ productDescription: String(location.state?.productDescription ?? ""), quantity: String(navQuantity || ""), budget: navBudget ? `US$${navBudget}` : "", destination: "Guatemala" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const rates = useRates();
 
@@ -825,10 +828,7 @@ export function SupplierResults() {
   const handleContactSupplier = async () => {
     const user = getStoredUser();
     try {
-      const res = await fetch(`${API_URL}/api/email/quote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await sendToSeal({
           requestType: "Contactar proveedor",
           name: user.name || "Sin nombre",
           email: user.email,
@@ -840,11 +840,11 @@ export function SupplierResults() {
           quantity: navQuantity,
           budget: navBudget,
           destination: navDestination,
-        }),
-      });
+          source: "resultados",
+        });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setShowContactModal(false);
-      alert(Lx("¡Solicitud enviada! Un ejecutivo de SEAL te dará seguimiento.", "Request sent! A SEAL executive will follow up."));
+      alert(receiptText(res, Lx));
     } catch {
       alert(Lx(`No se pudo enviar. Llámanos al ${SEAL_COMPANY.phone}.`, `Could not send. Call us at ${SEAL_COMPANY.phone}.`));
     }
@@ -904,6 +904,7 @@ export function SupplierResults() {
               <span className="sm:hidden">{Lx("Costos", "Costs")}</span>
               <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4" />
             </button>
+            <ContactSeal source="resultados" label={Lx("Hablar con SEAL", "Talk to SEAL")} className="hidden md:inline-flex" />
             <LanguageToggle />
           </div>
         </div>
@@ -915,6 +916,11 @@ export function SupplierResults() {
           <h1 className="text-3xl font-bold text-[#0B3C5D] mb-2">
             {t("suppliers.title")}
           </h1>
+          {/* a way to SEAL that doesn't depend on choosing a listing */}
+          <p className="text-sm text-slate-700 mb-2">
+            {Lx("¿Ya tienes proveedor o prefieres que SEAL se encargue?", "Already have a supplier or prefer SEAL to handle it?")}{" "}
+            <ContactSeal source="resultados" variant="link" className="text-emerald-800" label={Lx("Hablar con SEAL", "Talk to SEAL")} />
+          </p>
           <p className="text-slate-600">
             {displaySuppliers.length} {plural(displaySuppliers.length, "proveedor mejor clasificado", "proveedores mejor clasificados", "top-ranked supplier", "top-ranked suppliers")} •{" "}
             {filteredTotal} {plural(filteredTotal, "filtrado", "filtrados", "filtered out", "filtered out")}

@@ -1,3 +1,5 @@
+import { rememberCase } from "../../utils/caseContext";
+import { ContactSeal } from "./ContactSeal";
 import { supplierKey, loadCostChoices, saveCostChoices } from "../../utils/draft";
 import { componentText, type ComponentFlag } from "../../utils/componentMatch";
 import { qtyFrom, resolveScenario, priceNoteFor, reportNotesFor, type CostChoices } from "../../utils/scenario";
@@ -348,6 +350,20 @@ export function CostBreakdown() {
   ].filter(Boolean);
   // the listing title and what differs from the request: the same warnings as on screen
   const reportDiffs = listingDifferences(productDescription, stateSupplier);
+  // the case SEAL receives from any "talk to SEAL" button: what this screen shows
+  const caseNow = {
+    productDescription,
+    quantity: `${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${piecesPerUnit > 1 ? ` (${(quantity * piecesPerUnit).toLocaleString("en-US")} ${L("piezas", "pieces")})` : ""}`,
+    supplierName,
+    supplierUrl: stateSupplier?.productUrl || stateSupplier?.storeUrl || "",
+    price: price > 0 ? `${formatUnitUSD(price)} / ${unitWordFor(unitInfo.unit, 1)}` : "",
+    totalCostText: `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? L(", sin flete", ", without freight") : ""}`,
+    budget: budget > 0 ? `US$${budget.toLocaleString("en-US")}` : "",
+    destination,
+    assumptions: [...sc.notes, ...reportNotes].filter((n, i, all) => n && all.indexOf(n) === i).slice(0, 12) as string[],
+    warnings: reportDiffs.items.slice(0, 12),
+  };
+  rememberCase(caseNow);
 
   // ── Chart data ────────────────────────────────────────────────────────────
   const costData = costs.lines
@@ -914,6 +930,9 @@ export function CostBreakdown() {
                 </span>
               </li>
             </ul>
+            <div className="mt-4">
+              <ContactSeal source="costos" requestType="Cotización confirmada (desde la estimación)" context={caseNow} label={L("Enviar mi caso a SEAL para cotizar", "Send my case to SEAL for a quote")} />
+            </div>
             <a
               href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
                 L(
@@ -923,9 +942,9 @@ export function CostBreakdown() {
               )}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47] transition-colors"
+              className="mt-3 inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47] transition-colors"
             >
-              <span>{L("Pedir una cotización confirmada", "Request a confirmed quote")}</span>
+              <span>{L("O pedirla por WhatsApp", "Or ask on WhatsApp")}</span>
               <ArrowRight className="w-4 h-4" />
             </a>
           </div>

@@ -1,3 +1,4 @@
+import { sendToSeal, receiptText, rememberCase } from "../../utils/caseContext";
 import { inferCategory } from "../../utils/category";
 import { quantityWord } from "../../utils/saleUnit";
 import { plainNumber } from "../../utils/plainNumber";
@@ -171,6 +172,7 @@ export function ProductQualification() {
   const [elapsed, setElapsed] = useState(0);
   const [searchFailed, setSearchFailed] = useState(false);
   const [helpSent, setHelpSent] = useState<"" | "sending" | "sent" | "error">("");
+  const [helpReceipt, setHelpReceipt] = useState("");
 
   // Seconds counter while searching (shown to the client)
   useEffect(() => {
@@ -184,10 +186,7 @@ export function ProductQualification() {
   const requestSealReview = async () => {
     setHelpSent("sending");
     try {
-      const res = await fetch(`${API}/api/email/quote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await sendToSeal({
           requestType: "Búsqueda asistida (la consulta no se completó)",
           name: userName,
           email: userEmail,
@@ -199,8 +198,9 @@ export function ProductQualification() {
             formData.volumeCbm && `Volumen: ${formData.volumeCbm} m³`,
             formData.weightKg && `Peso: ${formData.weightKg} kg`,
           ].filter(Boolean).join(" · "),
-        }),
-      });
+          source: "formulario",
+        });
+      setHelpReceipt(receiptText(res, L));
       setHelpSent(res.ok ? "sent" : "error");
     } catch {
       setHelpSent("error");
@@ -825,7 +825,7 @@ export function ProductQualification() {
                     </button>
                     {helpSent === "sent" ? (
                       <span className="px-2 py-2 text-sm text-green-700">
-                        ✅ {L("Recibimos tu caso. Un ejecutivo de SEAL te contactará.", "We received your case. A SEAL executive will contact you.")}
+                        ✅ {helpReceipt}
                       </span>
                     ) : (
                       <button

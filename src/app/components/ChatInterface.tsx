@@ -4,7 +4,8 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { buildReply, nextSpec, type ReplySpec } from "../../utils/chatReply";
+import { buildReply, nextSpec, contactIntent, type ReplySpec } from "../../utils/chatReply";
+import { ContactSeal } from "./ContactSeal";
 
 interface Message {
   role: "user" | "ai";
@@ -80,6 +81,14 @@ export function ChatInterface() {
   };
   const specs = specsOf(messages);
   const { currentProduct, currentQuantity } = contextOf(specs);
+  // whoever wants to move forward gets the way to SEAL right under that answer
+  const userTexts = messages.filter((m) => m.role === "user").map((m) => m.content);
+  const lastContact = [...messages].reverse().find((m) => m.role === "user" && contactIntent(m.content));
+  const chatCase = {
+    product: currentProduct || undefined,
+    quantity: currentQuantity ? String(currentQuantity) : undefined,
+    chat: userTexts.slice(-8),
+  };
 
   const handleSend = () => {
     if (!input.trim()) return;
@@ -160,7 +169,10 @@ export function ChatInterface() {
                 {t("chat.subtitle")}{" "}
               </p>
             </div>
-            <LanguageToggle />
+            <div className="flex items-center gap-2">
+              <ContactSeal source="chat" variant="button" label={L("Hablar con SEAL", "Talk to SEAL")} context={chatCase} />
+              <LanguageToggle />
+            </div>
           </div>
         </div>
 
@@ -169,8 +181,8 @@ export function ChatInterface() {
           {[...intro, ...messages.map((m) => (m.role === "ai"
             ? { ...m, content: m.pending ? L("Escribiendo…", "Typing…") : buildReply(JSON.parse(m.content) as ReplySpec) }
             : m))].map((msg, i) => (
+            <div key={i}>
             <div
-              key={i}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
@@ -196,6 +208,17 @@ export function ChatInterface() {
                   {msg.content}
                 </p>
               </div>
+            </div>
+            {msg.role === "ai" && lastContact && "id" in msg && msg.id === lastContact.id && !msg.pending && (
+              <ContactSeal
+                source="chat"
+                variant="card"
+                className="mt-3"
+                intent={contactIntent(lastContact.content)}
+                requestType={`Chat: ${({ contratar: "quiere contratar", hablar_persona: "pide hablar con alguien", proforma: "tiene proforma", carga_en_camino: "su carga ya viene", ya_tiene_proveedor: "ya tiene proveedor" } as Record<string, string>)[contactIntent(lastContact.content)] || "contacto"}`}
+                context={chatCase}
+              />
+            )}
             </div>
           ))}
 

@@ -1,3 +1,4 @@
+import { sendToSeal, receiptText, rememberCase } from "../../utils/caseContext";
 import { unitWordFor, packSizeFromTitle } from "../../utils/saleUnit";
 import { useState } from "react";
 import { clearDraft } from "../../utils/draft";
@@ -610,7 +611,7 @@ export function SupplierDisclaimer({
   const [email, setEmail] = useState(stored.email);
   const [notes, setNotes] = useState("");
   const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState("");
   const [error, setError] = useState("");
 
   const submit = async (e: React.FormEvent) => {
@@ -618,10 +619,7 @@ export function SupplierDisclaimer({
     setSending(true);
     setError("");
     try {
-      const res = await fetch(`${API_URL}/api/email/quote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const res = await sendToSeal({
           requestType: "Verificación de proveedor en China", // sales team reads Spanish
           name,
           email,
@@ -631,14 +629,14 @@ export function SupplierDisclaimer({
           productDescription,
           quantity: String(quantity || ""),
           destination: "Guatemala",
-        }),
-      });
+          source: "proveedor",
+        });
       if (res.status === 400) {
         setError(Lx("Revisa tu nombre y correo (por ejemplo nombre@empresa.com).", "Check your name and email (for example name@company.com)."));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      setSent(true);
+      setSent(receiptText(res, Lx));
     } catch {
       setError(Lx("No se pudo enviar. Escríbenos al WhatsApp +502 5996 4664.", "Could not send. Message us on WhatsApp +502 5996 4664."));
     } finally {
@@ -660,7 +658,7 @@ export function SupplierDisclaimer({
           </p>
           {sent ? (
             <p className="mt-3 text-sm text-green-800 bg-green-50 border border-green-200 rounded-lg p-3">
-              ✅ {Lx("Recibimos tu solicitud. Un ejecutivo de SEAL te contacta para la verificación en China.", "We received your request. A SEAL executive will contact you about the verification in China.")}
+              ✅ {sent}
             </p>
           ) : !open ? (
             <button

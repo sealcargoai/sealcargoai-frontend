@@ -7,6 +7,9 @@ import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { getUserData, getSearchLimit } from "../../utils/searchLimit";
+import { ContactSeal } from "./ContactSeal";
+import { rememberCase } from "../../utils/caseContext";
+import { track } from "../../utils/funnel";
 
 const QUERY_MIN = DESCRIPTION_MIN_CHARS;
 const QUERY_MAX = 1500; // same limit as the product description in the next step
@@ -56,6 +59,8 @@ export function LandingPage() {
     getUserData(m, n);
     setSubmitting(false);
     clearDraft(); // a new query starts a new analysis
+    rememberCase({ productDescription: cleaned.text });
+    track("consulta_iniciada");
     navigate("/chat", { state: { query: cleaned.text, descriptionCleaned: cleaned.removed, name: n, email: m } });
   };
 
@@ -83,6 +88,7 @@ export function LandingPage() {
             >
               {t("nav.howItWorks")}
             </a>
+            <ContactSeal source="landing" variant="button" label={L("Hablar con SEAL", "Talk to SEAL")} className="hidden sm:inline-flex" />
             <LanguageToggle />
           </div>
         </div>
@@ -162,6 +168,13 @@ export function LandingPage() {
                     {t("hero.noCreditCard")} {L(`Incluye ${getSearchLimit()} consultas gratis por correo.`, `Includes ${getSearchLimit()} free searches per email.`)}
                   </span>
                 </p>
+                {/* whoever already has a supplier, a proforma or cargo on its way goes to SEAL directly */}
+                <div className="mt-5 sm:mt-6 flex flex-col items-center gap-2">
+                  <p className="text-sm sm:text-base text-white drop-shadow">
+                    {L("¿Ya tienes proveedor, proforma o tu carga viene en camino? No necesitas buscar:", "Already have a supplier, a proforma or cargo on its way? No need to search:")}
+                  </p>
+                  <ContactSeal source="landing" variant="hero" requestType="Contacto directo con SEAL (sin búsqueda)" label={L("Hablar con SEAL", "Talk to SEAL")} />
+                </div>
               </div>
             ) : (
               <div className="max-w-md mx-auto px-2 sm:px-0">
