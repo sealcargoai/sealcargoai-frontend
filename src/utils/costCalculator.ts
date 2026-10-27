@@ -286,15 +286,16 @@ export function calculateCosts(
     {
       key: "customs",
       label: Lx("Honorarios de aduana", "Customs brokerage fee"),
-      // SEAL's fixed amounts already include Guatemala's 12% IVA (confirmed by SEAL)
-      detail: Lx("Agente aduanero SEAL • IVA incluido", "SEAL customs broker • IVA (VAT) included"),
+      // SEAL's fixed amounts already include IVA (confirmed by SEAL): never add IVA to them.
+      // Not said on screen: the tool is only an estimate (SEAL's decision)
+      detail: Lx("Agente aduanero SEAL", "SEAL customs broker"),
       amount: customsFees,
       color: "#8B5CF6",
     },
     {
       key: "local",
       label: Lx("Gastos en destino", "Destination charges"),
-      detail: Lx("Manejo y gastos locales, revisión, almacenaje, etc. • IVA incluido", "Handling and local charges, inspection, storage, etc. • IVA (VAT) included"),
+      detail: Lx("Manejo y gastos locales, revisión, almacenaje, etc.", "Handling and local charges, inspection, storage, etc."),
       amount: localCharges,
       color: "#A78BFA",
     },
