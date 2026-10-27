@@ -50,7 +50,8 @@ export function productMention(text: string): string | null {
   if (!best) return null;
   // the word and up to three following words, until punctuation or a new clause
   const tail = t.slice(best.at).split(/[,.;:]|\s+(?:y|o|pero|que|and|or|but|that|para\s+(?:qu[eé]|saber))\s+/i)[0];
-  const words = tail.trim().split(/\s+/).slice(0, 6);
+  // a price is never part of the name ("guantes a US$0.03 cada uno" → "guantes")
+  const words = tail.replace(/\s+(?:a|at|@|por|for|en)\s+(?:us\$|usd|\$|q\.?\s?\d|\d).*$|\s+(?:us\$|usd|\$)\s?\d.*$/i, "").trim().split(/\s+/).slice(0, 6);
   // drop trailing connectors ("lápices de")
   while (words.length > 1 && /^(?:de|del|para|con|en|a|of|for|with|in)$/i.test(words[words.length - 1])) words.pop();
   const out = clean(words.join(" "));
@@ -2353,7 +2354,7 @@ export function nextSpec(text: string, specs: ReplySpec[], currentProduct: strin
   // "quiero contratar a SEAL" names no product
   const newProduct = mathText || kinds.includes("pairs") || kinds.includes("contact") || kinds.includes("subtotal") ? undefined : productFromMessage(text) || undefined;
   // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
-  const mentioned = !newProduct && !mathText && !kinds.includes("contact") ? productMention(text) || undefined : undefined;
+  const mentioned = !newProduct && !mathText && !kinds.includes("contact") && !kinds.includes("subtotal") ? productMention(text) || undefined : undefined;
   // only a certificate answer that asked "¿qué producto?" is answered again for the new product
   const lastAi = specs[specs.length - 1];
   const askedForProduct = !!lastAi && !lastAi.product && replyKinds(lastAi.reask || lastAi.text).includes("certificate");
