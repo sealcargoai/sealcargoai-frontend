@@ -1886,7 +1886,52 @@ function bareMath(text: string): PackMath | null {
   return m && m.mode === "packs" && !m.invalid ? m : null;
 }
 
+// ── Someone who wants to move forward goes to SEAL first ─────────────────────
+// "Quiero contratar", "hablar con alguien", "tengo proforma", "mi carga ya viene"
+// (and "ya tengo proveedor") are answered with contact to SEAL before anything
+// else: they don't need a supplier search or general guidance.
+export type ContactIntent = "contratar" | "hablar_persona" | "proforma" | "carga_en_camino" | "ya_tiene_proveedor";
+const INTENTS: [ContactIntent, RegExp][] = [
+  ["proforma", /\b(?:tengo|tenemos|ya\s+tengo|me\s+(?:enviaron|mandaron|dieron|pas[oó])|recib[ií](?:mos)?)\s+(?:una\s+|la\s+|mi\s+|el\s+)?(?:factura\s+)?(?:pro-?\s?forma|pi)\b|\bpro-?\s?forma\s+(?:del?|de\s+mi)\s+proveedor|\bi\s+(?:have|got|received)\s+(?:a\s+|the\s+|my\s+)?(?:proforma|pro-forma|pi)\b|\bproforma\s+invoice\b/],
+  ["carga_en_camino", /\bmi\s+(?:carga|mercader[ií]a|pedido|contenedor|embarque|env[ií]o|importaci[oó]n)\s+(?:ya\s+)?(?:viene|vienen|est[aá]\s+en\s+camino|sali[oó]|ya\s+sali[oó]|fue\s+embarcad[oa]|est[aá]\s+embarcad[oa]|est[aá]\s+(?:por\s+llegar|llegando|en\s+tr[aá]nsito)|va\s+a\s+llegar|lleg[aóo]|ya\s+est[aá]\s+en\s+(?:el\s+)?puerto)|\b(?:la\s+)?(?:carga|mercader[ií]a|contenedor)\s+ya\s+(?:viene|sali[oó]|est[aá]\s+en\s+camino)|\bya\s+(?:compr[eé]|pagu[eé]|embarc[oó]|embarcaron|viene\s+en\s+camino)(?![a-záéíóúñ])|\bmy\s+(?:cargo|shipment|order|container|goods)\s+(?:is\s+|has\s+)?(?:already\s+)?(?:on\s+(?:its|the)\s+way|coming|shipped|arriving|in\s+transit|left)|\bi\s+already\s+(?:bought|paid|shipped)\b/],
+  ["contratar", /\b(?:quiero|quisiera|deseo|queremos|quisi[eé]ramos|me\s+interesa|nos\s+interesa|c[oó]mo|d[oó]nde|puedo|podemos|necesito|necesitamos)\s+(?:\w+\s+)?contrat(?:ar|arlos|arles|arte|arlo)\b|\bcontrat(?:ar|arlos|arles)\s+(?:a\s+)?(?:seal|ustedes|sus\s+servicios|el\s+servicio)|\b(?:i\s+want\s+to|i'?d\s+like\s+to|how\s+(?:do|can)\s+i|can\s+i|we\s+want\s+to)\s+hire\b|\bhire\s+(?:you|seal|your\s+services)\b/],
+  ["hablar_persona", /\bhablar\s+con\s+(?:alguien|una\s+persona|un\s+humano|un[ao]?\s+(?:asesor|asesora|ejecutiv[oa]|agente|vendedor[a]?)|seal|ustedes|ventas|el\s+equipo)|\b(?:comunicarme|contactarme|contactar|contactarlos)\s+con\s+(?:alguien|seal|ustedes|un[ao]?\s+(?:asesor|asesora|ejecutiv[oa])|ventas)|\bque\s+me\s+(?:llamen|contacten|llame|contacte|escriban|asesoren)\b|\b(?:ll[aá]m[ae]nme|cont[aá]ct[ae]nme|ll[aá]mame|cont[aá]ctame)\b|\b(?:talk|speak)\s+(?:to|with)\s+(?:someone|somebody|a\s+person|a\s+human|an?\s+(?:agent|advisor|rep(?:resentative)?)|sales|seal|your\s+team)\b|\b(?:call|contact)\s+me\b/],
+  ["ya_tiene_proveedor", /\bya\s+tengo\s+(?:mi\s+|un\s+|el\s+)?proveedor|\btengo\s+(?:mi\s+)?propio\s+proveedor|\bya\s+tenemos\s+(?:nuestro\s+|un\s+)?proveedor|\bi\s+(?:already\s+)?have\s+(?:a|my\s+own|my)\s+supplier\b/],
+];
+// "todavía no quiero contratar", "aún no tengo proforma", "no quiero hablar con nadie"
+const NOT_YET = /\b(?:no|todav[ií]a\s+no|a[uú]n\s+no|not\s+yet|don'?t|do\s+not)\s+(?:\w+\s+){0,2}(?:quiero|quisiera|deseo|tengo|necesito|contrat|hablar|viene|want|have|need|hire|talk)/;
+export function contactIntent(text: string): ContactIntent | "" {
+  const t = ` ${String(text || "").toLowerCase()} `;
+  if (NOT_YET.test(t)) return "";
+  for (const [k, re] of INTENTS) if (re.test(t)) return k;
+  return "";
+}
+
+function contactReply(text: string): string {
+  const k = contactIntent(text);
+  const open: Record<ContactIntent, [string, string]> = {
+    proforma: ["Con una proforma, lo mejor es que SEAL la revise directamente; no necesitas buscar proveedores aquí.", "With a proforma, the best step is for SEAL to review it directly; you don't need to search for suppliers here."],
+    carga_en_camino: ["Si tu carga ya viene en camino, SEAL te atiende directamente para la llegada y el despacho.", "If your cargo is already on its way, SEAL handles its arrival and customs clearance directly."],
+    contratar: ["Perfecto, te conecto con SEAL.", "Great, I'll connect you with SEAL."],
+    hablar_persona: ["Claro, te conecto con una persona de SEAL.", "Sure, I'll connect you with someone at SEAL."],
+    ya_tiene_proveedor: ["Si ya tienes proveedor, no necesitas buscar otro aquí: SEAL puede cotizarte la importación con ese proveedor.", "If you already have a supplier, you don't need to search for another here: SEAL can quote the import with that supplier."],
+  };
+  const [es, en] = k ? open[k] : open.hablar_persona;
+  return Lx(
+    `${es} Usa «Enviar mi caso a SEAL» aquí abajo: le llega a SEAL con lo que me contaste y te damos un número de caso. Si prefieres, escribe al WhatsApp de SEAL +502 5996 4664.`,
+    `${en} Use "Send my case to SEAL" below: SEAL receives it with what you told me and you get a case number. If you prefer, message SEAL on WhatsApp +502 5996 4664.`,
+  );
+}
+
 export function replyKinds(text: string): string[] {
+  const kinds = baseKinds(text);
+  if (!contactIntent(text)) return kinds;
+  // contact first; "ya tengo proveedor" is not a question about the supplier's reliability
+  const reliability = /confiable|reliable|\breal\b|estafa|fraude|scam|verific|legit/i.test(text);
+  return ["contact", ...kinds.filter((k) => k !== "general" && k !== "mathUnclear" && (k !== "supplier" || reliability))];
+}
+
+function baseKinds(text: string): string[] {
   const t = text.toLowerCase();
   const kinds: string[] = [];
   // a question about whether single pieces make pairs is answered on its own
@@ -2129,7 +2174,7 @@ export function buildReply(r: ReplySpec): string {
   if (!kinds.length && !r.newProduct) kinds = ["general"];
   kinds.forEach((k, i) => {
     let t =
-      k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
+      k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
     if (i === 0 && !parts.length) t = t.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't");
     parts.push(t);
   });
@@ -2176,9 +2221,10 @@ export function nextSpec(text: string, specs: ReplySpec[], currentProduct: strin
     ? mathStatement(packMath(combined, true)!) || combined
     : isMath ? (single && mathStatement(single)) || text : follow ? mathStatement(follow) || undefined : undefined;
   // a calculation is not a product statement nor a quantity change
-  const newProduct = mathText || kinds.includes("pairs") ? undefined : productFromMessage(text) || undefined;
+  // "quiero contratar a SEAL" names no product
+  const newProduct = mathText || kinds.includes("pairs") || kinds.includes("contact") ? undefined : productFromMessage(text) || undefined;
   // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
-  const mentioned = !newProduct && !mathText ? productMention(text) || undefined : undefined;
+  const mentioned = !newProduct && !mathText && !kinds.includes("contact") ? productMention(text) || undefined : undefined;
   // only a certificate answer that asked "¿qué producto?" is answered again for the new product
   const lastAi = specs[specs.length - 1];
   const askedForProduct = !!lastAi && !lastAi.product && replyKinds(lastAi.reask || lastAi.text).includes("certificate");
