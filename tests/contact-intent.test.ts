@@ -1,6 +1,6 @@
 // Whoever wants to move forward is sent to SEAL first, before general answers.
 import { describe, it, expect, afterEach } from "vitest";
-import { contactIntent, replyKinds, replayConversation } from "../src/utils/chatReply";
+import { contactIntent, replyKinds, replayConversation, nextSpec, productMention } from "../src/utils/chatReply";
 
 const setLang = (lang: "es" | "en") => {
   (globalThis as { document?: unknown }).document = { documentElement: { lang } };
@@ -227,4 +227,14 @@ describe("27-j: an order counted in the outer packs is boxes, never pieces", () 
   it("pairs keep their unit", () => expect(last("5 masters, cada master trae 4 cajas de 12 pares")).toMatch(/240 pares/));
   it("boxes of sets with no content per set: counted in sets", () => expect(last("quiero 5 cajas de 10 sets")).toMatch(/son 50 sets/));
   it("an order in items still goes the long way", () => expect(last("Cada set trae 12 y cada caja 10 sets, necesito 500 piezas")).toMatch(/Necesitarías 5 cajas \(50 sets\): 600 piezas/));
+});
+
+describe("27-j: a quick subtotal never replaces the case product", () => {
+  it("«2,000 guantes a US$0.03» keeps «lapiceros de colores»", () => {
+    const s = nextSpec("Son 2,000 guantes a US$0.03 cada uno, ¿cuánto es?", [], "lapiceros de colores", 0);
+    expect(s.product).toBe("lapiceros de colores");
+    expect(s.mentioned).toBeUndefined();
+    expect(s.newProduct).toBeUndefined();
+  });
+  it("a price is never part of a product name", () => expect(productMention("Me interesan guantes a US$0.03 cada uno")).toBe("guantes"));
 });
