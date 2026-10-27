@@ -420,7 +420,8 @@ function withStock(m: PackMath, st: StockHit): PackMath {
 /** Reads a pack calculation in any wording, or null when the message isn't one. */
 export function packMath(text: string, force = false): PackMath | null {
   let t0 = normalizeNumbers(String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ").replace(/\s+/g, " "));
-  if (!force && !VERB_Q.test(` ${t0} `)) return null;
+  // "5 cajas, cada caja con 10 sets…": an order of packs stated up front counts as the question
+  if (!force && !VERB_Q.test(` ${t0} `) && !new RegExp(`^\\s*\\d+\\s+${PACK_RE}\\b[^\\d]*\\b(?:cada|each)\\s+${PACK_RE}`).test(t0)) return null;
   // a negative quantity, content or condition ("-200 pares") can't be calculated
   if (/(?:^|[\s(:=,])[-−]\d/.test(t0) && new RegExp(`\\b${PACK_RE}\\b|pares|piezas|unidades|pieces|units`).test(t0))
     return { mode: "ask", perPack: 0, packs: 0, wanted: 0, total: 0, extra: 0, pack: PACKS[1], item: "", invalid: "negative" };
@@ -451,6 +452,36 @@ export function packMath(text: string, force = false): PackMath | null {
       const inP = packOf(inW);
       const outP = packOf(outW);
       if (!inP || !outP || inP === outP || /^(?:par|docena)$/.test(inP[1]) || /^(?:par|docena)$/.test(outP[1]) || !(k >= 1) || !Number.isInteger(k)) continue;
+      // the order written in the outer packs ("quiero 5 cajas", "5 cajas, cada caja con 10 sets y
+      // cada set con 12 piezas"): it's a count of outer packs, never 5 pieces
+      const rest = ` ${t0.replace(nm[0], " ")} `;
+      const ords = [...rest.matchAll(new RegExp(`(?:^|[^\\d.,x×])(\\d+)\\s+${PACK_RE}\\b(?!\\s+(?:${HAS_WORDS}|de|of|con|with)\\s+\\d)`, "g"))].filter((x) => packOf(x[2]) === outP);
+      // "necesito 3 cajas de 10 sets de 12": the count written just before the nesting
+      const lead = nm[0].startsWith(outW) ? /(?:^|[^\d.,x×])(\d+)\s+$/.exec(t0.slice(0, nm.index)) : null;
+      const ordN = [...new Set([...ords.map((x) => Number(x[1])), ...(lead ? [Number(lead[1])] : [])])];
+      if (ordN.length === 1 && ordN[0] > 0 && Number.isInteger(ordN[0])) {
+        // the content may sit right after the nesting ("cada caja tiene 10 sets de 12")
+        let rest2 = ` ${t0} `;
+        for (const x of ords) rest2 = rest2.replace(x[0], " ");
+        if (lead) rest2 = rest2.replace(new RegExp(`${lead[1]}\\s+(?=${outW})`), " ");
+        // a lookahead, so "caja tiene 10 sets de 12" still finds "sets de 12"
+        const cont = [...rest2.matchAll(new RegExp(`\\b(?=${PACK_RE}\\s+(?:${HAS_WORDS}|de|of|con|with|:|=)\\s+(\\d+)(?:\\s+([a-záéíóúñ]+))?)`, "g"))].find((x) => packOf(x[1]) === inP);
+        // "quiero 5 cajas de 10 sets" with no content per set: 50 sets, never 50 pieces
+        if (!cont && (t0.match(/\d+(?:[.,]\d+)?/g) || []).map(Number).every((n) => n === k || n === ordN[0]) && !new RegExp(`${MIN_KEY}|m[uú]ltiplo|multiple|lote|stock|disponible|available`).test(t0))
+          return { mode: "total", perPack: k, packs: ordN[0], wanted: 0, total: ordN[0] * k, extra: 0, pack: outP, item: Lx(inP[2], inP[4]) };
+        if (cont) {
+          const ip = Number(cont[2]);
+          const w = cont[3] || "";
+          const item = w && (PAIR_W.test(w) || DOZ_W.test(w) || (!packOf(w) && !CONNECT.test(w) && !NOT_ITEM.test(w))) ? w : Lx("piezas", "pieces");
+          // only the plain case: any other figure (a minimum, a stock, an order in items) goes the long way
+          const nums = (t0.match(/\d+(?:[.,]\d+)?/g) || []).map(Number);
+          const plain = nums.every((n) => n === k || n === ip || n === ordN[0]) && !new RegExp(`${MIN_KEY}|m[uú]ltiplo|multiple|lote|stock|disponible|available|solo\\s+tiene`).test(t0);
+          if (plain && ip >= 1 && Number.isInteger(ip) && !/[-−]/.test(rest2)) {
+            const per = k * ip;
+            return { mode: "total", perPack: per, packs: ordN[0], wanted: 0, total: ordN[0] * per, extra: 0, pack: outP, item, chain: { inner: inP, k, innerPer: ip } };
+          }
+        }
+      }
       const inner = packMath(t0.replace(nm[0], /^\d/.test(nm[0]) ? " " : ` ${inW} `), true);
       if (!inner || inner.pack !== inP) continue;
       // the inner order can't be calculated ("50 kg" against boxes counted in pieces): say so
@@ -1523,6 +1554,9 @@ function chainReply(m: PackMath): string {
     `Each ${outOne} holds ${f(c.k)} ${inW(c.k)} of ${f(c.innerPer)} ${items} = ${f(m.perPack)} ${items}. `,
   );
   const base = packMathReply({ ...m, chain: undefined });
+  // an order counted in the outer packs: "5 cajas (50 sets) de 120 son 600 piezas"
+  if (m.mode === "total")
+    return pre + base.replace(new RegExp(`^(${f(m.packs)} [^\\s:,]+)`), `$1 (${f(m.packs * c.k)} ${inW(m.packs * c.k)})`);
   const sets = Lx(` (${f(m.packs * c.k)} ${inW(m.packs * c.k)})`, ` (${f(m.packs * c.k)} ${inW(m.packs * c.k)})`);
   const withSets = base.replace(new RegExp(`^((?:Necesitarías|You'd need|Para [^:]+?debes pedir|For [^:]+?you should order) ${f(m.packs)} [^\\s:,]+)`), `$1${sets}`);
   const loose = c.loose && c.loose.packs % c.k !== 0
