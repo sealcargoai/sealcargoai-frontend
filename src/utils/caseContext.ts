@@ -54,6 +54,28 @@ export function rememberCase(part: CaseContext): void {
   }
 }
 
+/** What belongs to the scenario on screen (supplier, price, estimate, its assumptions and warnings). */
+export const SCENARIO_KEYS: (keyof CaseContext)[] = ["supplierName", "supplierUrl", "price", "priceSource", "publishedPrice", "totalCostText", "assumptions", "warnings"];
+
+/**
+ * The current screen is the source of truth for these keys: present values replace,
+ * missing or empty ones are REMOVED (a new supplier without warnings must not keep the
+ * previous supplier's warnings; a new search without budget must not keep the old one).
+ */
+export function setCaseScenario(part: CaseContext, keys: (keyof CaseContext)[]): void {
+  try {
+    const cur = caseContext() as Record<string, unknown>;
+    for (const k of keys) {
+      const v = (part as Record<string, unknown>)[k];
+      if (empty(v)) delete cur[k];
+      else cur[k] = v;
+    }
+    sessionStorage.setItem(KEY, JSON.stringify(cur));
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 /** A new analysis starts a new case. */
 export function clearCase(): void {
   try {
@@ -82,6 +104,7 @@ export interface SealResult {
   duplicate?: boolean; // it was already an open case: updated, not duplicated
   notified?: boolean; // SEAL's inbox got it (false = registered only: SEAL sees it in the registry)
   caseUrl?: string; // signed page: what SEAL received and the case status
+  test?: boolean; // the server identified it as a test record (not a commercial lead)
 }
 
 /** Sends the request to SEAL with the whole case (this screen's data wins over the stored one). */
@@ -96,7 +119,7 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
       body: JSON.stringify(body),
     });
     const j = res.ok ? await res.json().catch(() => ({})) : {};
-    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined };
+    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test};
     if (out.ok) {
       // the chat can answer "¿ya llegó mi solicitud?" with the real case number
       try {
@@ -105,8 +128,9 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
         /* storage unavailable */
       }
       // a lead counts only once the server registered it
-      track("solicitud_enviada", { seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "", seal_duplicate: out.duplicate });
-      if (!out.duplicate) pushDataLayer({ event: "seal_lead_recibido", seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "" });
+      track("solicitud_enviada", { seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "", seal_duplicate: out.duplicate }, out.test);
+      // a test record is never a commercial conversion
+      if (!out.duplicate) pushDataLayer({ event: out.test ? "seal_lead_qa" : "seal_lead_recibido", seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "", seal_qa: !!out.test });
     }
     return out;
   } catch {

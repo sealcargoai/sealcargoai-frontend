@@ -29,16 +29,31 @@ export function pushDataLayer(data: Record<string, unknown>): void {
   }
 }
 
+// Same rule as the server: test words in the name or email (PRUEBA, test, demo, example.com…)
+const TEST_RE = /\b(prueba|test|testing|ficticio|ficticia|demo|fake|ejemplo)\b|@(example|test|prueba|mailinator)\./i;
+/** This browser is running a QA session (its events are counted apart, never as commercial data). */
+export function isQaSession(): boolean {
+  try {
+    if (/[?&]qa=1\b/.test(window.location.search)) sessionStorage.setItem("seal_qa", "1");
+    if (sessionStorage.getItem("seal_qa") === "1") return true;
+    const d = JSON.parse(localStorage.getItem("sealcargo_user_data") || "null");
+    return TEST_RE.test(String(d?.name || "")) || TEST_RE.test(String(d?.email || ""));
+  } catch {
+    return false;
+  }
+}
+
 /** Records a funnel step (never blocks or breaks the page). */
-export function track(event: FunnelEvent, extra: Record<string, unknown> = {}): void {
-  pushDataLayer({ event: `seal_${event}`, ...extra });
+export function track(event: FunnelEvent, extra: Record<string, unknown> = {}, qaOverride?: boolean): void {
+  const qa = qaOverride ?? isQaSession();
+  pushDataLayer({ event: `seal_${event}`, ...extra, ...(qa ? { seal_qa: true } : {}) });
   const vid = visitorId();
   if (!vid || typeof fetch === "undefined") return;
   try {
     fetch(`${API}/api/events`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ event, vid }),
+      body: JSON.stringify(qa ? { event, vid, qa: true } : { event, vid }),
       keepalive: true,
     }).catch(() => undefined);
   } catch {
