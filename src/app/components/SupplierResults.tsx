@@ -305,7 +305,7 @@ function NoResults({
       setSent(true);
     } catch {
       setError(
-        Lx(`No se pudo enviar la solicitud. Llámenos al ${SEAL_COMPANY.phone}.`, `Could not send the request. Call us at ${SEAL_COMPANY.phone}.`),
+        Lx(`No se pudo enviar la solicitud. Llámanos o escríbenos al ${SEAL_COMPANY.phone}.`, `Could not send the request. Call us at ${SEAL_COMPANY.phone}.`),
       );
     } finally {
       setSending(false);
@@ -334,8 +334,8 @@ function NoResults({
                 )
               : allFiltered
                 ? Lx(
-                    `Analizamos ${totalAnalyzed} ${totalAnalyzed === 1 ? "proveedor, pero no cumplió" : "proveedores, pero ninguno cumplió"} los criterios de verificación, reputación y pedido mínimo de SEAL. Preferimos no mostrarte opciones que no los cumplen.`,
-                    `We analyzed ${totalAnalyzed} ${totalAnalyzed === 1 ? "supplier, but it did not meet" : "suppliers, but none met"} SEAL's verification, reputation and minimum-order criteria. We prefer not to show options that don't meet them.`,
+                    `Analizamos ${totalAnalyzed} ${totalAnalyzed === 1 ? "proveedor, pero no cumplió" : "proveedores, pero ninguno cumplió"} los filtros de la herramienta (insignias publicadas por la plataforma, reseñas y pedido mínimo). Preferimos no mostrarte opciones que no los pasan; SEAL no ha verificado a ningún proveedor.`,
+                    `We analyzed ${totalAnalyzed} ${totalAnalyzed === 1 ? "supplier, but it did not meet" : "suppliers, but none met"} the tool's filters (badges published by the platform, reviews and minimum order). We prefer not to show options that don't pass them; SEAL has not verified any supplier.`,
                   )
                 : Lx(
                     "La plataforma no devolvió datos en este intento. Puedes volver al formulario e intentarlo de nuevo (tus datos se conservan), o usar una descripción un poco más corta. No te vamos a mostrar datos de ejemplo: un ejecutivo de SEAL puede hacer la búsqueda por ti y enviarte opciones para revisar con su costo estimado.",
@@ -658,7 +658,7 @@ export function SupplierResults() {
   // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
   // Order: requested use first (a paint mill is not a corn mill), then specs, then the rest
   // Order: parts/accessories last, then requested use, material and specs
-  const displaySuppliers: Supplier[] = flagPrices(orderByComponent(flagComponents(orderByUse(orderByElectric(orderByMaterial(orderBySpecs(
+  const displaySuppliers: Supplier[] = (flagPrices as (l: unknown[], t: string) => Supplier[])(orderByComponent(flagComponents(orderByUse(orderByElectric(orderByMaterial(orderBySpecs(
     (apiData?.topSuppliers ?? []).map((s: Supplier, idx: number) => ({
       ...s,
       // Older results could carry 0 when the price text was "US$0.02-0.05": use the range midpoint
@@ -1131,7 +1131,7 @@ export function SupplierResults() {
                             {supplier.name}
                           </h3>
                           {supplier.verifiedSupplier === true && (
-                            <CheckCircle className="w-5 h-5 text-green-500" aria-label="Verified Supplier" />
+                            <CheckCircle className="w-5 h-5 text-green-500" aria-label={Lx("Insignia de la plataforma: Verified Supplier (no verificado por SEAL)", "Platform badge: Verified Supplier (not verified by SEAL)")} />
                           )}
                         </div>
 

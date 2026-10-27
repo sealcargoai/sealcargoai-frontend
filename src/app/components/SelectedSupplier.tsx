@@ -182,6 +182,8 @@ export function SpecTags({ description, productName, warn = false, component }: 
 // Supplier as it arrives from the suppliers screen (real Alibaba data only)
 export interface SelectedSupplierData {
   name?: string;
+  saleUnit?: string; // the platform's sale unit (piece, box, pair…)
+  componentFlag?: ComponentFlag; // the listing may be a part or a machine, not the product
   productName?: string;
   price?: number;
   priceRange?: string;
@@ -236,9 +238,10 @@ export function trustInfo(s?: SelectedSupplierData | null) {
 export function badgeText(s?: SelectedSupplierData | null): string {
   const years = s?.yearsInBusiness || 0;
   const y = years ? ` · ${years} ${Lx(years === 1 ? "año" : "años", years === 1 ? "year" : "years")}` : "";
-  if (s?.verifiedSupplier === true) return `${Lx("Proveedor verificado (auditado)", "Verified Supplier (audited)")}${y}`;
-  if (s?.goldSupplier || s?.verified) return `${Lx("Miembro Gold", "Gold Supplier")}${y}`;
-  return Lx("Sin insignia de verificación", "No verification badge");
+  // the platform's own badge, said as such: SEAL has not verified the supplier
+  if (s?.verifiedSupplier === true) return `${Lx("Insignia de la plataforma: Verified Supplier (auditoría de un tercero, no de SEAL)", "Platform badge: Verified Supplier (third-party audit, not SEAL's)")}${y}`;
+  if (s?.goldSupplier || s?.verified) return `${Lx("Insignia de la plataforma: miembro Gold (membresía pagada, no es verificación)", "Platform badge: Gold Supplier (paid membership, not a verification)")}${y}`;
+  return Lx("Sin insignia de la plataforma", "No platform badge");
 }
 
 export function TrustBadge({ supplier, size = "md" }: { supplier: SelectedSupplierData; size?: "sm" | "md" }) {
@@ -541,22 +544,26 @@ const TRUST_LABEL_EN: Record<string, string> = {
 
 // Backend details are in Spanish; translate the fixed phrases for English
 export function trustDetail(d: string): string {
+  // the platform's badges are said as such: SEAL has not verified the supplier
+  const ES_VERIFIED = "Insignia de la plataforma: Verified Supplier (auditoría de un tercero, no de SEAL)";
+  const EN_VERIFIED = "Platform badge: Verified Supplier (third-party audit, not SEAL's)";
   if (Lx("es", "en") !== "en") {
     // Older cached results used Alibaba's English program names
     return d
-      .replace("Verified Supplier (auditoría de tercero)", "Proveedor verificado (auditoría de tercero)")
+      .replace("Verified Supplier (auditoría de tercero)", ES_VERIFIED)
+      .replace("Proveedor verificado (auditoría de tercero)", ES_VERIFIED)
       .replace("Gold Supplier (membresía, sin auditoría en planta)", "Miembro Gold (membresía, sin auditoría en planta)")
       .replace("Sin Trade Assurance", "Sin protección de pedidos")
       .replace(/^Trade Assurance$/, "Protección de pedidos");
   }
   return d
-    .replace("Proveedor verificado (auditoría de tercero)", "Verified Supplier (third-party audit)")
+    .replace("Proveedor verificado (auditoría de tercero)", EN_VERIFIED)
     .replace("Miembro Gold (membresía, sin auditoría en planta)", "Gold Supplier (membership, no on-site audit)")
     .replace("Sin protección de pedidos", "No Trade Assurance")
     .replace(/^Protección de pedidos$/, "Trade Assurance")
-    .replace("Verified Supplier (auditoría de tercero)", "Verified Supplier (third-party audit)")
+    .replace("Verified Supplier (auditoría de tercero)", EN_VERIFIED)
     .replace("Gold Supplier (membresía, sin auditoría en planta)", "Gold Supplier (membership, no on-site audit)")
-    .replace("Sin insignia de verificación", "No verification badge")
+    .replace("Sin insignia de verificación", "No platform badge")
     .replace(/(\d+) años? en Alibaba/, (_m, n) => `${n} year${n === "1" ? "" : "s"} on Alibaba`)
     .replace(/ con (\d+) reseñas? \(ajustado/, (_m, n) => ` with ${n} review${n === "1" ? "" : "s"} (adjusted`)
     .replace("servicio del proveedor", "supplier service")

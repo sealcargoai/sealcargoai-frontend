@@ -147,7 +147,7 @@ export function LandingPage() {
                   {query.length > 0 && (
                     <div className="flex justify-between gap-3 px-3 pt-2 text-xs text-slate-500">
                       <span>
-                        {!descriptionIsDetailed(queryTrim)
+                        {!descriptionIsDetailed(cleaned.text)
                           ? L("Di qué es y para qué se usa (al menos 2 palabras)", "Say what it is and what it's for (at least 2 words)")
                           : L("Puedes detallar más en el siguiente paso", "You can add more detail in the next step")}
                       </span>

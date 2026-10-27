@@ -57,7 +57,8 @@ function fieldError(name: string, value: string): string {
   const n = Number(v);
   switch (name) {
     case "productType":
-      if (!descriptionIsDetailed(v)) return descriptionDetailMessage();
+      // what gets searched is the cleaned text (sentences addressed to the tool are left out)
+      if (!descriptionIsDetailed(v) || !descriptionIsDetailed(cleanDescription(v).text)) return descriptionDetailMessage();
       if (v.length > LIMITS.productMax) return Lx(`Máximo ${LIMITS.productMax.toLocaleString()} caracteres.`, `Maximum ${LIMITS.productMax.toLocaleString()} characters.`);
       return "";
     case "quantity":
@@ -67,7 +68,7 @@ function fieldError(name: string, value: string): string {
       return "";
     case "budget":
       if (!v) return "";
-      if (!(n > 0)) return Lx("El presupuesto debe ser mayor a 0.", "Budget must be greater than 0.");
+      if (!(n >= 1)) return Lx("El presupuesto de compra debe ser de al menos US$1.", "The purchase budget must be at least US$1.");
       if (n > LIMITS.budgetMax) return Lx(`Máximo US$${LIMITS.budgetMax.toLocaleString()}.`, `Maximum US$${LIMITS.budgetMax.toLocaleString()}.`);
       return "";
     case "volumeCbm":
@@ -248,6 +249,8 @@ export function ProductQualification() {
     if (!descriptionIsDetailed(productDescription)) {
       setTouched((t) => ({ ...t, productType: true }));
       setError(descriptionDetailMessage());
+      // the field to fix is on step 1
+      setStep(1);
       return;
     }
     const productCategory = inferCategory(productDescription);
@@ -294,7 +297,11 @@ export function ProductQualification() {
         return;
       }
 
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        const e = new Error(`HTTP ${response.status}`) as Error & { status?: number };
+        e.status = response.status;
+        throw e;
+      }
 
       const suppliers = await response.json();
 
@@ -337,11 +344,29 @@ export function ProductQualification() {
       console.error("Supplier search failed:", err);
       // Stay here: the data stays in the form and the search is not counted
       setSearchFailed(true);
+      // say what actually happened: timeout, no connection, a rejected request or a server error
+      const e = err as Error & { status?: number };
+      const kept = L(" Tus datos siguen aquí y la búsqueda no se descontó.", " Your data is still here and the search was not counted.");
       setError(
-        L(
-          "La búsqueda no devolvió datos en este intento (a veces la plataforma tarda o no responde). Tus datos siguen aquí: puedes intentarlo de nuevo, probar con una descripción un poco más corta, o pedir al equipo de SEAL que revise tu caso.",
-          "The search returned no data on this attempt (sometimes the platform is slow or doesn't respond). Your data is still here: you can try again, try a slightly shorter description, or ask the SEAL team to review your case.",
-        ),
+        e?.name === "AbortError"
+          ? L(
+              "La búsqueda tardó demasiado y se detuvo (a veces la plataforma de proveedores no responde a tiempo). Puedes intentarlo de nuevo, probar con una descripción un poco más corta, o pedir al equipo de SEAL que revise tu caso.",
+              "The search took too long and was stopped (sometimes the supplier platform doesn't answer in time). You can try again, try a slightly shorter description, or ask the SEAL team to review your case.",
+            ) + kept
+          : e instanceof TypeError
+            ? L(
+                "No pudimos conectar con el servidor de SmartTrade (revisa tu conexión a internet). Intenta de nuevo en un momento o escribe al WhatsApp de SEAL +502 5996 4664.",
+                "We couldn't reach the SmartTrade server (check your internet connection). Try again in a moment or message SEAL on WhatsApp +502 5996 4664.",
+              ) + kept
+            : e?.status && e.status >= 400 && e.status < 500
+              ? L(
+                  "El servidor no aceptó los datos de la búsqueda. Revisa la descripción y la cantidad; si el problema sigue, pide al equipo de SEAL que revise tu caso.",
+                  "The server didn't accept the search data. Check the description and quantity; if it continues, ask the SEAL team to review your case.",
+                ) + kept
+              : L(
+                  "El servidor tuvo un error al buscar proveedores en este intento. Puedes intentarlo de nuevo en unos minutos o pedir al equipo de SEAL que revise tu caso.",
+                  "The server had an error searching suppliers on this attempt. You can try again in a few minutes or ask the SEAL team to review your case.",
+                ) + kept,
       );
     } finally {
       clearTimeout(timer);
@@ -367,7 +392,10 @@ export function ProductQualification() {
           </div>
           <div className="flex items-center gap-4">
             <button
-              onClick={() => navigate("/chat")}
+              onClick={() =>
+                // back to this case's chat (same request, so its conversation is restored)
+                navigate("/chat", { state: { query: userQuery, name: userName, email: userEmail, descriptionCleaned: !!location.state?.descriptionCleaned } })
+              }
               className="text-slate-600 hover:text-[#0B3C5D] flex items-center gap-2 font-medium transition-colors"
             >
               <ArrowLeft className="w-4 h-4" />

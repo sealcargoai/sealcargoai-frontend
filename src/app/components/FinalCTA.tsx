@@ -25,6 +25,7 @@ import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, sealDisclaimer
 import { getReviewTopics } from "./RiskCompliance";
 import { buildCostPdf } from "../../utils/costPdf";
 import { listingDifferences } from "../../utils/differences";
+import { budgetNote, smallOrderNote } from "../../utils/costNotes";
 import { Lx, plural } from "../../utils/lang";
 import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
 import {
@@ -130,7 +131,8 @@ export function FinalCTA() {
   const stateProductType = location.state?.productType ?? "";
   const stateSuppliersData = location.state?.suppliersData ?? null;
 
-  const quantity = qtyFrom(String(stateQuantity));
+  // the scenario's own quantity (already in sale units; qtyFrom would cap it again)
+  const quantity = rebuilt ? rebuilt.quantity : qtyFrom(String(stateQuantity));
   const destination = String(stateDestination);
   const productType = String(stateProductType);
   const productDescription = String(location.state?.productDescription ?? "");
@@ -151,7 +153,12 @@ export function FinalCTA() {
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit }, rates);
   // Assumptions from the costs page (pieces per set, price basis, minimum order…)
   const reportNotes: string[] = rebuilt
-    ? reportNotesFor(rebuilt, costs.perUnit, (usd, d = 0) => formatQ(usd, costs.exchangeRate, d))
+    ? [
+        ...reportNotesFor(rebuilt, costs.perUnit, (usd, d = 0) => formatQ(usd, costs.exchangeRate, d)),
+        // the purchase budget and the small-order note, as on the costs page
+        budgetNote(costs, parseFloat(String(stateBudget)) || 0, (usd) => formatQ(usd, costs.exchangeRate)),
+        smallOrderNote(costs, unitWordFor(saleUnit, 1), (usd) => formatQ(usd, costs.exchangeRate)),
+      ].filter(Boolean)
     : Array.isArray(location.state?.reportNotes)
       ? location.state.reportNotes.map(String)
       : [];
@@ -211,8 +218,16 @@ export function FinalCTA() {
   const [submitting, setSubmitting] = useState(false);
 
   // Quote form
-  const [quoteName, setQuoteName] = useState("");
-  const [quoteEmail, setQuoteEmail] = useState("");
+  // pre-filled with the name and email given at the start of the analysis
+  const storedUser = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("sealcargo_user_data") || "{}") || {};
+    } catch {
+      return {};
+    }
+  })();
+  const [quoteName, setQuoteName] = useState(String(storedUser.name || ""));
+  const [quoteEmail, setQuoteEmail] = useState(String(storedUser.email || ""));
   const [quotePhone, setQuotePhone] = useState("");
   const [quoteCompany, setQuoteCompany] = useState("");
   const [quoteMessage, setQuoteMessage] = useState("");
@@ -292,12 +307,21 @@ export function FinalCTA() {
             supplierName,
             totalCost: costs.totalCost,
             totalCostText,
+            // the client's own description and the quantity with its unit, not just the category
             productType,
-            quantity,
+            productDescription,
+            quantity: `${quantity.toLocaleString("en-US")} ${unitWordFor(saleUnit, quantity)}`,
             destination,
+            budget: stateBudget ? `US$${stateBudget}` : "",
+            supplierUrl: stateSupplier?.productUrl || stateSupplier?.storeUrl || "",
           }),
         },
       );
+      if (res.status === 429) {
+        // the email endpoint allows a few requests per hour: retrying now won't work
+        alert(L(`Se alcanzó el límite de envíos por ahora. Escríbenos al WhatsApp de SEAL ${SEAL_COMPANY.phone} y te atendemos de inmediato.`, `The sending limit was reached for now. Message SEAL on WhatsApp ${SEAL_COMPANY.phone} and we'll help you right away.`));
+        return;
+      }
       if (!res.ok) throw new Error("Failed");
       alert(t("final.quoteSuccess"));
       setShowQuoteModal(false);
@@ -510,7 +534,7 @@ export function FinalCTA() {
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
             <Target className="w-8 h-8 text-red-600 mx-auto mb-2" />
             <div className="text-3xl font-bold text-red-600 mb-1">
-              {leadStats.filtered ?? "N/D"}
+              {leadStats.filtered ?? Lx("N/D", "N/A")}
             </div>
             <div className="text-sm text-slate-600">
               {plural(leadStats.filtered ?? 0, "No pasó los filtros", "No pasaron los filtros", "Filtered out", "Filtered out")}
@@ -521,7 +545,7 @@ export function FinalCTA() {
             <div className="text-3xl font-bold text-green-600 mb-1">
               {leadStats.qualified}
             </div>
-            <div className="text-sm text-slate-600">{plural(leadStats.qualified, "Pasó los filtros", "Pasaron los filtros", "Qualified", "Qualified")}</div>
+            <div className="text-sm text-slate-600">{plural(leadStats.qualified, "Pasó los filtros", "Pasaron los filtros", "Passed the filters", "Passed the filters")}</div>
           </div>
           {leadStats.duplicates > 0 && (
             <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
@@ -535,7 +559,7 @@ export function FinalCTA() {
           <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-6 text-center">
             <TrendingUp className="w-8 h-8 text-purple-600 mx-auto mb-2" />
             <div className="text-3xl font-bold text-purple-600 mb-1">
-              {leadStats.shown ?? "N/D"}
+              {leadStats.shown ?? Lx("N/D", "N/A")}
             </div>
             <div className="text-sm text-slate-600">{plural(leadStats.shown ?? 0, "Mostrado en resultados", "Mostrados en resultados", "Shown in results", "Shown in results")}</div>
           </div>

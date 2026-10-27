@@ -23,6 +23,7 @@ import {
 } from "recharts";
 import { buildCostPdf } from "../../utils/costPdf";
 import { listingDifferences } from "../../utils/differences";
+import { budgetNote, smallOrderNote } from "../../utils/costNotes";
 import { Lx } from "../../utils/lang";
 import { saleUnitInfo, unitWordFor, quantityIntent, productNoun } from "../../utils/saleUnit";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
@@ -323,7 +324,12 @@ export function CostBreakdown() {
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit: unitInfo.unit }, rates);
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
   // Assumptions shown on screen that the PDF and Excel must keep
-  const reportNotes = reportNotesFor(sc, costs.perUnit, Q);
+  // the purchase budget and the small-order note go to the PDF / Excel as they appear here
+  const reportNotes = [
+    ...reportNotesFor(sc, costs.perUnit, Q),
+    budgetNote(costs, budget, (usd) => Q(usd)),
+    smallOrderNote(costs, unitWordFor(unitInfo.unit, 1), (usd) => Q(usd)),
+  ].filter(Boolean);
   // the listing title and what differs from the request: the same warnings as on screen
   const reportDiffs = listingDifferences(productDescription, stateSupplier);
 
@@ -1071,6 +1077,7 @@ function SaleUnitNotice({
   // the client's product word ("botellas"), so a mixed kit isn't counted by all its items
   const itemEs = item || "piezas";
   const itemEn = item || "pieces";
+  // "cuántas botellas", "cuántos guantes", "cuántas piezas"
   const howMany = /as$/.test(itemEs) ? "Cuántas" : "Cuántos";
   const many = unitWordFor(unit, 2);
   // pairs or dozens are counted in pieces against a box of pieces
@@ -1100,10 +1107,10 @@ function SaleUnitNotice({
             ? Lx(` y tú indicaste ${packSize} ${itemEs} por ${one}.`, ` and you entered ${packSize} ${itemEn} per ${one}.`)
             : mixedWith
               ? Lx(
-                  `; es un set mixto (el título también menciona ${mixedWith}), así que no usamos el conteo de piezas del título: indica cuántas ${itemEs} trae cada ${one}.`,
+                  `; es un set mixto (el título también menciona ${mixedWith}), así que no usamos el conteo de piezas del título: indica ${howMany.toLowerCase()} ${itemEs} trae cada ${one}.`,
                   `; it's a mixed set (the title also mentions ${mixedWith}), so we don't use the title's piece count: enter how many ${itemEn} each ${one} holds.`,
                 )
-              : Lx(`; el título no dice cuántas ${itemEs} trae cada ${one}.`, `; the title doesn't say how many ${itemEn} each ${one} holds.`)}
+              : Lx(`; el título no dice ${howMany.toLowerCase()} ${itemEs} trae cada ${one}.`, `; the title doesn't say how many ${itemEn} each ${one} holds.`)}
         {fromDescription && mode
           ? Lx(
               ` Por lo que escribiste, tomamos tu cantidad como ${mode === "pieces" ? "piezas" : many}; puedes cambiarlo.`,
@@ -1132,7 +1139,7 @@ function SaleUnitNotice({
                   `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} ${itemEs})`,
                   `= ${sets.toLocaleString()} ${unitWordFor(unit, sets)} (${(sets * packSize).toLocaleString()} ${itemEn})`,
                 )
-              : Lx(`necesitamos saber cuántas ${itemEs} trae cada ${one}`, `we need to know how many ${itemEn} each ${one} holds`)}
+              : Lx(`necesitamos saber ${howMany.toLowerCase()} ${itemEs} trae cada ${one}`, `we need to know how many ${itemEn} each ${one} holds`)}
           </span>
         </button>
       </div>
