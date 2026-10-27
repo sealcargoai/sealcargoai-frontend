@@ -782,21 +782,34 @@ function condLabel(c: Cond, packs: number, pack: PackMath["pack"]): string {
  * lead = "pero el mínimo del proveedor es 15 cajas y solo vende en múltiplos de 6 cajas"
  * ok = "Cumples el mínimo (15 cajas) y el múltiplo de 6 cajas."
  */
-function condWords(m: PackMath): { lead: string; ok: string; unread: string } {
+function condWords(m: PackMath): { lead: string; ok: string; met: string; unread: string } {
   const c = m.cond;
-  if (!c) return { lead: "", ok: "", unread: "" };
+  if (!c) return { lead: "", ok: "", met: "", unread: "" };
   const parts: string[] = [];
   const okParts: string[] = [];
   const minC = c.mins.find((x) => condPacks(m, x, "min") !== null);
   const lotC = c.lots.find((x) => condPacks(m, x, "lot") !== null);
+  // when the order goes up, the "pero …" names only the conditions that raise it:
+  // 301 pares in boxes of 20 need 16 boxes, which already meet a minimum of 15;
+  // the multiple of 6 is what takes the order to 18
+  // (packs given, "Ojo" note: from the packs written to the valid order nearest above)
+  const from = c.changed ? c.need : m.packs;
+  const to = c.changed ? m.packs : c.need;
+  const raised = (m.mode === "packs" && c.changed) || ((m.mode === "check" || m.mode === "total") && to !== from);
+  const minRaises = !raised || c.minPacks > from;
+  const lotRaises = !raised || (c.lotPacks > 0 && Math.max(from, c.minPacks) % c.lotPacks !== 0);
+  const metParts: string[] = [];
   if (minC) {
     const lbl = condLabel(minC, c.minPacks, m.pack);
-    parts.push(Lx(`el mínimo del proveedor es ${lbl}`, `the supplier's minimum is ${lbl}`));
+    if (minRaises) parts.push(Lx(`el mínimo del proveedor es ${lbl}`, `the supplier's minimum is ${lbl}`));
+    else metParts.push(Lx(`el mínimo (${lbl})`, `the minimum (${lbl})`));
     okParts.push(Lx(`el mínimo (${lbl})`, `the minimum (${lbl})`));
   }
   if (lotC) {
     const lbl = condLabel(lotC, c.lotPacks, m.pack);
-    parts.push(Lx(`solo vende en múltiplos de ${lbl}`, `it only sells in multiples of ${lbl}`));
+    if (lotRaises)
+      parts.push(parts.length ? Lx(`solo vende en múltiplos de ${lbl}`, `it only sells in multiples of ${lbl}`) : Lx(`el proveedor solo vende en múltiplos de ${lbl}`, `the supplier only sells in multiples of ${lbl}`));
+    else metParts.push(Lx(`el múltiplo de ${lbl}`, `the multiple of ${lbl}`));
     okParts.push(Lx(`el múltiplo de ${lbl}`, `the multiple of ${lbl}`));
   }
   const unread = c.unreadable.length
@@ -808,6 +821,8 @@ function condWords(m: PackMath): { lead: string; ok: string; unread: string } {
   return {
     lead: joinList(parts),
     ok: okParts.length ? Lx(` Cumples ${joinList(okParts)}.`, ` You meet ${joinList(okParts)}.`) : "",
+    // a condition the need already met, said after the raised order
+    met: metParts.length ? Lx(` Ese pedido también cumple ${joinList(metParts)}.`, ` That order also meets ${joinList(metParts)}.`) : "",
     unread,
   };
 }
@@ -830,7 +845,7 @@ function kitReply(m: PackMath): string {
     return Lx(
       `Para ${count(p.noun, m.wanted)} necesitarías ${f(need)} ${pw(need)}, pero ${cw.lead}: debes pedir ${f(m.packs)} ${pw(m.packs)} y recibirías ${totals(m.packs)}, ${count(p.noun, m.extra)} más de las que necesitas, suponiendo que cada ${pw(1)} trae ${comp}.`,
       `For ${count(p.noun, m.wanted)} you'd need ${f(need)} ${pw(need)}, but ${cw.lead}: you should order ${f(m.packs)} ${pw(m.packs)} and would receive ${totals(m.packs)}, ${count(p.noun, m.extra)} more than you need, assuming each ${pw(1)} holds ${comp}.`,
-    ) + cw.unread + confirm;
+    ) + cw.met + cw.unread + confirm;
   }
   const minEnd = !m.cond
     ? ""
@@ -988,7 +1003,7 @@ function measureReply(m: PackMath): string {
         `For ${f(m.wanted)} ${u} in ${pw(2)} of ${f(m.perPack)} ${u}, you'd need ${f(m.packs)} whole ${pw(m.packs)} and would receive ${f(m.total)} ${u}`,
       );
   const extra = m.extra > 0 ? Lx(` (${f(m.extra)} ${u} más de lo que necesitas).`, ` (${f(m.extra)} ${u} more than you need).`) : ".";
-  return from + lead + extra + (m.cond?.changed ? "" : cw.ok) + cw.unread + assume;
+  return from + lead + extra + (m.cond?.changed ? cw.met : cw.ok) + cw.unread + assume;
 }
 
 function packMathReply(m: PackMath): string {
@@ -1083,7 +1098,7 @@ function packMathReply(m: PackMath): string {
     return pre + Lx(
       `Para ${nn(m.wanted)} necesitarías ${f(m.cond.need)} ${pw(m.cond.need)}, pero ${cw.lead}: debes pedir ${f(m.packs)} ${pw(m.packs)} = ${nn(m.total)}, y te sobrarían ${nn(m.extra)}, suponiendo ${per}.`,
       `For ${nn(m.wanted)} you'd need ${f(m.cond.need)} ${pw(m.cond.need)}, but ${cw.lead}: you should order ${f(m.packs)} ${pw(m.packs)} = ${nn(m.total)}, with ${nn(m.extra)} left over, assuming ${per}.`,
-    ) + cw.unread + pairNote + confirm;
+    ) + cw.met + cw.unread + pairNote + confirm;
   const minEnd = !m.cond
     ? ""
     : (m.mode === "check" || m.mode === "total") && m.packs !== m.cond.need
