@@ -121,10 +121,49 @@ function partMaterials(text?: string): { pairs: PartMat[]; rest: string } {
 }
 
 export interface PartIssue { text: string }
+
+// Stainless steel grades: 304 is not 201 (it corrodes, and costs less)
+const GRADE = "(201|202|301|304l?|316l?|410|430)";
+const SS = "(?:ss|sus|aisi|inox(?:idable)?|stainless(?:\\s+steel)?|acero\\s+inoxidable)";
+const GRADE_RES = [new RegExp(`\\b${SS}\\s*-?\\s*${GRADE}\\b`, "g"), new RegExp(`\\b${GRADE}\\s*-?\\s*${SS}`, "g")];
+// grades written alone next to a stainless mention elsewhere ("acero inoxidable 304, no 201")
+// only after a separator or the word grade ("201/304", "grado 304"): "430 mesas" is a quantity
+const BARE_GRADE = new RegExp(`(?:\\/\\s*|\\b(?:grado|grade|tipo|type)\\s+)${GRADE}\\b`, "g");
+const NEG_GRADE = new RegExp(`\\b(?:no|ni|sin|excepto|salvo|not|except|excluding|without)\\s+(?:(?:acero|steel|de|en|grado|grade)\\s+)*(?:${SS}\\s*-?\\s*)?${GRADE}\\b`, "g");
+function gradesIn(text: string): { wanted: string[]; excluded: string[] } {
+  let t = ` ${String(text || "").toLowerCase()} `;
+  if (!new RegExp(SS).test(t)) return { wanted: [], excluded: [] };
+  const excluded: string[] = [];
+  t = t.replace(NEG_GRADE, (m) => {
+    excluded.push(m.match(/\d{3}l?/)![0].replace(/l$/, ""));
+    return " ";
+  });
+  const found = new Set<string>();
+  for (const re of GRADE_RES) for (const m of t.matchAll(re)) found.add((m[1].match(/\d/) ? m[1] : m[2]).replace(/l$/, ""));
+  for (const m of t.matchAll(BARE_GRADE)) found.add(m[1].replace(/l$/, ""));
+  return { wanted: [...found].filter((g) => !excluded.includes(g)), excluded };
+}
+/** A stainless grade other than the one asked (or one the client ruled out). */
+function gradeIssue(description: string, productTitle?: string): PartIssue | null {
+  const want = gradesIn(description);
+  if (!want.wanted.length && !want.excluded.length) return null;
+  const got = gradesIn(productTitle || "").wanted;
+  if (!got.length) return null;
+  const ruled = got.filter((g) => want.excluded.includes(g));
+  const ok = got.filter((g) => want.wanted.includes(g));
+  if (ruled.length && !ok.length)
+    return { text: Lx(`Indica acero inoxidable ${ruled.join("/")}, un grado que excluiste`, `States ${ruled.join("/")} stainless steel, a grade you ruled out`) };
+  if (want.wanted.length && !ok.length)
+    return { text: Lx(`Indica acero inoxidable ${got.join("/")}; pediste ${want.wanted.join(" o ")}`, `States ${got.join("/")} stainless steel; you asked for ${want.wanted.join(" or ")}`) };
+  if (ok.length && got.length > ok.length)
+    return { text: Lx(`Menciona acero inoxidable ${got.join(" y ")}; confirma que te coticen ${ok.join(" o ")}`, `It mentions ${got.join(" and ")} stainless steel; confirm they quote ${ok.join(" or ")}`) };
+  return null;
+}
+
 /** A part whose material differs from what the client asked, or that the client ruled out. */
 export function partMaterialIssue(description: string, productTitle?: string): PartIssue | null {
   const want = partMaterials(description).pairs;
-  if (!want.length) return null;
+  if (!want.length) return gradeIssue(description, productTitle);
   const got = partMaterials(productTitle).pairs.filter((x) => !x.negated);
   for (const g of got) {
     const ruled = want.find((w) => w.negated && w.part === g.part && w.mat === g.mat);
@@ -136,7 +175,7 @@ export function partMaterialIssue(description: string, productTitle?: string): P
         text: Lx(`Indica ${g.part} de ${g.mat}; pediste ${g.part} de ${asked.map((w) => w.mat).join(" o ")}`, `States a ${g.matEn} ${g.partEn}; you asked for ${asked.map((w) => w.matEn).join(" or ")}`),
       };
   }
-  return null;
+  return gradeIssue(description, productTitle);
 }
 
 export function matchMaterial(description: string, productTitle?: string): MaterialMatch | null {

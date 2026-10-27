@@ -33,7 +33,8 @@ export function budgetNote(costs: CostResult, budget: number, Q: (usd: number) =
 /** Small orders: fixed charges weigh more than the product itself; "" otherwise. */
 export function smallOrderNote(costs: CostResult, unitOne: string, Q: (usd: number) => string): string {
   const ins = costs.lines.find((l) => l.key === "insurance")?.amount ?? 0;
-  const insuranceMin = ins > costs.productCost * 0.0101;
+  // the insurance is the minimum premium when it is above the plain rate on FOB
+  const insuranceMin = ins > costs.productCost * (costs.insuranceRate || 0.01) * 1.0001;
   const fixed = costs.lines
     .filter((l) => l.key === "insurance" || l.key === "customs" || l.key === "local")
     .reduce((a, l) => a + l.amount, 0);

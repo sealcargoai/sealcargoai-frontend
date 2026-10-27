@@ -5,11 +5,36 @@ import { formatUSD, formatUnitUSD, formatUnitQ } from "./costCalculator";
 import { Lx } from "./lang";
 import { saleUnitInfo } from "./saleUnit";
 
+export type PriceFlagCode =
+  | { kind: "symbolic"; lo: number }
+  | { kind: "range"; lo: number; hi: number }
+  | { kind: "below"; own: number; typical: number; perPiece: boolean };
+
+/** The warning for an atypical price, in the language in use. */
+export function priceFlagText(c: PriceFlagCode): string {
+  if (c.kind === "symbolic")
+    return Lx(
+      `El precio publicado (${formatUnitUSD(c.lo)}) parece simbólico o inicial, no el precio real de la unidad.`,
+      `The published price (${formatUnitUSD(c.lo)}) looks symbolic or a starting price, not the real unit price.`,
+    );
+  if (c.kind === "range")
+    return Lx(
+      `El rango publicado es muy amplio (${formatUnitUSD(c.lo)} – ${formatUnitUSD(c.hi)}); el mínimo suele ser de un accesorio o un modelo distinto.`,
+      `The published range is very wide (${formatUnitUSD(c.lo)} – ${formatUnitUSD(c.hi)}); the minimum is usually an accessory or a different model.`,
+    );
+  return Lx(
+    `Está muy por debajo de las demás opciones de esta búsqueda, comparando el precio por pieza (${formatUnitUSD(c.own)} contra un precio típico cercano a ${formatUnitUSD(c.typical)} por pieza).`,
+    `It is far below the other options in this search, comparing the price per piece (${formatUnitUSD(c.own)} against a typical price around ${formatUnitUSD(c.typical)} per piece).`,
+  );
+}
+
 interface PricedSupplier {
   price?: number;
   priceRange?: string;
   priceSource?: string;
   priceFlag?: string;
+  // why the price looks atypical, with its figures: the text is built in the language in use
+  priceFlagCode?: PriceFlagCode;
   priceNotComparable?: boolean;
   saleUnit?: string;
   productName?: string;
@@ -58,9 +83,22 @@ export function priceIssue(
   productType = "",
 ): string {
   if (!s || s.priceSource === "client") return "";
-  if (s.priceFlag) return s.priceFlag;
+  if (s.priceFlagCode) return priceFlagText(s.priceFlagCode);
+  const code = priceIssueCode(s, peerPrices, productType);
+  if (code) return priceFlagText(code);
+  return s.priceFlag || "";
+}
+
+/** Why a published price looks atypical (null when it doesn't). */
+export function priceIssueCode(
+  s: PricedSupplier | null | undefined,
+  peerPrices: number[] = [],
+  productType = "",
+): PriceFlagCode | null {
+  if (!s || s.priceSource === "client") return null;
+  if (s.priceFlagCode) return s.priceFlagCode;
   const price = s.price ?? 0;
-  if (price <= 0) return "";
+  if (price <= 0) return null;
   const nums = rangeNumbers(s.priceRange);
   const lo = nums.length ? Math.min(...nums) : price;
   const hi = nums.length ? Math.max(...nums) : price;
@@ -69,31 +107,21 @@ export function priceIssue(
   const peerMedian = peers.length >= 2 ? median(peers) : 0;
   // peers are compared per piece: the client's own price per sale unit
   const own = comparablePrice(s, productType);
-  const perPiece = !!s.saleUnit && s.saleUnit !== "piece" ? Lx(" por pieza", " per piece") : "";
   // US$1 or less is normal for a pencil, not for a machine: flag it only for
   // costly product types, or when the other options cost far more
   if ((price <= 1 || lo <= 1) && (COSTLY_TYPES.has(productType) || (own !== null && own <= 1 && peerMedian >= 20))) {
-    return Lx(
-      `El precio publicado (${formatUnitUSD(lo)}) parece simbólico o inicial, no el precio real de la unidad.`,
-      `The published price (${formatUnitUSD(lo)}) looks symbolic or a starting price, not the real unit price.`,
-    );
+    return { kind: "symbolic", lo };
   }
   if (nums.length >= 2 && hi / lo >= 20) {
-    return Lx(
-      `El rango publicado es muy amplio (${formatUnitUSD(lo)} – ${formatUnitUSD(hi)}); el mínimo suele ser de un accesorio o un modelo distinto.`,
-      `The published range is very wide (${formatUnitUSD(lo)} – ${formatUnitUSD(hi)}); the minimum is usually an accessory or a different model.`,
-    );
+    return { kind: "range", lo, hi };
   }
   if (peerMedian > 0 && own !== null) {
     const m = peerMedian;
     if (own < m * 0.2) {
-      return Lx(
-        `Está muy por debajo de las demás opciones de esta búsqueda, comparando el precio por pieza (${formatUnitUSD(own)} contra un precio típico cercano a ${formatUnitUSD(m)}${perPiece || " por pieza"}).`,
-        `It is far below the other options in this search, comparing the price per piece (${formatUnitUSD(own)} against a typical price around ${formatUnitUSD(m)}${perPiece || " per piece"}).`,
-      );
+      return { kind: "below", own, typical: m, perPiece: !!s.saleUnit && s.saleUnit !== "piece" };
     }
   }
-  return "";
+  return null;
 }
 
 /** Adds `priceFlag` to each supplier, comparing it with the others in the list. */
@@ -102,9 +130,9 @@ export function flagPrices<T extends PricedSupplier>(list: T[], productType = ""
   const perPiece = list.map((s) => comparablePrice(s, productType));
   return list.map((s, i) => {
     const peers = perPiece.filter((v, k) => k !== i && v !== null) as number[];
-    const flag = priceIssue({ ...s, priceFlag: undefined }, peers, productType);
+    const code = priceIssueCode({ ...s, priceFlag: undefined, priceFlagCode: undefined }, peers, productType);
     const notComparable = perPiece[i] === null && Number(s.price) > 0;
-    const out = flag ? { ...s, priceFlag: flag } : { ...s };
+    const out = code ? { ...s, priceFlag: priceFlagText(code), priceFlagCode: code } : { ...s, priceFlag: undefined, priceFlagCode: undefined };
     return notComparable ? { ...out, priceNotComparable: true } : out;
   });
 }

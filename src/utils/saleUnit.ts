@@ -128,6 +128,9 @@ export function saleUnitInfo(s?: { saleUnit?: string; productName?: string } | n
     if (n > 1 && n <= 5000) packSize = n;
   }
   if (WHOLE_ITEM_TYPES.has(productType) && !(packSize > 1)) return { unit: "piece", packSize: 0, multi: false };
+  // a price per meter, kilo or ton is a measure, not a pack: the client's quantity in
+  // that measure is taken as it is (scenario.ts says so when the request reads otherwise)
+  if (fromMoq === "meter" || fromMoq === "kilogram" || fromMoq === "ton") return { unit: fromMoq, packSize: 0, multi: false };
   // a pair holds two pieces by definition (a "20 pairs/box" title doesn't change that)
   if (fromMoq === "pair") packSize = 2;
   if (fromMoq === "dozen" && !(packSize > 1)) packSize = 12;

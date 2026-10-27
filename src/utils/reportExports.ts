@@ -101,6 +101,7 @@ export interface ExcelExportData {
     exchangeRate?: number; // GTQ per USD — amounts are written in quetzales
     saleUnit?: string;
     fxNote?: string;
+    insuranceMin?: number;
   };
   vatRate: number;
   insuranceRate: number;
@@ -240,7 +241,7 @@ export async function generateBeautifulExcel(
     [Lx("Proveedor considerado:", "Supplier considered:"), data.supplierName],
     [Lx("Producto:", "Product:"), data.productType],
     [Lx("País de destino:", "Destination country:"), "Guatemala"],
-    [Lx("Cantidad:", "Quantity:"), `${data.quantity.toLocaleString()} ${unitWordFor(data.costs.saleUnit, data.quantity)}`],
+    [Lx("Cantidad:", "Quantity:"), `${data.quantity.toLocaleString("en-US")} ${unitWordFor(data.costs.saleUnit, data.quantity)}`],
     [Lx(`Precio por ${unitWordFor(data.costs.saleUnit, 1)}:`, `Price per ${unitWordFor(data.costs.saleUnit, 1)}:`), `${formatUnitUSD(Number(data.price))} (${formatUnitQ(Number(data.price), data.costs.exchangeRate || DEFAULT_FX)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
   ];
 
@@ -329,9 +330,9 @@ export async function generateBeautifulExcel(
     detail:
       l.key === "freight" && data.costs.freightPending ? Lx("Por cotizar", "To be quoted") : l.detail,
     appliedRate:
-      // the insurance minimum (US$250) applies when 1% of FOB is below it: say so instead of "1%"
+      // the insurance minimum applies when the rate on FOB is below it: say so instead of the rate
       l.key === "insurance" && data.costs.productCost > 0 && l.amount > data.costs.productCost * (data.insuranceRate || 0.01) * 1.0001
-        ? Lx("mín. US$250", "min. US$250")
+        ? Lx(`mín. ${formatQ(data.costs.insuranceMin || 250, data.costs.exchangeRate || DEFAULT_FX)}`, `min. ${formatQ(data.costs.insuranceMin || 250, data.costs.exchangeRate || DEFAULT_FX)}`)
         : RATE_BY_KEY[l.key] !== undefined
         ? `${((RATE_BY_KEY[l.key] as number) * 100).toFixed(0)}%${l.key === "duties" ? Lx(" ref.", " ref.") : ""}`
         : "—",
@@ -448,7 +449,7 @@ export async function generateBeautifulExcel(
   totalConceptCell.value = data.costs.freightPending
     ? Lx("TOTAL PARCIAL, SIN FLETE", "PARTIAL TOTAL, WITHOUT FREIGHT")
     : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA");
-  totalDetailCell.value = `${data.quantity.toLocaleString()} ${unitWordFor(data.costs.saleUnit, data.quantity)}`;
+  totalDetailCell.value = `${data.quantity.toLocaleString("en-US")} ${unitWordFor(data.costs.saleUnit, data.quantity)}`;
   totalRateCell.value = "—";
   totalAmountCell.value = data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX);
   totalAmountCell.numFmt = qFmt(totalAmountCell.value as number);

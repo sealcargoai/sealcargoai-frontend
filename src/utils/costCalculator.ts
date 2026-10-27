@@ -78,7 +78,7 @@ export function formatQ(usdAmount: number, exchangeRate: number, decimals = 0): 
   const small = decimals > 0 && q > 0 && q < 1;
   return `Q${q.toLocaleString("en-US", {
     minimumFractionDigits: decimals,
-    maximumFractionDigits: small ? 4 : decimals,
+    maximumFractionDigits: small ? Math.max(4, unitDigits(q)) : decimals,
   })}`;
 }
 
@@ -87,13 +87,16 @@ export function formatUSD(usdAmount: number, decimals = 0): string {
   const small = decimals > 0 && usdAmount > 0 && usdAmount < 1;
   return `US$${usdAmount.toLocaleString("en-US", {
     minimumFractionDigits: decimals,
-    maximumFractionDigits: small ? 4 : decimals,
+    maximumFractionDigits: small ? Math.max(4, unitDigits(usdAmount)) : decimals,
   })}`;
 }
 
 // Unit prices: as many decimals as the value really has (2 to 4), so the price
 // shown × the quantity gives the same total the calculator uses (US$2.425, not US$2.43).
+// below US$0.0001 the figure keeps 3 significant digits (US$0.0000400), never US$0.00
 function unitDigits(v: number): number {
+  const a = Math.abs(v);
+  if (a > 0 && a < 0.0001) return Math.min(10, Math.ceil(-Math.log10(a)) + 2);
   for (let d = 2; d < 4; d++) if (Math.abs(Math.round(v * 10 ** d) - v * 10 ** d) < 1e-6) return d;
   return 4;
 }
@@ -109,18 +112,24 @@ const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
 let ratesCache: Rates | null = null;
 let ratesPromise: Promise<Rates> | null = null;
 
+/** The rates in use (from the server once loaded, the defaults before). */
+export function currentRates(): Rates {
+  return ratesCache || DEFAULT_RATES;
+}
+
 export function fetchRates(): Promise<Rates> {
   if (ratesCache) return Promise.resolve(ratesCache);
   if (!ratesPromise) {
     ratesPromise = fetch(`${API_URL}/api/rates`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        ratesCache = { ...DEFAULT_RATES, ...(data?.rates || {}) };
-        return ratesCache;
+        const r: Rates = { ...DEFAULT_RATES, ...(data?.rates || {}) };
+        ratesCache = r;
+        return r;
       })
       .catch(() => DEFAULT_RATES);
   }
-  return ratesPromise;
+  return ratesPromise as Promise<Rates>;
 }
 
 export function useRates(): Rates {
@@ -162,6 +171,7 @@ export interface CostResult {
   dutyRate: number;
   vatRate: number;
   insuranceRate: number;
+  insuranceMin: number;
   lines: CostLine[];
   noVatNote: string;
   exchangeRate: number;
@@ -308,6 +318,7 @@ export function calculateCosts(
     dutyRate: rates.dutyRate,
     vatRate: rates.vatRate,
     insuranceRate: rates.insuranceRate,
+    insuranceMin: rates.insuranceMin,
     lines,
     noVatNote: "", // no VAT footnote: the tool is only an estimate
     exchangeRate: rates.exchangeRate,

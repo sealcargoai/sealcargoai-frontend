@@ -4,7 +4,7 @@
 // Only reads what is written; when a title says nothing, it says so.
 import { Lx } from "./lang";
 
-type Family = "mass" | "volume" | "needles" | "heads";
+type Family = "mass" | "volume" | "needles" | "heads" | "power";
 type Per = "h" | "d" | "";
 export interface Spec {
   min: number;
@@ -15,6 +15,7 @@ export interface Spec {
   text: string;
   at?: number; // position in the text
   atLeast?: boolean; // the client asked for a minimum ("mínimo 100 kg/h")
+  hp?: boolean; // power written in HP: shown in HP, compared in kW
 }
 const AT_LEAST = /(m[ií]nimo|m[ií]nima|al\s+menos|por\s+lo\s+menos|como\s+m[ií]nimo|no\s+menos\s+de|at\s+least|minimum|min\.?|>=|≥|más\s+de|mas\s+de|over|more\s+than)(\s+(de|of|una?|capacidad|producci[oó]n|capacity|output))*\s*$/i;
 /** Kept for older imports. */
@@ -27,9 +28,12 @@ add("mass", 1000, ["t", "ton", "tons", "tonelada", "toneladas", "tonne", "tonnes
 add("volume", 1, ["l", "lt", "lts", "litro", "litros", "liter", "liters", "litre", "litres"]);
 add("needles", 1, ["aguja", "agujas", "needle", "needles"]);
 add("heads", 1, ["cabeza", "cabezas", "cabezal", "cabezales", "head", "heads"]);
+// motor power, kept in kW ("15 kW", "20 HP", "7.5kw")
+add("power", 1, ["kw", "kws", "kilowatt", "kilowatts", "kilovatio", "kilovatios"]);
+add("power", 0.7457, ["hp", "cv", "caballos"]);
 
 const UNIT =
-  "(kgs?|kilos?|kilogramos?|toneladas?|tonnes?|tons?|t|litros?|liters?|litres?|lts?|l|agujas?|needles?|cabezal(?:es)?|cabezas?|heads?)";
+  "(kgs?|kilos?|kilogramos?|toneladas?|tonnes?|tons?|t|litros?|liters?|litres?|lts?|l|agujas?|needles?|cabezal(?:es)?|cabezas?|heads?|kws?|kilowatts?|kilovatios?|hp|cv|caballos)";
 // Time unit after the figure: per hour, per minute (converted to hours), per day.
 // "por lote" / "per batch" is the same as no time unit.
 const RATE =
@@ -61,6 +65,10 @@ function fmt(c: Spec) {
   if (isCount(c.family)) {
     return c.min === c.max ? `${c.min} ${countWord(c.family, c.min)}` : `${c.min}–${c.max} ${countWord(c.family, c.max)}`;
   }
+  if (c.family === "power") {
+    const kw = (v: number) => (c.hp ? `${+(v / 0.7457).toFixed(1)} HP (${+v.toFixed(1)} kW)` : `${+v.toFixed(2)} kW`);
+    return c.min === c.max ? kw(c.min) : `${+c.min.toFixed(2)}–${kw(c.max)}`;
+  }
   const unit = c.family === "mass" ? "kg" : "L";
   const r = c.per === "h" ? Lx("/hora", "/hour") : c.per === "d" ? Lx("/día", "/day") : "";
   const n = (v: number) => (v >= 1000 && c.family === "mass" ? `${+(v / 1000).toFixed(2)} t` : `${+v.toFixed(2)} ${unit}`);
@@ -90,10 +98,10 @@ export function parseSpecs(text: string): Spec[] {
   const push = (vals: number[], u: string, rateText?: string, at = 0) => {
     const info = UNITS[u];
     if (!info) return;
-    const pr = isCount(info.family) ? { per: "" as Per, k: 1 } : perOf(rateText);
+    const pr = isCount(info.family) || info.family === "power" ? { per: "" as Per, k: 1 } : perOf(rateText);
     const v = vals.map((x) => x * info.k * pr.k).filter((x) => x > 0);
     if (!v.length) return;
-    out.push({ min: Math.min(...v), max: Math.max(...v), family: info.family, rate: pr.per !== "", per: pr.per, text: "", at });
+    out.push({ min: Math.min(...v), max: Math.max(...v), family: info.family, rate: pr.per !== "", per: pr.per, text: "", at, ...(info.family === "power" && info.k !== 1 ? { hp: true } : {}) });
   };
 
   // Lists: "12/15 needles", "6, 9, 12 agujas"

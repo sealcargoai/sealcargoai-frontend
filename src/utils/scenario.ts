@@ -127,6 +127,20 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
         `Your quantity is in ${countWord} and the listing doesn't say whether its price is per ${intent === "pair" ? "pair" : "dozen"} or per piece: we calculate ${requested.toLocaleString("en-US")} units taking the price as per ${intent === "pair" ? "pair" : "dozen"}. If it is per piece, it would be ${(requested * countMult).toLocaleString("en-US")} pieces; confirm it with the supplier.`,
       ),
     );
+  // a listing priced per meter, kilo or ton: the quantity is read in that measure
+  if (unitInfo.unit === "meter" || unitInfo.unit === "kilogram" || unitInfo.unit === "ton") {
+    // a quantity written in that measure ("500 metros", "1,000 kg"); "médico" is not "m"
+    const said = new RegExp(
+      `\\d\\s*(?:${{ meter: "m|mts?|metros?|meters?|metres?", kilogram: "kg|kgs|kilos?|kilogramos?|kilograms?", ton: "t|tons?|toneladas?|tonnes?" }[unitInfo.unit]})(?![a-záéíóúüñ])`,
+    ).test(String(ctx.description || "").toLowerCase());
+    if (!said)
+      notes.push(
+        Lx(
+          `La publicación vende por ${unitWordFor(unitInfo.unit, 1)}: tomamos tu cantidad como ${requested.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, requested)}. Si tu cantidad está en piezas u otra unidad, ajústala o confirma la equivalencia con el proveedor.`,
+          `The listing sells per ${unitWordFor(unitInfo.unit, 1)}: we take your quantity as ${requested.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, requested)}. If your quantity is in pieces or another unit, adjust it or confirm the equivalence with the supplier.`,
+        ),
+      );
+  }
   const one = unitWordFor(unitInfo.unit, 1);
   let price = Number(supplier?.price) > 0 ? Number(supplier.price) : 0;
 
