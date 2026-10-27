@@ -101,3 +101,18 @@ describe("zero, negatives, decimals, measures, minimums, multiples (more wording
   ];
   for (const [q, must, not] of more) it(q, () => check(replayConversation([q])[0], { must, not }));
 });
+
+describe("the 'pero …' names only the condition that raises the order", () => {
+  const c: [string, RegExp[], RegExp[]][] = [
+    [Q.lot301, [/pero el proveedor solo vende en múltiplos de 6/, /también cumple el mínimo \(15 cajas\)/], [/pero el mínimo/]],
+    [Q.lot200, [/pero el mínimo del proveedor es 15 cajas y solo vende en múltiplos de 6/], [/también cumple/]],
+    ["Necesito 200 pares. Cada caja trae 20 pares. Mínimo 18 cajas y venden en múltiplos de 6. ¿Cuántas cajas?", [/pero el mínimo del proveedor es 18 cajas:/, /también cumple el múltiplo de 6/], [/pero el mínimo[^:]*múltiplos/]],
+    ["Necesito 360 pares. Cada caja trae 20 pares. Mínimo 15 cajas y venden en múltiplos de 6. ¿Cuántas cajas?", [/Cumples el mínimo \(15 cajas\) y el múltiplo de 6/], [/pero/]],
+    ["Necesito 2000 sets, cada set trae 1 botella y 3 tazas, mínimo 300 sets, múltiplos de 7 sets. ¿Cuántos sets?", [/Ojo: el proveedor solo vende en múltiplos de 7 sets/, /2,002 sets/], [/Ojo: el mínimo/]],
+  ];
+  for (const [q, must, not] of c) it(q, () => check(replayConversation([q])[0], { must, not }));
+  it("EN", () => {
+    setLang("en");
+    check(replayConversation([Q.lot301])[0], { must: [/but the supplier only sells in multiples of 6/, /also meets the minimum \(15 boxes\)/], not: [/but the supplier's minimum/] });
+  });
+});
