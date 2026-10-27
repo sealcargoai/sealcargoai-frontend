@@ -363,7 +363,8 @@ export function CostBreakdown() {
     publishedPrice: Number(originalSupplier?.price) > 0 && originalSupplier?.priceSource !== "client" ? `${formatUnitUSD(Number(originalSupplier.price))} / ${unitWordFor(unitInfo.unit, 1)}` : "",
     totalCostText: `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? L(", sin flete", ", without freight") : ""}`,
     budget: budget > 0 ? `US$${budget.toLocaleString("en-US")}` : "",
-    destination,
+    // the destination as people read it (the form stores the code "GT")
+    destination: /^gt$/i.test(destination) ? "Guatemala" : destination,
     assumptions: [...sc.notes, ...reportNotes].filter((n, i, all) => n && all.indexOf(n) === i).slice(0, 12) as string[],
     warnings: reportDiffs.items.slice(0, 12),
   };
