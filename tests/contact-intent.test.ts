@@ -134,3 +134,40 @@ describe("urgent request: attention prevails over the word 'proveedores'", () =>
     expect(replayConversation(["Tengo proforma"])[0]).not.toMatch(/urgente/);
   });
 });
+
+// Víctor's report (27-d): "¿ya llegó mi solicitud?" without having pressed Send
+import { requestStatusQuestion, buildReply, nextSpec } from "../src/utils/chatReply";
+describe("asking whether the request arrived", () => {
+  const YES = [
+    "¿Ya llegó mi solicitud? Aclaro que no he pulsado Enviar",
+    "¿Recibieron mi solicitud?",
+    "¿Ya les llegó mi caso?",
+    "¿Mi solicitud ya fue recibida?",
+    "¿Quedó registrada mi solicitud?",
+    "Did you get my request?",
+    "Has my request arrived?",
+  ];
+  const NO = ["Mi carga ya llegó al puerto", "¿Cuándo llega mi pedido?", "Quiero enviar una solicitud", "Necesito 200 pares; cada caja trae 20 pares"];
+  for (const q of YES) it(`${q} → status question`, () => expect(requestStatusQuestion(q)).toBe(true));
+  for (const q of NO) it(`${q} → not a status question`, () => expect(requestStatusQuestion(q)).toBe(false));
+  it("nothing sent: explains it must be filled in and sent, no 'open questions' answer", () => {
+    const r = replayConversation(["¿Ya llegó mi solicitud? No he pulsado Enviar"])[0];
+    expect(r).toMatch(/^Todavía no: aún debes completar y enviar el formulario «Enviar mi caso a SEAL»/);
+    expect(r).toMatch(/recibirás la confirmación con tu número de caso/);
+    expect(r).not.toMatch(/preguntas abiertas|proveedor/);
+  });
+  it("sent from this tab: gives the real case number", () => {
+    const spec = { ...nextSpec("¿Recibieron mi solicitud?", [], "", 0), sentCase: "SEAL-20261027-ABC123" };
+    expect(buildReply(spec)).toMatch(/^Sí: tu solicitud quedó registrada con el número de caso SEAL-20261027-ABC123/);
+  });
+  it("EN", () => {
+    setLang("en");
+    expect(replayConversation(["Did you get my request?"])[0]).toMatch(/^Not yet: you still need to fill in and send/);
+  });
+  it("the calculation follow-up still works (500 pencils, then 1001 with the same pack)", () => {
+    const r = replayConversation(["Necesito 500 lápices, vienen 120 por caja. ¿Cuántas cajas?", "¿Y si necesito 1001 con el mismo empaque?"]);
+    expect(r[1]).toMatch(/9 cajas/);
+    expect(r[1]).toMatch(/1,080/);
+    expect(r[1]).toMatch(/79/);
+  });
+});
