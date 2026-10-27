@@ -10,7 +10,7 @@ describe("phase and voltage", () => {
   it("single phase vs three phase is a difference", () => {
     const m = matchElectric(d, "Hammer mill single phase 220V corn grinder")!;
     expect(m.status).toBe("other");
-    expect(m.text).toMatch(/indica monofásico; pediste trifásico/);
+    expect(m.text).toMatch(/Esta publicación indica monofásico; solicitaste trifásico/);
   });
   it("other voltage is a difference", () => expect(matchElectric(d, "Hammer mill 380V three phase")!.status).toBe("other"));
   it("same phase and voltage matches", () => expect(matchElectric(d, "Hammer mill 220v 3 phase")!.status).toBe("match"));
@@ -41,7 +41,7 @@ describe("differences for the reports", () => {
   });
   it("power supply and capacity differences", () => {
     const d = listingDifferences("Molino de martillos para maíz 220 V trifásico, 500 kg/h", { productName: "Corn hammer mill single phase 220V 300kg/h" });
-    expect(d.items.join(" ")).toMatch(/monofásico; pediste trifásico/);
+    expect(d.items.join(" ")).toMatch(/indica monofásico; solicitaste trifásico/);
     expect(d.items.join(" ")).toMatch(/300 kg\/hora \(menos de lo pedido\)/);
   });
   it("no title, no section", () => expect(listingDifferences("x", {}).items).toEqual([]));
