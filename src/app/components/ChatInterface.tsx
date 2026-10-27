@@ -20,7 +20,7 @@ export function ChatInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { query, name, email, descriptionCleaned } = location.state || {};
+  const { query, name: stateName, email, descriptionCleaned } = location.state || {};
   const { t, L } = useLanguage();
   // The conversation of this case is kept while the client goes to the form and back
   // (a new case from the start screen clears it). Its intro keeps the request it began with.
@@ -28,11 +28,13 @@ export function ChatInterface() {
   const savedChat = (() => {
     try {
       const v = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "null");
-      return v && Array.isArray(v.messages) ? (v as { query?: string; messages: Message[] }) : null;
+      return v && Array.isArray(v.messages) ? (v as { query?: string; name?: string; messages: Message[] }) : null;
     } catch {
       return null;
     }
   })();
+  // a reload keeps the greeting with the client's name
+  const name = stateName || (savedChat?.messages.length && typeof savedChat.name === "string" ? savedChat.name : "");
   const startQuery = savedChat?.messages.length && typeof savedChat.query === "string" ? savedChat.query : String(query || "");
 
   // Assistant texts are resolved at render time so they follow the ES / EN switch
@@ -88,7 +90,7 @@ export function ChatInterface() {
   });
   useEffect(() => {
     try {
-      sessionStorage.setItem(CHAT_KEY, JSON.stringify({ query: startQuery, messages }));
+      sessionStorage.setItem(CHAT_KEY, JSON.stringify({ query: startQuery, name, messages }));
     } catch {
       /* storage unavailable */
     }
