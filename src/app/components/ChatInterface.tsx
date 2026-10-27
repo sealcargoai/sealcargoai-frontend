@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router";
 import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
@@ -66,10 +66,16 @@ export function ChatInterface() {
     }
   }, [messages, query]);
   const [input, setInput] = useState("");
+  // the newest answer (and the way to SEAL under it) comes into view
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (messages.length) endRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
+  }, [messages]);
   const specsOf = (list: Message[]) => list.filter((m) => m.role === "ai").map((m) => JSON.parse(m.content) as ReplySpec);
   // quantity: the last one the client gave here, else the one in their request
   const initialQty = (() => {
-    const m = String(query || "").replace(/(\d),(\d{3})/g, "$1$2").match(/\b(\d+)\s+(?!kg|kgs|t\b|l\b|litros|agujas|needles)/i);
+    // "500 ml", "20 kg", "12 V" are sizes, not the quantity
+    const m = String(query || "").replace(/(\d),(\d{3})/g, "$1$2").match(/\b(\d+)\s*(?!\s*(?:ml|l|lt|lts|litros?|kg|kgs|g|gr|grs|gramos?|oz|lb|lbs|libras?|t|ton|toneladas?|cm|mm|m|mts?|metros?|pulgadas?|in|ft|pies|w|v|kw|kva|hp|hz|mah|gb|tb|agujas|needles|%|"|x\s*\d)\b)(?=\s|$)/i);
     return m ? Number(m[1]) : 0;
   })();
   const contextOf = (list: ReplySpec[]) => {
@@ -86,7 +92,8 @@ export function ChatInterface() {
   const lastContact = [...messages].reverse().find((m) => m.role === "user" && contactIntent(m.content));
   const chatCase = {
     product: currentProduct || undefined,
-    quantity: currentQuantity ? String(currentQuantity) : undefined,
+    // only a quantity the client stated here (one read from the request could be a size)
+    quantity: [...specs].reverse().find((x) => x.newQuantity) ? String(currentQuantity) : undefined,
     chat: userTexts.slice(-8),
   };
 
@@ -222,6 +229,7 @@ export function ChatInterface() {
             </div>
           ))}
 
+          <div ref={endRef} />
           {/* CTA Card */}
           <div className="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-2xl p-6 max-w-2xl">
             <h3 className="font-semibold text-[#0B3C5D] mb-2">

@@ -52,6 +52,10 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
   ].filter(Boolean);
 
   const openForm = () => {
+    // a new send can add to the case (the server groups it, without duplicating)
+    setResult(null);
+    setMessage("");
+    setError("");
     setOpen(true);
     track("contacto_abierto", { seal_source: source, seal_intent: intent });
   };
