@@ -2,7 +2,8 @@
 // the results, for whoever wants to move forward (search is optional for those
 // who already have a supplier, a proforma or cargo on its way). The request
 // carries the whole case and the client gets a case number back.
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { MessageSquare, X } from "lucide-react";
 import { useLanguage } from "../context/LanguageContext";
 import { caseContext, sendToSeal, receiptText, type CaseContext, type SealResult } from "../../utils/caseContext";
@@ -116,13 +117,34 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     );
 
   const input = "w-full px-3 py-2.5 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm text-slate-800";
-  return (
-    <>
-      {trigger}
-      {open && (
-        <div className="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={text}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-5 sm:p-6 text-left">
-            <div className="flex items-start justify-between gap-3 mb-3">
+  // The dialog is mounted on <body>: inside a sticky or blurred header (backdrop-filter)
+  // "fixed" is relative to that header and the form was pushed off screen.
+  // Escape closes it, the page behind doesn't scroll, focus goes to the form.
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && setOpen(false);
+    document.addEventListener("keydown", onKey);
+    (panelRef.current?.querySelector<HTMLElement>("input") ?? panelRef.current?.querySelector<HTMLElement>("button"))?.focus();
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+  const dialog = open ? (
+        <div
+          className="fixed inset-0 z-[200] bg-black/50 overflow-y-auto"
+          role="dialog"
+          aria-modal="true"
+          aria-label={text}
+          data-testid="seal-dialog"
+          onClick={(e) => e.target === e.currentTarget && setOpen(false)}
+        >
+          <div className="min-h-full flex items-center justify-center p-4">
+          <div ref={panelRef} className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-5 sm:p-6 text-left">
+            <div className="sticky -top-5 sm:-top-6 -mx-5 sm:-mx-6 -mt-5 sm:-mt-6 px-5 sm:px-6 pt-5 sm:pt-6 pb-2 bg-white z-10 flex items-start justify-between gap-3 mb-1">
               <h3 className="text-lg font-semibold text-[#0B3C5D]">{L("Hablar con SEAL", "Talk to SEAL")}</h3>
               <button type="button" onClick={() => setOpen(false)} aria-label={L("Cerrar", "Close")} className="p-1 text-slate-500 hover:text-slate-800">
                 <X className="w-5 h-5" />
@@ -195,8 +217,13 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
               </form>
             )}
           </div>
+          </div>
         </div>
-      )}
+  ) : null;
+  return (
+    <>
+      {trigger}
+      {dialog && typeof document !== "undefined" ? createPortal(dialog, document.body) : null}
     </>
   );
 }

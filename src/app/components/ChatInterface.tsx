@@ -4,7 +4,8 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { buildReply, nextSpec, contactIntent, urgentContact, type ReplySpec } from "../../utils/chatReply";
+import { buildReply, nextSpec, contactIntent, urgentContact, requestStatusQuestion, type ReplySpec } from "../../utils/chatReply";
+import { lastSentCase } from "../../utils/caseContext";
 import { ContactSeal } from "./ContactSeal";
 
 interface Message {
@@ -89,7 +90,11 @@ export function ChatInterface() {
   const { currentProduct, currentQuantity } = contextOf(specs);
   // whoever wants to move forward gets the way to SEAL right under that answer
   const userTexts = messages.filter((m) => m.role === "user").map((m) => m.content);
-  const lastContact = [...messages].reverse().find((m) => m.role === "user" && contactIntent(m.content));
+  // the form is offered under a request to talk to SEAL, and under "¿ya llegó mi solicitud?" when nothing was sent yet
+  const sentSpecs = new Map(messages.filter((m) => m.role === "ai" && m.id).map((m) => [m.id, JSON.parse(m.content) as ReplySpec]));
+  const lastContact = [...messages].reverse().find(
+    (m) => m.role === "user" && (contactIntent(m.content) || (requestStatusQuestion(m.content) && !sentSpecs.get(m.id)?.sentCase)),
+  );
   // the latest message asks for SEAL: one clear next step (the form stays as a small link)
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   const wantsSeal = !!lastContact && lastUser === lastContact;
@@ -113,6 +118,8 @@ export function ChatInterface() {
       const ctx = contextOf(earlier);
       // what the message is (calculation, follow-up, product, quantity change): utils/chatReply nextSpec
       const spec = nextSpec(text, earlier, ctx.currentProduct, ctx.currentQuantity);
+      // "¿ya llegó mi solicitud?": answered with the case actually sent from this tab, if any
+      if (requestStatusQuestion(text)) spec.sentCase = lastSentCase() || undefined;
       return [...prev, { role: "user", content: text, id }, { role: "ai", content: JSON.stringify(spec), id, pending: true }];
     });
     setInput("");
