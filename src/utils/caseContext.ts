@@ -3,7 +3,7 @@
 // it, from any screen. SEAL receives the case first; any internal transfer is
 // validated by a person on SEAL's side.
 import { getLang } from "./lang";
-import { track, pushDataLayer } from "./funnel";
+import { track, pushDataLayer, isQaSession } from "./funnel";
 
 const KEY = "seal_case";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -128,9 +128,11 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
         /* storage unavailable */
       }
       // a lead counts only once the server registered it
-      track("solicitud_enviada", { seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "", seal_duplicate: out.duplicate }, out.test);
-      // a test record is never a commercial conversion
-      if (!out.duplicate) pushDataLayer({ event: out.test ? "seal_lead_qa" : "seal_lead_recibido", seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "", seal_qa: !!out.test });
+      // a test record, or a send from a QA session (?qa=1, e.g. a controlled test with real
+      // contact data), is never a commercial conversion; the routing is decided by the server alone
+      const qa = !!out.test || isQaSession();
+      track("solicitud_enviada", { seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "", seal_duplicate: out.duplicate }, qa);
+      if (!out.duplicate) pushDataLayer({ event: qa ? "seal_lead_qa" : "seal_lead_recibido", seal_case_id: out.id, seal_source: req.source, seal_intent: req.intent || "", seal_qa: qa });
     }
     return out;
   } catch {
