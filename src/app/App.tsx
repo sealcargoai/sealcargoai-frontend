@@ -3,10 +3,11 @@ import { RouterProvider } from "react-router";
 import { router } from "./routes";
 import { LanguageProvider } from "./context/LanguageContext";
 import { Lx } from "../utils/lang";
+import { track } from "../utils/funnel";
 
 // Shown small in the corner so testers can tell which version they are seeing.
 // Update it with each published change.
-export const APP_VERSION = "2026.10.26-r";
+export const APP_VERSION = "2026.10.27-a";
 
 // Name of the main script this tab is running (it changes with every deploy)
 function currentBundle(): string {
@@ -70,7 +71,22 @@ function NewVersionBanner() {
   );
 }
 
+// Funnel: one visit per browser and day; WhatsApp clicks are counted apart
+// (a click doesn't prove someone wrote, so it is never counted as a lead)
+function useFunnel() {
+  useEffect(() => {
+    track("visita");
+    const onClick = (e: MouseEvent) => {
+      const a = (e.target as HTMLElement | null)?.closest?.("a[href*='wa.me']");
+      if (a) track("whatsapp_clic", { seal_path: window.location.pathname });
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, []);
+}
+
 export default function App() {
+  useFunnel();
   return (
     <LanguageProvider>
       <RouterProvider router={router} />
