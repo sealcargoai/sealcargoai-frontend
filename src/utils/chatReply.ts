@@ -152,7 +152,7 @@ export function productChange(text: string): string | null {
 
 // ── A correction of ONE characteristic: "corrijo: es 440 V, no 220 V" ──────────
 // The rest of the description is kept as it was.
-const MEASURE = "(\\d+(?:[.,]\\d+)?)\\s*(v|vac|vdc|voltios|volts?|hz|hertz|l|lt|lts|litros?|liters?|litres?|kg|kgs|kilos?|g|gr|gramos?|kw|hp|ml|cm|mm|m|metros?|pulgadas?|in|w|watts?|psi|bar|cfm|rpm|t|ton|toneladas?|gal|galones?)\\b";
+const MEASURE = "(\\d+(?:[.,]\\d+)?)\\s*(v|vac|vdc|voltios|volts?|hz|hertz|l|lt|lts|litros?|liters?|litres?|kg|kgs|kilos?|g|gr|gramos?|kw|hp|ml|cm|mm|m|metros?|pulgadas?|in|w|watts?|psi|bar|cfm|rpm|t|ton|toneladas?|gal|galones?)\\b(?![a-záéíóúüñ])";
 const UNIT_KEY = (u: string) => {
   const x = u.toLowerCase();
   if (/^(?:v|vac|vdc|voltios|volts?)$/.test(x)) return "v";
@@ -2928,7 +2928,8 @@ export function nextSpec(
   const qcR = !qcEarly && restQty >= 1 && restQty !== caseQty ? { qty: restQty, before: caseQty } : null;
   const qc0 = mathText ? null : qcEarly || qcR;
   // characteristics corrected ("es 440 V, no 220 V", "el tanque de 300 litros"): the rest stays
-  const fix = !changedTo && caseProduct && !hypo ? attributeCorrection(text, caseProduct) : null;
+  // (never inside a calculation: "necesito 1,001 lápices…" is not a 1,001 L tank)
+  const fix = !changedTo && caseProduct && !hypo && !isMath && !kinds.includes("math") && !kinds.includes("subtotal") && !kinds.includes("pairs") ? attributeCorrection(text, caseProduct) : null;
   // the purchase budget ("solo actualiza el presupuesto a US$5,000") is money, never a quantity
   const bRaw = mathText || changedTo || kinds.includes("subtotal") || kinds.includes("pairs") || kinds.includes("math") ? null : budgetChange(text);
   const budgetAsk = bRaw?.currency === "GTQ" || undefined;
