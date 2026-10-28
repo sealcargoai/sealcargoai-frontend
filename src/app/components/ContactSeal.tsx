@@ -49,9 +49,13 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
   const norm = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
   const draftQty = !ctx.quantity && df.quantity && df.product && norm(df.product) === norm(String(ctx.product || ctx.productDescription || "")) ? df.quantity : "";
   if (draftQty) ctx.quantity = draftQty;
+  // the purchase budget typed (form) or changed (chat) for this same product
+  const draftBudget = !ctx.budget && df.budget && df.product && norm(df.product) === norm(String(ctx.product || ctx.productDescription || "")) && Number(df.budget) >= 1 ? `US$${Number(df.budget).toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(Number(df.budget)) ? 0 : 2, maximumFractionDigits: 2 })}` : "";
+  if (draftBudget) ctx.budget = draftBudget;
   const summary = [
     ctx.product || ctx.productDescription ? `${L("Producto", "Product")}: ${String(ctx.product || ctx.productDescription).slice(0, 600)}` : "",
-    ctx.quantity ? `${L("Cantidad", "Quantity")}: ${ctx.quantity}` : "",
+    ctx.quantity ? `${L("Cantidad", "Quantity")}: ${Number(ctx.quantity) ? Number(ctx.quantity).toLocaleString("en-US") : ctx.quantity}` : "",
+    ctx.budget ? `${L("Presupuesto de compra", "Purchase budget")}: ${ctx.budget}` : "",
     ctx.supplierName ? `${L("Proveedor", "Supplier")}: ${ctx.supplierName}` : "",
     ctx.price
       ? ctx.priceSource === "usuario"
@@ -89,6 +93,7 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     const r = await sendToSeal({
       ...context,
       ...(draftQty ? { quantity: draftQty } : {}),
+      ...(draftBudget ? { budget: draftBudget } : {}),
       requestType: requestType || "Contacto directo con SEAL",
       source,
       intent,
