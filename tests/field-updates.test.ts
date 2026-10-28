@@ -225,3 +225,48 @@ describe("quantity and budget readers in isolation", () => {
     expect(c.budgetChange("presupuesto de Q40,000")).toEqual({ value: 40000, currency: "GTQ" });
   });
 });
+
+describe("round 2 wordings (own cases)", () => {
+  beforeEach(() => startCase());
+  const cases: [string, { tank?: string; qty: string; budget: string; volt?: string; phase?: string; reply: RegExp }][] = [
+    ["Déjalo en 5 unidades", { qty: "5", budget: "4500.01", reply: /cantidad 3 → 5/ }],
+    ["5 unidades por favor", { qty: "5", budget: "4500.01", reply: /cantidad 3 → 5/ }],
+    ["En total 5 compresores", { qty: "5", budget: "4500.01", reply: /cantidad 3 → 5/ }],
+    ["Baja la cantidad a 2", { qty: "2", budget: "4500.01", reply: /cantidad 3 → 2/ }],
+    ["Agrega 2 más", { qty: "3", budget: "4500.01", reply: /pasa de 3 a 5\? .*No cambié nada/ }],
+    ["Necesito 2 compresores más", { qty: "3", budget: "4500.01", reply: /pasa de 3 a 5\?/ }],
+    ["Reduce el pedido en 1", { qty: "3", budget: "4500.01", reply: /pasa de 3 a 2\?/ }],
+    ["Regrésalo a 3", { qty: "3", budget: "4500.01", reply: /¿«3» es la nueva cantidad/ }],
+    ["El presupuesto sube a 6 mil", { qty: "3", budget: "6000", reply: /US\$4,500\.01 → US\$6,000/ }],
+    ["Presupuesto 6k", { qty: "3", budget: "6000", reply: /→ US\$6,000/ }],
+    ["Mi presupuesto es de US$ 5.000", { qty: "3", budget: "5000", reply: /→ US\$5,000/ }],
+    ["Presupuesto de $4,999.99", { qty: "3", budget: "4999.99", reply: /→ US\$4,999\.99/ }],
+    ["Quita el presupuesto", { qty: "3", budget: "", reply: /presupuesto de compra quitado.*presupuesto de compra sin indicar/ }],
+    ["El tanque mejor de 1000 litros", { tank: "1000 litros", qty: "3", budget: "4500.01", reply: /«500 litros» ahora es «1000 litros»/ }],
+    ["Voltaje 220 V monofásico", { phase: "monofásicos", qty: "3", budget: "4500.01", reply: /«trifásicos» ahora es «monofásicos»/ }],
+    ["Quiero que sean de 300 litros", { tank: "300 litros", qty: "3", budget: "4500.01", reply: /ahora es «300 litros»/ }],
+    ["Son 3 compresores de 300 litros", { tank: "300 litros", qty: "3", budget: "4500.01", reply: /ahora es «300 litros».*cantidad 3;/ }],
+    ["Mantén todo igual pero con tanque de 300 litros y 4 unidades", { tank: "300 litros", qty: "4", budget: "4500.01", reply: /«500 litros» ahora es «300 litros»; cantidad 3 → 4/ }],
+    ["Cambia el presupuesto a 5000 y la cantidad a 4", { qty: "4", budget: "5000", reply: /cantidad 3 → 4; presupuesto de compra US\$4,500\.01 → US\$5,000/ }],
+    ["Cambia la cantidad a 3.5", { qty: "3", budget: "4500.01", reply: /número entero.*No cambié la cantidad/ }],
+    ["Cambia la cantidad a 0", { qty: "3", budget: "4500.01", reply: /al menos 1 unidad/ }],
+    ["Cambia la cantidad a 20000000", { qty: "3", budget: "4500.01", reply: /máxima es 10,000,000/ }],
+  ];
+  for (const [msg, want] of cases)
+    it(msg, () => {
+      const { reply } = chat([msg]);
+      expect(draftFacts().quantity, "quantity").toBe(want.qty);
+      expect(draftFacts().budget ?? "", "budget").toBe(want.budget);
+      const p = product();
+      expect(p).toContain(want.tank || "500 litros");
+      expect(p).toContain(want.volt || "220 V");
+      expect(p).toContain(want.phase || "trifásicos");
+      for (const s of ["compresores industriales de tornillo", "60 Hz", "libres de aceite"]) expect(p).toContain(s);
+      expect(reply).toMatch(want.reply);
+      expect(reply).toContain(`«${p}»`);
+    });
+  it("a removed budget is removed from the case too", () => {
+    chat(["Quita el presupuesto"]);
+    expect(caseContext().budget).toBeUndefined();
+  });
+});
