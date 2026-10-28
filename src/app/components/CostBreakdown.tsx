@@ -305,7 +305,7 @@ export function CostBreakdown() {
               </button>
             </div>
           </div>
-          <OwnPrice current={customPrice} unit={unitInfo.unit} onChange={(v) => setCustomPrice(v)} />
+          <OwnPrice current={customPrice} unit={unitInfo.unit} onChange={(v) => setCustomPrice(v)} published={publishedPriceText(originalSupplier)} />
         </div>
       </div>
     );
@@ -534,7 +534,7 @@ export function CostBreakdown() {
         </div>
 
         <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
-        <OwnPrice current={customPrice} unit={unitInfo.unit} onChange={(v) => setCustomPrice(v)} />
+        <OwnPrice current={customPrice} unit={unitInfo.unit} onChange={(v) => setCustomPrice(v)} published={publishedPriceText(originalSupplier)} />
         {unitInfo.multi && (
           <SaleUnitNotice
             unit={unitInfo.unit}
@@ -1044,8 +1044,17 @@ function PriceDecision({
   );
 }
 
+/** The listing's own price as published ("US$1.70 – US$1.80"), never the one the client typed. */
+function publishedPriceText(s: { priceRange?: string; price?: number } | null | undefined): string {
+  if (!s) return "";
+  const nums = String(s.priceRange || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/g)?.map(Number).filter((x) => x > 0) || [];
+  if (nums.length >= 2) return `${formatUnitUSD(Math.min(...nums))} – ${formatUnitUSD(Math.max(...nums))}`;
+  if (nums.length === 1) return formatUnitUSD(nums[0]);
+  return Number(s.price) > 0 ? formatUnitUSD(Number(s.price)) : "";
+}
+
 /** Lets the client recalculate with the price they were quoted. */
-function OwnPrice({ current, onChange, unit = "" }: { current: number; onChange: (v: number) => void; unit?: string }) {
+function OwnPrice({ current, onChange, unit = "", published = "" }: { current: number; onChange: (v: number) => void; unit?: string; published?: string }) {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState(current > 0 ? String(current) : "");
   const value = parseFloat(text.replace(",", "."));
@@ -1053,6 +1062,16 @@ function OwnPrice({ current, onChange, unit = "" }: { current: number; onChange:
   if (!open) {
     return (
       <div className="mb-6 -mt-4 text-sm">
+        {current > 0 && (
+          <p data-testid="price-source" className="mb-1 text-slate-700">
+            {Lx(`Precio usado en la estimación: ${formatUnitUSD(current)}, indicado por ti`, `Price used in the estimate: ${formatUnitUSD(current)}, entered by you`)}
+            {published ? Lx(` · precio publicado en la plataforma: ${published}`, ` · price published on the platform: ${published}`) : ""}
+            {" · "}
+            <button type="button" onClick={() => onChange(0)} className="text-blue-600 hover:underline">
+              {Lx("volver al precio publicado", "back to the published price")}
+            </button>
+          </p>
+        )}
         <button onClick={() => setOpen(true)} className="text-blue-600 hover:underline">
           {current > 0
             ? Lx("Cambiar el precio que indicaste", "Change the price you entered")

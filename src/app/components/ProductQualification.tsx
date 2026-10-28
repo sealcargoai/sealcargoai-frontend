@@ -3,7 +3,7 @@ import { sameProduct } from "../../utils/chatReply";
 import { inferCategory } from "../../utils/category";
 import { quantityWord } from "../../utils/saleUnit";
 import { plainNumber } from "../../utils/plainNumber";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DRAFT_KEY, savedProduct, saveProduct } from "../../utils/draft";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
 import { useNavigate, useLocation } from "react-router";
@@ -138,6 +138,8 @@ export function ProductQualification() {
   const [stale, setStale] = useState<StaleData | null>(freshStale || draft?.prev || null);
   const [step, setStep] = useState(useDraft && draft?.step ? (freshStale ? Math.min(draft.step, 2) : draft.step) : 1);
   const [isLoading, setIsLoading] = useState(false);
+  // a double click or Enter while the search starts never sends two searches (nor spends two queries)
+  const searching = useRef(false);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({
     // Free-text product description (prefilled with the chat query)
@@ -257,7 +259,7 @@ export function ProductQualification() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     // The search only runs from step 3 (review), never by moving between steps or pressing Enter earlier
-    if (step !== 3 || isLoading) return;
+    if (step !== 3 || isLoading || searching.current) return;
 
     // ── CHECK LIMIT FIRST (the server's count) ───────────
     if (quotaState === "ok" && remainingSearches === 0) {
@@ -284,6 +286,7 @@ export function ProductQualification() {
     const productCategory = inferCategory(productDescription);
 
     setIsLoading(true);
+    searching.current = true;
     // a new search: the supplier and estimate of an earlier one no longer apply,
     // and a different product leaves the previous one's data as history
     switchCaseProduct(productDescription);
@@ -410,6 +413,7 @@ export function ProductQualification() {
       );
     } finally {
       clearTimeout(timer);
+      searching.current = false;
       setIsLoading(false);
     }
   };

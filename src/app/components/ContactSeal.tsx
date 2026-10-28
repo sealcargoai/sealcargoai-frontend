@@ -8,6 +8,8 @@ import { MessageSquare, X } from "lucide-react";
 import { useLanguage } from "../context/LanguageContext";
 import { caseContext, sendToSeal, receiptText, type CaseContext, type SealResult } from "../../utils/caseContext";
 import { track } from "../../utils/funnel";
+import { draftFacts } from "../../utils/draft";
+import { sameProduct } from "../../utils/chatReply";
 
 function storedUser(): { name: string; email: string } {
   try {
@@ -41,6 +43,10 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
   const [result, setResult] = useState<SealResult | null>(null);
 
   const ctx: CaseContext = { ...caseContext(), ...Object.fromEntries(Object.entries(context).filter(([, v]) => v !== undefined && v !== "" && !(Array.isArray(v) && !v.length))) };
+  // the quantity typed in the form for this same product (before any search) goes with the case
+  const df = draftFacts();
+  const draftQty = !ctx.quantity && df.quantity && df.product && sameProduct(df.product, String(ctx.product || ctx.productDescription || "")) ? df.quantity : "";
+  if (draftQty) ctx.quantity = draftQty;
   const summary = [
     ctx.product || ctx.productDescription ? `${L("Producto", "Product")}: ${String(ctx.product || ctx.productDescription).slice(0, 80)}` : "",
     ctx.quantity ? `${L("Cantidad", "Quantity")}: ${ctx.quantity}` : "",
@@ -78,6 +84,7 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     setSending(true);
     const r = await sendToSeal({
       ...context,
+      ...(draftQty ? { quantity: draftQty } : {}),
       requestType: requestType || "Contacto directo con SEAL",
       source,
       intent,
