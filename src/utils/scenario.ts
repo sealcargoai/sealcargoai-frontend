@@ -72,7 +72,7 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
   const usePublished = !!original?.priceConfirmed || !!choices.usePublished;
   let supplier =
     original && customPrice > 0 && original.priceSource !== "client"
-      ? { ...original, price: customPrice, priceRange: "", priceSource: "client", priceFlag: undefined, priceConfirmed: undefined }
+      ? { ...original, price: customPrice, priceRange: "", priceSource: "client", priceFlag: undefined, priceConfirmed: undefined, publishedPrice: String(original.priceRange || (Number(original.price) > 0 ? original.price : "")) }
       : original && customPrice > 0
         ? { ...original, price: customPrice }
         : original && usePublished && priceFlag
@@ -259,7 +259,14 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
 export function priceNoteFor(s: any): string {
   if (!s) return "";
   if (s.priceBasisNote) return String(s.priceBasisNote);
-  if (s.priceSource === "client") return Lx("precio indicado por el cliente", "price entered by the client");
+  if (s.priceSource === "client") {
+    // the published price stays next to the client's, so both are visible in every report
+    const pn = String(s.publishedPrice || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/g)?.map(Number).filter((n) => n > 0) ?? [];
+    const pub = pn.length >= 2 && pn[0] !== pn[1] ? `${formatUnitUSD(Math.min(...pn))} – ${formatUnitUSD(Math.max(...pn))}` : pn.length ? formatUnitUSD(pn[0]) : "";
+    return pub
+      ? Lx(`precio indicado por el cliente (publicado: ${pub})`, `price entered by the client (published: ${pub})`)
+      : Lx("precio indicado por el cliente", "price entered by the client");
+  }
   const nums = String(s.priceRange || "").replace(/,/g, "").match(/\d+(?:\.\d+)?/g)?.map(Number).filter((n) => n > 0) ?? [];
   if (nums.length >= 2 && nums[0] !== nums[1]) {
     const pub = `${formatUnitUSD(nums[0])} – ${formatUnitUSD(nums[1])}`;
