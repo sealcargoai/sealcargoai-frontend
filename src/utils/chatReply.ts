@@ -134,6 +134,16 @@ export function productStatement(text: string): ProductStatement | null {
       if (/^\d/.test(q[1]) && n >= 1 && n <= 10_000_000) quantity = n;
       desc = desc.slice(q[0].length);
     }
+    // "sillas plásticas…, color blanco, 200 unidades": the quantity at the end is the order's,
+    // never part of the description (it would contradict a later quantity change)
+    const tailQ = desc.match(/[,;]?\s*(?:(?:cantidad|en\s+total|total|son|quantity)\s*:?\s*)?(\d{1,3}(?:,\d{3})+|\d+)\s+(?:unidades|units|piezas|pieces|pzas?|equipos)\s*[.]?$/i);
+    if (tailQ && tailQ.index !== undefined && tailQ.index > 0) {
+      const n = Number(tailQ[1].replace(/,/g, ""));
+      if (n >= 1 && n <= 10_000_000) {
+        if (!quantity) quantity = n;
+        desc = desc.slice(0, tailQ.index);
+      }
+    }
     desc = desc.replace(new RegExp(`^${ART}`, "i"), "").replace(/[\s,.;:]+$/, "").trim();
     if (desc.length < 3 || desc.length > 600 || !/[a-záéíóúüñ]{3}/i.test(desc)) continue;
     if (NOT_A_PRODUCT.test(desc) || QUESTION_WORD.test(desc)) continue;

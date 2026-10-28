@@ -62,6 +62,25 @@ export function updateDraft(patch: { productType?: string; quantity?: string; bu
     /* storage unavailable */
   }
 }
+/**
+ * The client named another product in the chat: the form draft becomes that product's, with
+ * only the quantity said for it; what was typed for the previous product stays as "prev" (the
+ * form shows it as previous data and offers to reuse it, never as current data).
+ */
+export function switchDraftProduct(product: string, quantity?: number): void {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null") || { formData: {}, step: 1, prev: null };
+    const f = d.formData || {};
+    if (normP(f.productType || "") === normP(product)) return;
+    const had = f.quantity || f.budget || f.volumeCbm || f.weightKg;
+    d.prev = had && f.productType ? { product: f.productType, quantity: f.quantity, budget: f.budget, volumeCbm: f.volumeCbm, weightKg: f.weightKg } : d.prev || null;
+    d.formData = { ...f, productType: product, quantity: quantity ? String(quantity) : "", budget: "", volumeCbm: "", weightKg: "" };
+    d.step = Math.min(Number(d.step) || 1, 2);
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+  } catch {
+    /* storage unavailable */
+  }
+}
 export function saveProduct(value: string): void {
   try {
     if (value && value.trim()) sessionStorage.setItem(PRODUCT_KEY, value.trim());

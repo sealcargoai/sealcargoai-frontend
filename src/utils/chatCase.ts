@@ -3,7 +3,8 @@
 // fields the message changed are written; the rest of the case stays as it was.
 import { nextSpec, quantityInForce, budgetInForce, fmtBudget, type ReplySpec } from "./chatReply";
 import { switchCaseProduct, rememberCase, setCaseScenario } from "./caseContext";
-import { savedProduct, saveProduct, draftFacts, draftFor, updateDraft } from "./draft";
+import { savedProduct, saveProduct, draftFacts, draftFor, updateDraft, switchDraftProduct } from "./draft";
+import { sameProduct } from "./chatReply";
 
 export function applyChatMessage(text: string, earlier: ReplySpec[], ctx: { currentProduct: string; currentQuantity: number; startQuery?: string }): ReplySpec {
   // the case's product: the last one the client stated here, else the form's, else the request
@@ -21,6 +22,8 @@ export function applyChatMessage(text: string, earlier: ReplySpec[], ctx: { curr
     const chatQty = quantityInForce(earlier);
     const old = switchCaseProduct(spec.newProduct, chatQty && stated ? { product: stated, quantity: String(chatQty) } : draftFacts());
     if (old) spec.stale = { product: old.product, quantity: old.quantity, budget: old.budget };
+    // another product: the form draft follows it (its quantity only), the previous data stays as "prev"
+    if (stated && !sameProduct(stated, spec.newProduct)) switchDraftProduct(spec.newProduct, spec.newQuantity);
     saveProduct(spec.newProduct);
   }
   // the quantity the client gave here is the case's quantity on every screen (start page included)
