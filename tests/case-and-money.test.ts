@@ -116,7 +116,8 @@ describe("combined questions: packs, conditions, price, budget", () => {
     expect(one("500 zapatos individuales en cajas de 20 pares, a US$5 el par. ¿Cuántas cajas y cuánto es?")).toMatch(/260 pares × US\$5\.00 = US\$1,300\.00/);
   });
   it("a price with no basis is asked, not guessed", () => {
-    const r = one("Necesito 500 lápices en cajas de 100 a US$4. ¿Cuántas cajas y cuánto es?");
+    expect(one("Necesito 500 lápices en cajas de 100 a US$4. ¿Cuántas cajas y cuánto es?")).toMatch(/5 cajas × US\$4\.00 = US\$20\.00/);
+    const r = one("Necesito 500 lápices en cajas de 100; el precio es US$4. ¿Cuántas cajas y cuánto es?");
     expect(r).toMatch(/no queda claro a qué corresponde/);
     expect(r).not.toMatch(/= US\$/);
   });
@@ -259,7 +260,7 @@ describe("round 2: cases designed to break the rules", () => {
   });
   it("a product change with its packing keeps only the product name", () => {
     const r = replayConversation(["Quiero importar molinos", "ya no es molino, ahora necesito 300 compresores de aire en cajas de 10. ¿Cuántas cajas?"])[1];
-    expect(r).toMatch(/«compresores de aire»/);
+    expect(r).toMatch(/ahora es «compresores de aire en cajas de 10», cantidad 300/);
     expect(r).toMatch(/Necesitarías 30 cajas/);
   });
   it("negative and decimal quantities are asked", () => {
