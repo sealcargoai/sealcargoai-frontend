@@ -56,7 +56,9 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     ctx.price
       ? ctx.priceSource === "usuario"
         ? `${L("Precio indicado por el usuario", "Price entered by the user")}: ${ctx.price}${ctx.publishedPrice && ctx.publishedPrice !== ctx.price ? L(` (publicado: ${ctx.publishedPrice})`, ` (published: ${ctx.publishedPrice})`) : ""}`
-        : `${L("Precio publicado", "Published price")}: ${ctx.price}`
+        : ctx.publishedPrice && ctx.publishedPrice !== ctx.price
+          ? `${L("Precio usado en la estimación", "Price used in the estimate")}: ${ctx.price} (${L("publicado", "published")}: ${ctx.publishedPrice})`
+          : `${L("Precio publicado", "Published price")}: ${ctx.price}`
       : "",
     ctx.totalCostText ? `${L("Costo estimado", "Estimated cost")}: ${ctx.totalCostText}` : "",
     ctx.assumptions?.length ? L(`${ctx.assumptions.length} supuesto(s) de la estimación`, `${ctx.assumptions.length} estimate assumption(s)`) : "",
