@@ -140,6 +140,11 @@ export function ProductQualification() {
   const [isLoading, setIsLoading] = useState(false);
   // a double click or Enter while the search starts never sends two searches (nor spends two queries)
   const searching = useRef(false);
+  // a search still running when the client leaves the form is cancelled: its late answer
+  // must never take them to the results of a query they already left
+  const searchCtl = useRef<AbortController | null>(null);
+  const left = useRef(false);
+  useEffect(() => () => { left.current = true; searchCtl.current?.abort(); }, []);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({
     // Free-text product description (prefilled with the chat query)
@@ -296,6 +301,7 @@ export function ProductQualification() {
     setHelpSent("");
 
     const controller = new AbortController();
+    searchCtl.current = controller;
     const timer = setTimeout(() => controller.abort(), SEARCH_TIMEOUT_MS);
 
     try {
@@ -339,6 +345,7 @@ export function ProductQualification() {
       }
 
       const suppliers = await response.json();
+      if (left.current) return;
 
       // The server also checks the description; nothing is searched or counted
       if (suppliers?.needsMoreDetail) {

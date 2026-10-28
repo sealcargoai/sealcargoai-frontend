@@ -48,7 +48,7 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
   const draftQty = !ctx.quantity && df.quantity && df.product && sameProduct(df.product, String(ctx.product || ctx.productDescription || "")) ? df.quantity : "";
   if (draftQty) ctx.quantity = draftQty;
   const summary = [
-    ctx.product || ctx.productDescription ? `${L("Producto", "Product")}: ${String(ctx.product || ctx.productDescription).slice(0, 80)}` : "",
+    ctx.product || ctx.productDescription ? `${L("Producto", "Product")}: ${String(ctx.product || ctx.productDescription).slice(0, 600)}` : "",
     ctx.quantity ? `${L("Cantidad", "Quantity")}: ${ctx.quantity}` : "",
     ctx.supplierName ? `${L("Proveedor", "Supplier")}: ${ctx.supplierName}` : "",
     ctx.price

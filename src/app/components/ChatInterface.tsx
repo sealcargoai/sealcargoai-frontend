@@ -144,7 +144,9 @@ export function ChatInterface() {
       // the product named here is the one the form and the case use; data typed for
       // another product (quantity, budget, supplier, estimate) stays as history and is asked again
       if (spec.newProduct) {
-        const old = switchCaseProduct(spec.newProduct, draftFacts());
+        // what this tab knows of the previous product: the quantity said here, else the form draft
+        const chatQty = quantityInForce(earlier);
+        const old = switchCaseProduct(spec.newProduct, chatQty && ctx.currentProduct ? { product: ctx.currentProduct, quantity: String(chatQty) } : draftFacts());
         if (old) spec.stale = { product: old.product, quantity: old.quantity, budget: old.budget };
         saveProduct(spec.newProduct);
       }
@@ -218,7 +220,14 @@ export function ChatInterface() {
               </p>
             </div>
             <div className="flex items-center gap-2">
-              <ContactSeal source="chat" variant="button" label={L("Hablar con SEAL", "Talk to SEAL")} context={chatCase} />
+              <ContactSeal
+                source="chat"
+                variant="button"
+                label={L("Hablar con SEAL", "Talk to SEAL")}
+                context={chatCase}
+                // what the client asked for in the chat (proforma, cargo on its way…) travels with the case
+                {...(lastContact ? { intent: contactIntent(lastContact.content), requestType: `${urgentContact(lastContact.content) ? "URGENTE · " : ""}Chat: ${INTENT_LABEL[contactIntent(lastContact.content)] || "contacto"}` } : {})}
+              />
               <LanguageToggle />
             </div>
           </div>
@@ -278,7 +287,7 @@ export function ChatInterface() {
               <button
                 type="button"
                 className="underline"
-                onClick={() => navigate("/qualify", { state: { query: caseProduct || query, name, email, descriptionCleaned } })}
+                onClick={() => navigate("/qualify", { state: { query: caseProduct || query, name, email, descriptionCleaned, ...(quantityInForce(specs) ? { quantity: String(quantityInForce(specs)) } : {}) } })}
               >
                 {L("puedes usar el formulario", "you can use the form")}
               </button>
