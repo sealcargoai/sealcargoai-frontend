@@ -148,3 +148,30 @@ describe("protected calculations (must keep passing)", () => {
     expect(one("Necesito 500 lápices en cajas de 100; el precio es US$4. ¿Cuántas cajas y cuánto es?")).toMatch(/no queda claro a qué corresponde/);
   });
 });
+
+describe("a product only mentioned in a question never replaces the case product", () => {
+  it("after a calculation about lápices, a voltage correction still applies to the compressor", () => {
+    const specs: ReturnType<typeof c.nextSpec>[] = [];
+    const say = (t: string) => {
+      const lastNamed = [...specs].reverse().find((x) => x.newProduct || x.mentioned);
+      const s = c.nextSpec(t, specs, lastNamed?.newProduct || lastNamed?.mentioned || "", c.quantityInForce(specs));
+      specs.push(s);
+      return s;
+    };
+    say(REPORTED);
+    say("Necesito 500 lápices. Cada caja trae 100. ¿Cuántas cajas?");
+    say("¿Cuántas cajas de zapatos de 20 pares necesito para 500 zapatos?");
+    const fix = say("Corrijo: el voltaje es 440 V, no 220 V");
+    expect(fix.newProduct).toBe("compresores industriales de tornillo, trifásicos 440 V, 60 Hz, tanque de 500 litros y libres de aceite");
+    const neg = say("ya no quiero los compresores");
+    expect(c.buildReply(neg)).toMatch(/Indicas que ya no es «compresores industriales de tornillo»/);
+  });
+});
+
+it("confirming a product named with a quantity keeps that quantity", () => {
+  const s1 = c.nextSpec("Tengo una proforma de 20 secadoras de granos, ¿me ayudan?", [], MOLINO, 0);
+  expect(s1.confirmQuantity).toBe(20);
+  const s2 = c.nextSpec("sí", [s1], MOLINO, 0);
+  expect(s2.newProduct).toBe("secadoras de granos");
+  expect(s2.newQuantity).toBe(20);
+});
