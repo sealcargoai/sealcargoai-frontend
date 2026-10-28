@@ -360,7 +360,8 @@ export function CostBreakdown() {
     price: price > 0 ? `${formatUnitUSD(price)} / ${unitWordFor(unitInfo.unit, 1)}` : "",
     // where the price used comes from: the listing, or a price the client typed
     priceSource: (stateSupplier?.priceSource === "client" ? "usuario" : "publicado") as "usuario" | "publicado",
-    publishedPrice: Number(originalSupplier?.price) > 0 && originalSupplier?.priceSource !== "client" ? `${formatUnitUSD(Number(originalSupplier.price))} / ${unitWordFor(unitInfo.unit, 1)}` : "",
+    // the listing's price as published (its range, when it has one), never the typed one
+    publishedPrice: originalSupplier?.priceSource !== "client" && publishedPriceText(originalSupplier) ? `${publishedPriceText(originalSupplier)} / ${unitWordFor(unitInfo.unit, 1)}` : "",
     totalCostText: `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? L(", sin flete", ", without freight") : ""}`,
     budget: budget > 0 ? `US$${budget.toLocaleString("en-US")}` : "",
     // the destination as people read it (the form stores the code "GT")
