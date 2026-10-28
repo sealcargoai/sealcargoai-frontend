@@ -3,6 +3,7 @@
 import { Lx } from "./lang";
 import { inferCategory, FOOD_USE, CATEGORY_KEYWORDS } from "./category";
 import { wantedText } from "./useMatch";
+import { explain, forMath, oddEquivalenceReply, readMoney, moneyLines, type OrderCounts } from "./orderMoney";
 
 export interface ChatCtx {
   product: string; // what the client said they import ("" when unknown)
@@ -36,6 +37,42 @@ export function productFromMessage(text: string): string | null {
   if (!asks && t.split(/\s+/).length <= 4 && inferCategory(t) !== "other") return clean(t);
   // a product named inside a longer sentence ("mi pregunta era por lápices escolares")
   if (!asks) return productMention(t);
+  return null;
+}
+
+// ── An explicit product change, wherever it sits in the message ─────────────
+// "Cambio el producto a un molino", "ahora el producto es un molino. Quiero que revisen mi
+// proforma", "ya no son guantes, es un molino de maíz", "ya no quiero guantes, ahora son
+// compresores", "the product is now a grinder". It wins over any other intent in the same
+// message (a contact request still carries the new product).
+const CHANGE_RES: RegExp[] = [
+  /\b(?:cambi(?:o|amos|é|e|ar|a)|corrij(?:o|amos)|actualiz(?:o|amos|a))\s+(?:el\s+|mi\s+)?producto\s*(?::|,|-)?\s*(?:a\s+|por\s+|es\s+|son\s+)?(?:ya\s+no\s+(?:es|son)\s+[^,.;:]+[,.;:]\s*)?(?:(?:ahora\s+|y\s+)?(?:es|son|ser[aá]n?|quiero|necesito)\s+)?(.+)/i,
+  /\b(?:ahora\s+)?(?:el|mi)\s+producto\s+(?:ahora\s+|ya\s+)?(?:es|son|ser[aá]n?|va\s+a\s+ser)\s+(?:ahora\s+)?(.+)/i,
+  /\bya\s+no\s+(?:es|son|quiero|necesito|importo|voy\s+a\s+importar|busco)\s+[^,.;:]+?\s+sino\s+(?:(?:que\s+)?(?:es|son|quiero|necesito|importo|busco)\s+)?(.+)/i,
+  /\bya\s+no\s+(?:es|son|quiero|necesito|importo|voy\s+a\s+importar|busco)\s+[^,.;:]+?(?:[,.;:]|\s+sino)\s*(?:(?:ahora|sino|que|y)\s+)*(?:(?:es|son|quiero|necesito|importo|busco|voy\s+a\s+importar|me\s+interesa[n]?)\s+)+(.+)/i,
+  /\ben\s+(?:vez|lugar)\s+de\s+(?!\d)[^,.;:]+[,:]\s*(?:ahora\s+)?(?:(?:es|son|quiero|necesito|importo)\s+)+(.+)/i,
+  /\b(?:change|switch)\s+the\s+product\s+to\s+(.+)/i,
+  /\b(?:now\s+)?the\s+product\s+is\s+(?:now\s+)?(.+)/i,
+  /\b(?:not|no\s+longer)\s+[a-z ]{3,40}?(?:\s+anymore)?[,;:.]\s*(?:it'?s|they'?re|it\s+is|they\s+are|now\s+(?:it'?s|i\s+want|i\s+need))\s+(.+)/i,
+];
+/** The product the message explicitly changes to, or null. */
+export function productChange(text: string): string | null {
+  const t = String(text || "").replace(/[¿?¡!]/g, " ").replace(/\s+/g, " ").trim();
+  for (const re of CHANGE_RES) {
+    const m = t.match(re);
+    if (!m) continue;
+    // the product ends where the next clause starts ("…molino. Quiero que revisen mi proforma")
+    let cap = m[1]
+      .split(/[.;]|,\s*(?:y\s+)?(?=(?:quiero|necesito|tengo|me|ya|pero|para|ocupo|requiero|i\b|we\b|and\b|please|por\s+favor))|\s+(?:y|e|pero|and|but)\s+(?=(?:quiero|necesito|tengo|me\b|ya\b|que\b|ocupo|requiero|hablar|i\b|we\b|want|need))/i)[0]
+      .replace(/^(?:ahora|now)\s+/i, "")
+      // the packing and the price are not part of the product name
+      .replace(/\s+(?:en|in)\s+(?:cajas?|boxes|paquetes?|packs?|sets?|bolsas?|bags?|pares|docenas?|rollos?|cartones|tarimas?)\b.*$|\s+(?:a|at|@)\s+(?:us\$|\$|usd|q\.?\s?\d|\d).*$|\s+(?:de|of)\s+\d.*$/i, "")
+      .trim();
+    cap = clean(cap).replace(/^(?:\d[\d,.]*\s+)(?=[a-záéíóúüñ])/i, "").trim();
+    if (cap.length < 3 || cap.length > 100 || !/[a-záéíóúüñ]{3}/i.test(cap)) continue;
+    if (NOT_A_PRODUCT.test(cap) || QUESTION_WORD.test(cap)) continue;
+    return cap;
+  }
   return null;
 }
 
@@ -372,7 +409,7 @@ function applyConditions(m: PackMath, mins: Cond[], lots: Cond[]): PackMath {
 // ── Stock ────────────────────────────────────────────────────────────────────
 const STOCK_RES = [
   new RegExp(`(?:(?:solo|s[oó]lamente|only)\\s+)?(?:(?:tiene|tienen|hay|has|have|there\\s+are|cuenta\\s+con|cuentan\\s+con)\\s+)?(?:(?:solo|s[oó]lamente|only)\\s+)?(\\d+(?:[.,]\\d+)?)\\s*(?:(${W})\\s+)?(?:disponibles?|en\\s+(?:stock|existencias?|inventario|bodega)|in\\s+stock|available|de\\s+existencias?)`),
-  new RegExp(`(?:stock|existencias?|inventario|disponibilidad|quedan|le\\s+quedan|les\\s+quedan|solo\\s+(?:le\\s+|les\\s+)?quedan|only\\s+has|only\\s+have|has\\s+only|have\\s+only|tiene\\s+solo|tienen\\s+solo|solo\\s+tiene|solo\\s+tienen)\\s*(?:de|:|es\\s+de|is|of)?\\s*(\\d+(?:[.,]\\d+)?)\\s*(${W})?(?!\\s+(?:por|per|en\\s+cada)\\b)`),
+  new RegExp(`(?:stock|existencias?|inventario|disponibilidad|disponibles?|available|quedan|le\\s+quedan|les\\s+quedan|solo\\s+(?:le\\s+|les\\s+)?quedan|only\\s+has|only\\s+have|has\\s+only|have\\s+only|tiene\\s+solo|tienen\\s+solo|solo\\s+tiene|solo\\s+tienen)\\s*(?:de|:|es\\s+de|is|of)?\\s*(\\d+(?:[.,]\\d+)?)\\s*(${W})?(?!\\s+(?:por|per|en\\s+cada)\\b)`),
 ];
 export interface StockHit { text: string; n: number; word: string }
 /** The supplier's stock written in the message, or null. */
@@ -420,6 +457,7 @@ function withStock(m: PackMath, st: StockHit): PackMath {
 
 /** Reads a pack calculation in any wording, or null when the message isn't one. */
 export function packMath(text: string, force = false): PackMath | null {
+  text = forMath(text);
   let t0 = normalizeNumbers(String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ").replace(/\s+/g, " "));
   // "5 cajas, cada caja con 10 sets…": an order of packs stated up front counts as the question
   if (!force && !VERB_Q.test(` ${t0} `) && !new RegExp(`^\\s*\\d+\\s+${PACK_RE}\\b[^\\d]*\\b(?:cada|each)\\s+${PACK_RE}`).test(t0)) return null;
@@ -1023,7 +1061,7 @@ function packMathCore(text: string, force = false): PackMath | null {
  * message holds fewer than two.
  */
 export function packMathAll(text: string): PackMath[] {
-  const raw = String(text || "");
+  const raw = forMath(String(text || ""));
   if (!VERB_Q.test(normalizeNumbers(raw.toLowerCase()))) return [];
   // one mixed set ("1 botella y 3 tazas") is a single calculation, not two orders;
   // a correction or a doubtful minimum concerns the whole message
@@ -1059,7 +1097,7 @@ function packPhrases(text: string): number {
  * quantity), solved with what the earlier question already said.
  */
 export function followUpMath(text: string, previous: string): PackMath | null {
-  let t = String(text || "").trim();
+  let t = forMath(String(text || "")).trim();
   if (!t || t.length > 200) return null;
   const all = packMathAll(previous);
   const tn0 = ` ${normalizeNumbers(t.toLowerCase().replace(/[¿?¡!]/g, " "))} `;
@@ -1884,7 +1922,7 @@ const PAIR_DOUBT =
   /(?:asegur|garantiz|seguro|segura|afirmar|confirmar|contar\s+con|saber\s+si|puedo\s+(?:decir|dar\s+por)|se\s+puede\s+(?:decir|asumir|asegurar)|forman?|equivalen?|cuentan?\s+como|ensure|guarantee|be\s+sure|assume|count\s+as|make\s+up)[^.?!]{0,80}\b(?:par(?:es)?|pairs?)\b|\b(?:par(?:es)?|pairs?)\b[^.?!]{0,40}(?:vendibles?|completos?|compatibles?|sellable|complete)/;
 const PAIR_DETAIL = /individual|suelt|izquierd|derech|talla|n[uú]mero|lado|single|left|right|\bsize|mismo\s+modelo/;
 export function pairDoubt(text: string): boolean {
-  const t = text.toLowerCase();
+  const t = forMath(text).toLowerCase();
   return PAIR_DOUBT.test(t) && PAIR_DETAIL.test(t);
 }
 function pairDoubtReply(text: string): string {
@@ -1920,6 +1958,7 @@ const MATH_ASK = new RegExp(`cu[aá]nt[oa]s\\s+(?:${PACK_RE}|piezas|pares|unidad
 
 /** A complete order written without a question ("300 und. / 25 und. por bulto", "1000 pzs / 36 x caja"). */
 function bareMath(text: string): PackMath | null {
+  text = forMath(text);
   if (packPhrases(text) < 1 || (normalizeNumbers(String(text || "").toLowerCase()).match(/\d+/g) || []).length < 2) return null;
   const m = packMath(text, true);
   return m && m.mode === "packs" && !m.invalid ? m : null;
@@ -2012,30 +2051,85 @@ function requestStatusReply(sentCase?: string): string {
 // Only the product value with the price the client gives (not a quote, not the landed cost).
 const SUB_RE = /(?:^|[^\d.,])(\d{1,3}(?:[.,]\d{3})+|\d+)\s+([a-záéíóúüñ]+(?:\s+de\s+[a-záéíóúüñ]+)?)\s+(?:a|at|@|por|for)\s+(us\$\s*|usd\s*|\$\s*)?(\d+(?:[.,]\d+)?)\s*(us\$|usd|d[oó]lares?|dollars?)?\s*(cada\s+(?:un[oa]|pieza|unidad|par|kilo|metro)|c\/u|por\s+(?:unidad|pieza|par|kilo|metro)|la\s+(?:unidad|pieza)|el\s+(?:par|kilo|metro)|each|apiece|per\s+(?:unit|piece|pair))?/i;
 export function productSubtotal(text: string): { qty: number; word: string; price: number; total: number } | null {
-  const m = String(text || "").toLowerCase().match(SUB_RE);
-  if (!m) return null;
-  const [, q, word, cur1, p, cur2, per] = m;
-  // a price needs a currency or "cada uno / c/u / per unit"; "a 25 por caja" is pack content
-  if (!cur1 && !cur2 && !per) return null;
-  if (/^(?:cajas?|paquetes?|sets?|bolsas?|boxes|packs?)$/.test(word.split(/\s+/)[0]) && !per) return null;
-  const qty = Number(q.replace(/[.,](?=\d{3}(?:\D|$))/g, ""));
-  const price = Number(p.replace(",", "."));
-  if (!(qty > 0) || !(price > 0) || qty > 1e9) return null;
-  return { qty, word: word.trim(), price, total: Math.round(qty * price * 100) / 100 };
+  const raw = explain(String(text || "")).text.toLowerCase();
+  const m = raw.match(SUB_RE);
+  if (m) {
+    const [, q, word, cur1, p, cur2, per] = m;
+    // a price needs a currency or "cada uno / c/u / per unit"; "a 25 por caja" is pack content
+    if ((cur1 || cur2 || per) && !(/^(?:cajas?|paquetes?|sets?|bolsas?|boxes|packs?)$/.test(word.split(/\s+/)[0]) && !per)) {
+      const qty = Number(q.replace(/[.,](?=\d{3}(?:\D|$))/g, ""));
+      const price = Number(p.replace(",", "."));
+      if (qty > 0 && price > 0 && qty <= 1e9) return { qty, word: word.trim(), price, total: Math.round(qty * price * 100) / 100 };
+    }
+  }
+  // "2,000 guantes; el precio es US$0.03 por unidad; presupuesto US$50": a quantity, a unit price
+  // and a question about the total or the budget, in any order
+  if (!/subtotal|total|cu[aá]nto|alcanza|falta|sobra|enough|short|how\s+much/.test(raw)) return null;
+  const q = normalizeNumbers(raw.replace(/(?:us\$|usd|\$|q\.?)\s*\d+(?:[.,]\d+)?|\d+(?:[.,]\d+)?\s*(?:usd|d[oó]lares?|dollars?|quetzales?)/g, " ")).match(/\b(\d+)\s+([a-záéíóúüñ]+(?:\s+de\s+[a-záéíóúüñ]+)?)/);
+  if (!q || NOT_ITEM.test(q[2].split(/\s+/)[0]) || new RegExp(`^${PACK_RE}$`).test(q[2].split(/\s+/)[0])) return null;
+  const money = readMoney(raw, q[2]);
+  if (!money.price || money.price.basis !== "unit") return null;
+  const qty = Number(q[1]);
+  const price = money.price.e4 / 10000;
+  if (!(qty > 0) || qty > 1e9) return null;
+  return { qty, word: q[2].trim(), price, total: Math.round(qty * money.price.e4 / 100) / 100 };
 }
 function subtotalReply(text: string): string {
   const s = productSubtotal(text)!;
-  const n = (x: number) => x.toLocaleString("en-US");
-  const usd = (x: number, max = 4) => `US$${x.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: max })}`;
-  return Lx(
-    `${n(s.qty)} ${s.word} × ${usd(s.price)} = ${usd(s.total, 2)} de producto, con el precio que indicaste. Es solo el valor del producto, no una cotización confirmada: el costo de importarlo suma además flete, seguro, impuestos (DAI e IVA) y gastos en destino. Si quieres, el formulario te da esa estimación completa.`,
-    `${n(s.qty)} ${tw(s.word)} × ${usd(s.price)} = ${usd(s.total, 2)} of product, using the price you gave. It's only the product value, not a confirmed quote: importing it also adds freight, insurance, taxes (DAI and IVA) and destination charges. If you want, the form gives you that full estimate.`,
-  );
+  const ex = explain(text);
+  const money = readMoney(ex.text, s.word);
+  if (ex.assumedUsd && money.price) money.assumedUsd = true;
+  // the arithmetic is exact (ten-thousandths), the price basis is the unit unless said otherwise
+  if (!money.price) money.price = { e4: Math.round(s.price * 10000), cur: "USD", raw: `US$${s.price}`, basis: "unit" };
+  if (!money.price.basis) money.price.basis = "unit";
+  const pairs = money.price.basis === "pair" && /^pares?\b|^pairs?\b/.test(s.word) ? s.qty : undefined;
+  const counts: OrderCounts = { pieces: pairs !== undefined ? s.qty * 2 : s.qty, pairs, item: s.word };
+  const lines = moneyLines(money, counts).trim();
+  return lines + Lx(" Si quieres, el formulario te da esa estimación completa.", " If you want, the form gives you that full estimate.");
+}
+
+/** The counts a price can apply to, from a calculated order (null when the order still needs data). */
+function countsOf(m: PackMath): OrderCounts | null {
+  if (m.invalid || m.mode === "ask" || m.zero || m.zeroOrder) return null;
+  const packs = m.mode === "packs" ? m.packs : m.cond?.need && m.cond.need > m.packs ? m.cond.need : m.packs;
+  const pieces = m.kit || m.measure ? -1 : packs * m.perPack * (m.unit === "pair" ? 2 : m.unit === "dozen" ? 12 : 1);
+  return {
+    packs,
+    packWord: m.pack,
+    innerPacks: m.chain ? { word: m.chain.inner, count: packs * m.chain.k } : undefined,
+    pieces,
+    pairs: m.unit === "pair" ? packs * m.perPack : undefined,
+    item: tw(m.item) || Lx("piezas", "pieces"),
+    stockShort: !!m.stock && Number.isFinite(m.stock.packs) && m.stock.packs < packs,
+  };
+}
+
+/** The product value of a calculated order (price, subtotal, budget), or "" with no money in the message. */
+function mathMoney(q: string): string {
+  const t = forMath(q);
+  const all = packMathAll(t);
+  const m = all.length >= 2 ? null : packMath(t) || bareMath(t);
+  const ex = explain(q);
+  const money = readMoney(ex.text, m?.item || "");
+  if (ex.assumedUsd && money.price) money.assumedUsd = true;
+  if (!money.price && !money.budget && !money.conflict) return "";
+  if (all.length >= 2)
+    return Lx(
+      " Para el subtotal de varios pedidos, escríbeme el precio de cada uno por separado (y si es por unidad o por empaque).",
+      " For the subtotal of several orders, write the price of each one separately (and whether it is per unit or per pack).",
+    );
+  const c = m ? countsOf(m) : null;
+  if (!c) return "";
+  return moneyLines(money, c);
 }
 
 export function replyKinds(text: string): string[] {
   // "¿ya llegó mi solicitud?" is answered on its own (it is not a new request)
   if (requestStatusQuestion(text)) return ["requestStatus"];
+  // "1 par = 3 zapatos": confirm the equivalence before any calculation
+  const ex = explain(text);
+  if (ex.odd) return ["equivalence"];
+  text = ex.text;
   const kinds = baseKinds(text);
   if (!contactIntent(text)) return kinds;
   // contact first; "ya tengo proveedor" is not a question about the supplier's reliability
@@ -2189,6 +2283,9 @@ export interface ReplySpec {
   formUpdate?: boolean; // the client changed the product in the form (said once when back in the chat)
   newQuantity?: number; // "quiero 2000 en vez de 500"
   oldQuantity?: number;
+  // data typed for the previous product (form or chat) that no longer applies: asked again
+  stale?: { product: string; quantity?: string; budget?: string };
+  explicitChange?: boolean; // "cambio el producto a…": a change, not a correction of a misunderstanding
 }
 
 /** Whether a certificate answer for this product talks about food contact. */
@@ -2233,12 +2330,34 @@ export function quantityChange(text: string): { qty: number; before: number } | 
   return { qty, before: m[2] ? Number(m[2]) : 0 };
 }
 
+/** The previous product's quantity or budget is not reused without the client confirming it. */
+function staleLine(r: ReplySpec): string {
+  if (!r.newProduct || !r.stale || !(r.stale.quantity || r.stale.budget) || !r.stale.product || sameProduct(r.stale.product, r.newProduct)) return "";
+  const q = r.stale.quantity ? (Number(r.stale.quantity) ? Number(r.stale.quantity).toLocaleString("en-US") : r.stale.quantity) : "";
+  const b = r.stale.budget ? (/^\d/.test(r.stale.budget) ? `US$${r.stale.budget}` : r.stale.budget) : "";
+  const what = [q && Lx(`cantidad ${q}`, `quantity ${q}`), b && Lx(`presupuesto ${b}`, `budget ${b}`)].filter(Boolean).join(", ");
+  return "\n\n" + Lx(
+    `Los datos que tenías para «${r.stale.product}» (${what}) quedan como historial y no los uso para «${r.newProduct}». ¿Qué cantidad${b ? " y presupuesto" : ""} necesitas de «${r.newProduct}»?`,
+    `The data you had for "${r.stale.product}" (${what}) stays as history and I won't use it for "${r.newProduct}". What quantity${b ? " and budget" : ""} do you need for "${r.newProduct}"?`,
+  );
+}
+
+/** Quantity the client gave in the chat for the product in force (a change of product resets it). */
+export function quantityInForce(specs: ReplySpec[]): number {
+  let q = 0;
+  for (const x of specs) {
+    if (x.newProduct && x.previous && !sameProduct(x.previous, x.newProduct)) q = 0;
+    if (x.newQuantity) q = x.newQuantity;
+  }
+  return q;
+}
+
 export function buildReply(r: ReplySpec): string {
   if (r.formUpdate)
     return Lx(
       `Actualizaste el producto en el formulario: ahora es «${r.newProduct}». Sigo con ese producto; lo que hablamos antes se conserva arriba.`,
       `You updated the product in the form: it is now "${r.newProduct}". I'll continue with that product; what we discussed before is kept above.`,
-    );
+    ) + staleLine(r);
   const ctx: ChatCtx = { product: r.product };
   const parts: string[] = [];
   if (r.newQuantity) {
@@ -2254,7 +2373,12 @@ export function buildReply(r: ReplySpec): string {
     const changed = !!r.previous && !sameProduct(r.previous, r.newProduct);
     const wrongAdvice = !!r.earlierFood && !foodAdvice(r.newProduct);
     parts.push(
-      changed || wrongAdvice
+      changed && r.explicitChange && !wrongAdvice
+        ? Lx(
+            `Anotado el cambio de producto: ahora es «${r.newProduct}» (antes «${r.previous}»). Lo uso para lo que sigue y para el formulario; lo anterior queda en el historial.`,
+            `Product change noted: it is now "${r.newProduct}" (before "${r.previous}"). I'll use it from here on and in the form; the earlier data stays as history.`,
+          )
+        : changed || wrongAdvice
         ? Lx(
             `Gracias por aclararlo: tu producto es «${r.newProduct}». Corrijo lo anterior: ${wrongAdvice ? "lo que dije sobre materiales en contacto con alimentos no aplica a este producto" : "lo que respondí pensando en otro producto no aplica"}; tomo «${r.newProduct}» para lo que sigue y para el formulario.`,
             `Thanks for clarifying: your product is "${r.newProduct}". Correcting what I said: ${wrongAdvice ? "what I said about food-contact materials doesn't apply to this product" : "what I answered with another product in mind doesn't apply"}; I'll use "${r.newProduct}" from here on and in the form.`,
@@ -2265,6 +2389,8 @@ export function buildReply(r: ReplySpec): string {
           ),
     );
   }
+  const stale = staleLine(r).trim();
+  if (stale) parts.push(stale);
   if (r.combined) {
     const m = packMath(r.combined, true);
     if (m) return [...parts, packMathReply(m)].join("\n\n");
@@ -2299,9 +2425,11 @@ export function buildReply(r: ReplySpec): string {
     kinds = replyKinds(q).filter((k) => k === "certificate");
   }
   if (!kinds.length && !r.newProduct) kinds = ["general"];
+  // the price and budget of a calculation are answered with it: no generic cost paragraph
+  if (kinds.includes("math") && mathMoney(q)) kinds = kinds.filter((k) => k !== "cost");
   kinds.forEach((k, i) => {
     let t =
-      k === "subtotal" ? subtotalReply(q) : k === "requestStatus" ? requestStatusReply(r.sentCase) : k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
+      k === "equivalence" ? oddEquivalenceReply(explain(q).odd!) : k === "math" ? ((mm) => mathReply(forMath(q)) + (mm ? `\n${mm.trim()}` : ""))(mathMoney(q)) : k === "subtotal" ? subtotalReply(q) : k === "requestStatus" ? requestStatusReply(r.sentCase) : k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
     if (i === 0 && !parts.length) t = t.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't");
     // after the way to SEAL, no second path to the form: one next step
     if (kinds[0] === "contact" && k !== "contact")
@@ -2352,7 +2480,9 @@ export function nextSpec(text: string, specs: ReplySpec[], currentProduct: strin
     : isMath ? (single && mathStatement(single)) || text : follow ? mathStatement(follow) || undefined : undefined;
   // a calculation is not a product statement nor a quantity change
   // "quiero contratar a SEAL" names no product
-  const newProduct = mathText || kinds.includes("pairs") || kinds.includes("contact") || kinds.includes("subtotal") ? undefined : productFromMessage(text) || undefined;
+  // an explicit change ("ahora el producto es un molino") counts in any message, also with a contact request
+  const changedTo = productChange(text);
+  const newProduct = changedTo || (mathText || kinds.includes("pairs") || kinds.includes("contact") || kinds.includes("subtotal") ? undefined : productFromMessage(text) || undefined);
   // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
   const mentioned = !newProduct && !mathText && !kinds.includes("contact") && !kinds.includes("subtotal") ? productMention(text) || undefined : undefined;
   // only a certificate answer that asked "¿qué producto?" is answered again for the new product
@@ -2368,6 +2498,7 @@ export function nextSpec(text: string, specs: ReplySpec[], currentProduct: strin
     text,
     product: newProduct || mentioned || currentProduct,
     newProduct,
+    explicitChange: !!changedTo || undefined,
     mentioned,
     previous: currentProduct,
     reask: askedForProduct ? lastAi.reask || lastAi.text : undefined,

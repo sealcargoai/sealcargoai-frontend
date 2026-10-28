@@ -4,6 +4,7 @@
 // validated by a person on SEAL's side.
 import { getLang } from "./lang";
 import { track, pushDataLayer, isQaSession } from "./funnel";
+import { sameProduct } from "./chatReply";
 
 const KEY = "seal_case";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -24,6 +25,8 @@ export interface CaseContext {
   warnings?: string[];
   chat?: string[];
   caseRef?: string;
+  // data of an earlier product of this same case, kept as history, never as current data
+  earlier?: string[];
 }
 
 const empty = (v: unknown) => v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
@@ -73,6 +76,60 @@ export function setCaseScenario(part: CaseContext, keys: (keyof CaseContext)[]):
     sessionStorage.setItem(KEY, JSON.stringify(cur));
   } catch {
     /* storage unavailable */
+  }
+}
+
+/** What one product of the case carried (the facts a product change leaves behind). */
+export interface ProductFacts { product: string; quantity?: string; budget?: string; supplierName?: string; price?: string; totalCostText?: string }
+
+/** One readable history line: "guantes de nitrilo · cantidad 2,000 · presupuesto US$60". */
+export function factsLine(f: ProductFacts): string {
+  return [
+    f.product,
+    f.quantity ? `cantidad ${Number(f.quantity) ? Number(f.quantity).toLocaleString("en-US") : f.quantity}` : "",
+    f.budget ? `presupuesto ${/^\d/.test(f.budget) ? `US$${f.budget}` : f.budget}` : "",
+    f.supplierName ? `proveedor ${f.supplierName}` : "",
+    f.price ? `precio ${f.price}` : "",
+    f.totalCostText ? `estimación ${f.totalCostText}` : "",
+  ].filter(Boolean).join(" · ").slice(0, 300);
+}
+
+/**
+ * The client named another product (in the chat or in the form): it becomes the product of
+ * the case, and what belonged to the previous one (quantity, budget, supplier, price, estimate,
+ * assumptions, warnings) stops being current. It is kept as history ("earlier") so SEAL sees
+ * the change, never sent as data of the new product. `alsoKnown` are facts this tab knows from
+ * elsewhere (the form draft). Returns the previous product's facts when there was a real change.
+ */
+export function switchCaseProduct(product: string, alsoKnown: Partial<ProductFacts> = {}): ProductFacts | null {
+  const next = String(product || "").trim();
+  if (!next) return null;
+  try {
+    const cur = caseContext();
+    const before = String(cur.product || cur.productDescription || alsoKnown.product || "").trim();
+    if (before && sameProduct(before, next)) {
+      if (cur.product !== next) {
+        cur.product = next;
+        sessionStorage.setItem(KEY, JSON.stringify(cur));
+      }
+      return null;
+    }
+    const sameAsDraft = !!alsoKnown.product && !!before && sameProduct(alsoKnown.product, before);
+    const facts: ProductFacts = {
+      product: before,
+      quantity: cur.quantity || (sameAsDraft ? alsoKnown.quantity : undefined),
+      budget: cur.budget || (sameAsDraft ? alsoKnown.budget : undefined),
+      supplierName: cur.supplierName,
+      price: cur.price,
+      totalCostText: cur.totalCostText,
+    };
+    for (const k of ["quantity", "budget", "productDescription", ...SCENARIO_KEYS] as (keyof CaseContext)[]) delete cur[k];
+    cur.product = next;
+    if (before) cur.earlier = [...(cur.earlier || []), factsLine(facts)].slice(-5);
+    sessionStorage.setItem(KEY, JSON.stringify(cur));
+    return before ? facts : null;
+  } catch {
+    return null;
   }
 }
 

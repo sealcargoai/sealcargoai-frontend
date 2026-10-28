@@ -28,6 +28,16 @@ export function savedProduct(): string {
     return "";
   }
 }
+/** The product, quantity and budget the form draft holds (what they were typed for). */
+export function draftFacts(): { product?: string; quantity?: string; budget?: string } {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null");
+    const f = d?.formData || {};
+    return { product: f.productType || undefined, quantity: f.quantity || undefined, budget: f.budget || undefined };
+  } catch {
+    return {};
+  }
+}
 export function saveProduct(value: string): void {
   try {
     if (value && value.trim()) sessionStorage.setItem(PRODUCT_KEY, value.trim());
