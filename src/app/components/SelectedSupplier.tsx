@@ -11,6 +11,7 @@ import { matchUse } from "../../utils/useMatch";
 import { matchMaterial, partMaterialIssue } from "../../utils/materialMatch";
 import { matchElectric } from "../../utils/electricMatch";
 import { componentText, type ComponentFlag } from "../../utils/componentMatch";
+import { matchFeatures, featureText } from "../../utils/featureMatch";
 
 const SPEC_TONE: Record<string, string> = {
   green: "bg-green-50 border-green-200 text-green-800",
@@ -28,7 +29,8 @@ export function SpecTags({ description, productName, warn = false, component }: 
   const mat = matchMaterial(description, productName);
   const partIssue = partMaterialIssue(description, productName);
   const el = matchElectric(description, productName);
-  if (!m && !use && !mat && !component && !partIssue && !el) return null;
+  const feats = matchFeatures(description, productName);
+  if (!m && !use && !mat && !component && !partIssue && !el && !feats.length) return null;
   const comp = component ? componentText(component) : null;
   const differs = !!m?.items.some((i) => i.status !== "meets");
   const otherUse = use?.status === "other";
@@ -87,6 +89,15 @@ export function SpecTags({ description, productName, warn = false, component }: 
             {el.sub && <span className="opacity-80"> · {el.sub}</span>}
           </span>
         )}
+        {feats.map((f, k) => {
+          const ft = featureText(f);
+          return (
+            <span key={`f${k}`} className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE[f.status === "match" ? "green" : f.status === "other" ? "red" : "slate"]}`}>
+              <span className="font-semibold">{ft.tag}</span>
+              {ft.sub && <span className="opacity-80"> · {ft.sub}</span>}
+            </span>
+          );
+        })}
         {partIssue && (
           <span className={`inline-block border rounded-lg px-2.5 py-1 text-xs ${SPEC_TONE.red}`}>
             <span className="font-semibold">{partIssue.text}</span>
