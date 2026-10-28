@@ -175,3 +175,33 @@ it("confirming a product named with a quantity keeps that quantity", () => {
   expect(s2.newProduct).toBe("secadoras de granos");
   expect(s2.newQuantity).toBe(20);
 });
+
+describe("English: a product change with a proforma goes to SEAL, 'import' alone is not a customs question", () => {
+  it("I already have a proforma → contact, no customs guarantee paragraph", () => {
+    const t = "Product change: I want to import 3 oil-free screw compressors, 220 V, 60 Hz, 500 liter tank. I already have a proforma.";
+    const kinds = c.replyKinds(t);
+    expect(kinds[0]).toBe("contact");
+    expect(kinds).not.toContain("guarantee");
+    expect(c.contactIntent("We already have the proforma from our supplier")).toBe("proforma");
+  });
+  it("a real customs question in English still gets the guarantee answer", () => {
+    expect(c.replyKinds("Can you guarantee customs clearance for my import?")).toContain("guarantee");
+  });
+});
+
+describe("characteristics a listing must state (libre de aceite, sin polvo…)", async () => {
+  const { matchFeatures } = await import("../src/utils/featureMatch");
+  const { listingDifferences } = await import("../src/utils/differences");
+  const D = "compresores industriales de tornillo, trifásicos 220 V, 60 Hz, tanque de 500 litros y libres de aceite";
+  it("stated, contradicted, not stated", () => {
+    expect(matchFeatures(D, "oil-free screw air compressor 500L")[0].status).toBe("match");
+    expect(matchFeatures(D, "oil injected screw air compressor 500L")[0].status).toBe("other");
+    expect(matchFeatures(D, "screw air compressor 500L 22kw")[0].status).toBe("unknown");
+    expect(matchFeatures("guantes de nitrilo sin polvo talla M", "nitrile gloves powder free")[0].status).toBe("match");
+    expect(matchFeatures("compresor que no necesito libre de aceite", "screw compressor")).toEqual([]);
+  });
+  it("a listing that doesn't say it goes to the reports as data to confirm", () => {
+    const d = listingDifferences(D, { productName: "screw air compressor 500L 22kw" });
+    expect(d.items.join(" ")).toMatch(/no indica «libre de aceite»/);
+  });
+});
