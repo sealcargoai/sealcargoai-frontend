@@ -205,3 +205,17 @@ describe("characteristics a listing must state (libre de aceite, sin polvo…)",
     expect(d.items.join(" ")).toMatch(/no indica «libre de aceite»/);
   });
 });
+
+it("after calculations, 'mejor 5 en lugar de 2' (2 = the case quantity) changes the quantity", () => {
+  const specs: ReturnType<typeof c.nextSpec>[] = [];
+  const say = (t: string) => { const s = c.nextSpec(t, specs, "", c.quantityInForce(specs)); specs.push(s); return s; };
+  say("3 piezas a US$0.10 cada una, presupuesto US$0.30, ¿me alcanza?");
+  say("Necesito 500 lápices. Cada caja trae 100. ¿Cuántas cajas?");
+  say("Ya no son compresores sino 2 secadoras de granos de 380 V");
+  const s = say("Mejor 5 en lugar de 2");
+  expect(s.newQuantity).toBe(5);
+  expect(c.quantityInForce(specs)).toBe(5);
+  // a follow-up of a calculation still works when the numbers are the calculation's
+  const f = c.replayConversation(["Necesito 500 lápices, cada caja trae 100. ¿Cuántas cajas?", "¿y si fueran 800?"]);
+  expect(f[1]).toMatch(/8 cajas/);
+});
