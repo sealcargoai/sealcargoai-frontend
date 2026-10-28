@@ -2420,6 +2420,7 @@ export interface ReplySpec {
   explicitChange?: boolean; // "cambio el producto a…": a change, not a correction of a misunderstanding
   attrFix?: { from: string; to: string }; // one characteristic corrected, the rest kept
   confirmProduct?: string; // a doubt about the product, asked ("" = which product now?)
+  confirmQuantity?: number; // the quantity said with that product ("proforma de 20 secadoras")
 }
 
 /** Whether a certificate answer for this product talks about food contact. */
@@ -2627,7 +2628,10 @@ export function buildReply(r: ReplySpec): string {
  * calculation, a follow-up to an earlier one, a product statement or a quantity
  * change. The chat page stores it and renders buildReply(spec) in the language in use.
  */
-export function nextSpec(text: string, specs: ReplySpec[], currentProduct: string, currentQuantity: number): ReplySpec {
+export function nextSpec(text: string, specs: ReplySpec[], currentProduct: string, currentQuantity: number, caseProductIn?: string): ReplySpec {
+  // the product of the CASE (stated by the client); a product only mentioned in a question
+  // ("¿cuántas cajas de lápices…?") guides that answer, never corrections or the case
+  const caseProduct = caseProductIn || [...specs].reverse().find((x) => x.newProduct)?.newProduct || currentProduct;
   const kinds = replyKinds(text);
   const isMath = kinds.includes("math");
   // the latest earlier calculation this message follows ("¿Y los cuadernos?" can point further back)
@@ -2669,25 +2673,29 @@ export function nextSpec(text: string, specs: ReplySpec[], currentProduct: strin
   const changedTo = st?.description || (answer === "yes" && lastAiSpec?.confirmProduct ? lastAiSpec.confirmProduct : null);
   const qc0 = mathText ? null : quantityChange(text);
   // one characteristic corrected ("es 440 V, no 220 V"): the rest of the description stays
-  const fix = !changedTo && currentProduct ? attributeCorrection(text, currentProduct) : null;
+  const fix = !changedTo && caseProduct ? attributeCorrection(text, caseProduct) : null;
   const newProduct = changedTo || fix?.description || (mathText || qc0 || kinds.includes("pairs") || kinds.includes("contact") || kinds.includes("subtotal") ? undefined : productFromMessage(text) || undefined);
   // a real doubt is asked, never resolved by keeping the old product silently:
   // the current product ruled out with nothing in its place, or another product named in a request to SEAL
   let confirmProduct: string | undefined;
-  if (!newProduct && currentProduct) {
-    const head = productHeads(currentProduct);
+  if (!newProduct && caseProduct) {
+    const head = productHeads(caseProduct);
     const neg = negatedProducts(text);
     const other = productMention(text);
     if (neg.some((n) => head.has(n))) confirmProduct = "";
-    else if (kinds.includes("contact") && other && !sameProduct(other, currentProduct)) confirmProduct = other;
+    else if (kinds.includes("contact") && other && !sameProduct(other, caseProduct)) confirmProduct = other;
   }
+  const esc = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const cq = confirmProduct ? normalizeNumbers(text.toLowerCase()).match(new RegExp(`(\\d+)\\s+(?:de\\s+)?${esc(confirmProduct.toLowerCase().split(/\s+/)[0])}`)) : null;
+  const confirmQuantity = cq && Number(cq[1]) >= 1 ? Number(cq[1]) : undefined;
+  const yesQty = answer === "yes" && lastAiSpec?.confirmQuantity ? { qty: lastAiSpec.confirmQuantity, before: 0 } : null;
   // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
   const mentioned = !newProduct && !mathText && !kinds.includes("contact") && !kinds.includes("subtotal") ? productMention(text) || undefined : undefined;
   // only a certificate answer that asked "¿qué producto?" is answered again for the new product
   const lastAi = specs[specs.length - 1];
   const askedForProduct = !!lastAi && !lastAi.product && replyKinds(lastAi.reask || lastAi.text).includes("certificate");
   // the quantity said with a new product ("3 compresores") is that product's quantity
-  const qc = qc0 || (st?.quantity ? { qty: st.quantity, before: 0 } : null);
+  const qc = qc0 || (st?.quantity ? { qty: st.quantity, before: 0 } : null) || yesQty;
   return {
     mathText,
     combined,
@@ -2696,12 +2704,13 @@ export function nextSpec(text: string, specs: ReplySpec[], currentProduct: strin
     oldQuantity: qc && !st ? qc.before || currentQuantity || undefined : undefined,
     attrFix: fix ? { from: fix.from, to: fix.to } : undefined,
     confirmProduct,
+    confirmQuantity,
     text,
     product: newProduct || mentioned || currentProduct,
     newProduct,
     explicitChange: !!changedTo || undefined,
     mentioned,
-    previous: currentProduct,
+    previous: caseProduct,
     reask: askedForProduct ? lastAi.reask || lastAi.text : undefined,
     earlierFood: specs.some((x) => (replyKinds(x.text).includes("certificate") || !!x.reask) && foodAdvice(x.product)),
   };
