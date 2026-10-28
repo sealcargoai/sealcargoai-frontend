@@ -2,6 +2,7 @@
 // leaves unconfirmed: the same warnings the screen shows, in plain sentences,
 // so they travel with the PDF and Excel reports. It compares published text
 // only; nothing here is verified.
+import { matchFeatures, featureText } from "./featureMatch";
 import { Lx } from "./lang";
 import { requestedSpecs, matchSpecs, specLabel } from "./capacity";
 import { matchUse } from "./useMatch";
@@ -69,6 +70,12 @@ export function listingDifferences(
     toConfirm.push(
       sentence(Lx(`El título menciona varios materiales (${mat.mixed}); puede ser una mezcla y no ${mat.asked} puro: pide la ficha técnica`, `The title names several materials (${mat.mixed}); it may be a blend rather than pure ${mat.asked}: ask for the technical sheet`)),
     );
+
+  // characteristics like "libre de aceite": never taken as met when the title doesn't say so
+  for (const f of matchFeatures(description, title)) {
+    if (f.status === "match") continue;
+    (f.status === "other" ? diffs : toConfirm).push(sentence(featureText(f).sentence));
+  }
 
   const specs = matchSpecs(requestedSpecs(description), title);
   for (const i of specs?.items ?? []) {
