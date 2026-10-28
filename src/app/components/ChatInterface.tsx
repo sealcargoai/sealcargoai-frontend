@@ -5,7 +5,7 @@ import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { buildReply, nextSpec, contactIntent, urgentContact, requestStatusQuestion, quantityInForce, type ReplySpec } from "../../utils/chatReply";
-import { lastSentCase, switchCaseProduct } from "../../utils/caseContext";
+import { lastSentCase, switchCaseProduct, rememberCase } from "../../utils/caseContext";
 import { ContactSeal } from "./ContactSeal";
 import { savedProduct, saveProduct, draftFacts } from "../../utils/draft";
 
@@ -152,6 +152,8 @@ export function ChatInterface() {
         if (old) spec.stale = { product: old.product, quantity: old.quantity, budget: old.budget };
         saveProduct(spec.newProduct);
       }
+      // the quantity the client gave here is the case's quantity on every screen (start page included)
+      if (spec.newQuantity) rememberCase({ quantity: String(spec.newQuantity) });
       // "¿ya llegó mi solicitud?": answered with the case actually sent from this tab, if any
       if (requestStatusQuestion(text)) spec.sentCase = lastSentCase() || undefined;
       return [...prev, { role: "user", content: text, id }, { role: "ai", content: JSON.stringify(spec), id, pending: true }];
