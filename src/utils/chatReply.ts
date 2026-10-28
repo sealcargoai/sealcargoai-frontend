@@ -2640,7 +2640,12 @@ export function nextSpec(text: string, specs: ReplySpec[], currentProduct: strin
   // "el proveedor solo tiene 8 cajas disponibles" after a calculation is stock for it, not a
   // question about the supplier
   const stockLine = !isMath && kinds.every((k) => k === "supplier") && !!findStock(normalizeNumbers(text.toLowerCase()));
-  if (!isMath && (!kinds.length || stockLine))
+  // "mejor 5 en lugar de 2" when 2 is the case's quantity changes the quantity; it is not a
+  // follow-up of an older calculation
+  const qcEarly = quantityChange(text);
+  const caseQty = quantityInForce(specs) || currentQuantity;
+  const isQtyChange = !!qcEarly && (qcEarly.before === caseQty || (!qcEarly.before && !specs[specs.length - 1]?.mathText));
+  if (!isMath && !isQtyChange && (!kinds.length || stockLine))
     for (const x of [...specs].reverse()) {
       if (!x.mathText) continue;
       follow = followUpMath(text, x.mathText);
