@@ -158,8 +158,10 @@ export function ProductQualification() {
     ...(useDraft ? draft!.formData : {}),
     ...(freshStale ? { quantity: "", budget: "", volumeCbm: "", weightKg: "" } : {}),
     productType: currentProduct,
-    // a quantity the client gave in the chat ("quiero 2000 en vez de 500")
-    ...(location.state?.quantity && Number(location.state.quantity) >= 1 ? { quantity: String(Number(location.state.quantity)) } : {}),
+    // a quantity the client gave in the chat ("quiero 2000 en vez de 500"), only when the draft of
+    // this product has none: the chat writes its changes to the draft, and the navigation state
+    // survives a reload, so it must never undo a quantity typed here afterwards
+    ...(location.state?.quantity && Number(location.state.quantity) >= 1 && !(useDraft && df.quantity && !freshStale) ? { quantity: String(Number(location.state.quantity)) } : {}),
   });
 
   useEffect(() => {
