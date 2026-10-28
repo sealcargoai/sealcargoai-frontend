@@ -9,7 +9,6 @@ import { useLanguage } from "../context/LanguageContext";
 import { caseContext, sendToSeal, receiptText, type CaseContext, type SealResult } from "../../utils/caseContext";
 import { track } from "../../utils/funnel";
 import { draftFacts } from "../../utils/draft";
-import { sameProduct } from "../../utils/chatReply";
 
 function storedUser(): { name: string; email: string } {
   try {
@@ -45,7 +44,10 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
   const ctx: CaseContext = { ...caseContext(), ...Object.fromEntries(Object.entries(context).filter(([, v]) => v !== undefined && v !== "" && !(Array.isArray(v) && !v.length))) };
   // the quantity typed in the form for this same product (before any search) goes with the case
   const df = draftFacts();
-  const draftQty = !ctx.quantity && df.quantity && df.product && sameProduct(df.product, String(ctx.product || ctx.productDescription || "")) ? df.quantity : "";
+  // only when the draft was typed for exactly the product in force (a later change in the chat,
+  // even to a similar product, leaves the draft's quantity as the previous product's)
+  const norm = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
+  const draftQty = !ctx.quantity && df.quantity && df.product && norm(df.product) === norm(String(ctx.product || ctx.productDescription || "")) ? df.quantity : "";
   if (draftQty) ctx.quantity = draftQty;
   const summary = [
     ctx.product || ctx.productDescription ? `${L("Producto", "Product")}: ${String(ctx.product || ctx.productDescription).slice(0, 600)}` : "",

@@ -140,13 +140,15 @@ export function ChatInterface() {
       const earlier = specsOf(prev);
       const ctx = contextOf(earlier);
       // what the message is (calculation, follow-up, product, quantity change): utils/chatReply nextSpec
-      const spec = nextSpec(text, earlier, ctx.currentProduct, ctx.currentQuantity);
+      // the case's product: the last one the client stated here, else the form's, else the request
+      const stated = [...earlier].reverse().find((x) => x.newProduct)?.newProduct || savedProduct() || String(startQuery || "").trim();
+      const spec = nextSpec(text, earlier, ctx.currentProduct, ctx.currentQuantity, stated);
       // the product named here is the one the form and the case use; data typed for
       // another product (quantity, budget, supplier, estimate) stays as history and is asked again
       if (spec.newProduct) {
         // what this tab knows of the previous product: the quantity said here, else the form draft
         const chatQty = quantityInForce(earlier);
-        const old = switchCaseProduct(spec.newProduct, chatQty && ctx.currentProduct ? { product: ctx.currentProduct, quantity: String(chatQty) } : draftFacts());
+        const old = switchCaseProduct(spec.newProduct, chatQty && stated ? { product: stated, quantity: String(chatQty) } : draftFacts());
         if (old) spec.stale = { product: old.product, quantity: old.quantity, budget: old.budget };
         saveProduct(spec.newProduct);
       }
