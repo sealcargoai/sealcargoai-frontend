@@ -270,3 +270,20 @@ describe("round 2 wordings (own cases)", () => {
     expect(caseContext().budget).toBeUndefined();
   });
 });
+
+describe("a calculation in the middle of the case never changes it (found in round 1)", () => {
+  beforeEach(() => startCase("compresores industriales de tornillo, trifásicos 440 V, 60 Hz, tanque de 300 litros, libres de aceite", "4", "5000"));
+  it("'necesito 1,001 lápices…' is not a 1,001 L tank", () => {
+    const P = "compresores industriales de tornillo, trifásicos 440 V, 60 Hz, tanque de 300 litros, libres de aceite";
+    const { last, reply } = chat(["Necesito 1,001 lápices; vienen en cajas de 100 y solo venden cajas completas. ¿Cuántas cajas?"]);
+    expect(last.attrFix).toBeUndefined();
+    expect(last.newProduct).toBeUndefined();
+    expect(reply).toMatch(/11 cajas/);
+    expect(product()).toBe(P);
+    expect(caseContext().product).toBe(P);
+    expect(draftFacts()).toMatchObject({ quantity: "4", budget: "5000" });
+  });
+  it("a word starting with l after a number is not liters", () => {
+    expect(c.attributeCorrection("Necesito 1,001 lápices", "tanque de 300 litros")).toBeNull();
+  });
+});
