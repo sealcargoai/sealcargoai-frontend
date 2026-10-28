@@ -184,6 +184,8 @@ export function readMoney(text: string, item = ""): OrderMoney {
       || clause.match(/precio\s+(?:por|de\s+cada|del|de\s+la|per|of\s+each)\s+([a-záéíóúüñ]+)\s*(?:es|de|:|=)?\s*(?:de\s+)?$/i)
       // "cada caja trae 100 y cuesta US$3": the pack named at the start of the clause
       || clause.match(/(?:cada|each)\s+([a-záéíóúüñ]+)\b[^.;]{0,50}?\b(?:y\s+|and\s+)?(?:cuesta|cuestan|vale|valen|sale|salen|costs?)\s*$/i)
+      // "cajas de 100 a US$2.49": the price of the pack it follows
+      || clause.match(/\b(cajas?|boxes|box|paquetes?|packs?|sets?|juegos?|bolsas?|bags?|kits?|estuches?|cases?|cartones|cart[oó]n|cartons?|rollos?|rolls?|pares|par|pairs?|docenas?|dozens?)\s+(?:de|of|con|with)\s+\d+(?:\s+[a-záéíóúüñ]+)?\s+(?:a|at|@)\s*$/i)
       || clause.match(/\b([a-záéíóúüñ]+)\s+(?:a|at|@)\s*$/i);
     let basis = "";
     if (aft && /^(?:cada|por|per|el|la|\/|x)/i.test(after.trim()) ) basis = basisOf(aft[1].replace(/^\//, ""), item);
@@ -272,8 +274,8 @@ export function moneyLines(money: OrderMoney, c: OrderCounts): string {
   } else {
     // the price is not said per what, or it is per a pack this order doesn't use: ask
     return Lx(
-      ` Indicaste el precio ${p.raw}, pero no queda claro a qué corresponde. ¿Es por unidad, por par, por ${c.packWord ? c.packWord[1] : "caja"} o por set? Con eso calculo el subtotal${b ? " y si te alcanza el presupuesto" : ""}.`,
-      ` You gave the price ${p.raw}, but it isn't clear what it is for. Is it per unit, per pair, per ${c.packWord ? c.packWord[3] : "box"} or per set? With that I'll calculate the subtotal${b ? " and whether the budget is enough" : ""}.`,
+      ` Indicaste el precio ${fmtMoney(p.e4, p.cur)}, pero no queda claro a qué corresponde. ¿Es por unidad, por par, por ${c.packWord ? c.packWord[1] : "caja"} o por set? Con eso calculo el subtotal${b ? " y si te alcanza el presupuesto" : ""}.`,
+      ` You gave the price ${fmtMoney(p.e4, p.cur)}, but it isn't clear what it is for. Is it per unit, per pair, per ${c.packWord ? c.packWord[3] : "box"} or per set? With that I'll calculate the subtotal${b ? " and whether the budget is enough" : ""}.`,
     );
   }
   const sub = qty * p.e4;

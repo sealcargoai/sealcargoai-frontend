@@ -108,8 +108,11 @@ export function switchCaseProduct(product: string, alsoKnown: Partial<ProductFac
     const cur = caseContext();
     const before = String(cur.product || cur.productDescription || alsoKnown.product || "").trim();
     if (before && sameProduct(before, next)) {
-      if (cur.product !== next) {
+      // the same product, described again or with one characteristic corrected: the newest
+      // description is the one in force everywhere (no stale "220 V" next to a "440 V")
+      if (cur.product !== next || (cur.productDescription && cur.productDescription !== next)) {
         cur.product = next;
+        if (cur.productDescription) cur.productDescription = next;
         sessionStorage.setItem(KEY, JSON.stringify(cur));
       }
       return null;
@@ -178,6 +181,17 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
     const j = res.ok ? await res.json().catch(() => ({})) : {};
     const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test};
     if (out.ok) {
+      // the history of earlier products went with THIS case; a later case of another product
+      // starts without it (SEAL must not read guantes/molinos as part of a termos request)
+      try {
+        const cur = caseContext();
+        if (cur.earlier) {
+          delete cur.earlier;
+          sessionStorage.setItem(KEY, JSON.stringify(cur));
+        }
+      } catch {
+        /* storage unavailable */
+      }
       // the chat can answer "¿ya llegó mi solicitud?" with the real case number
       try {
         sessionStorage.setItem("seal_last_case", String(out.id));

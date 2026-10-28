@@ -40,38 +40,170 @@ export function productFromMessage(text: string): string | null {
   return null;
 }
 
-// ── An explicit product change, wherever it sits in the message ─────────────
-// "Cambio el producto a un molino", "ahora el producto es un molino. Quiero que revisen mi
-// proforma", "ya no son guantes, es un molino de maíz", "ya no quiero guantes, ahora son
-// compresores", "the product is now a grinder". It wins over any other intent in the same
-// message (a contact request still carries the new product).
-const CHANGE_RES: RegExp[] = [
-  /\b(?:cambi(?:o|amos|é|e|ar|a)|corrij(?:o|amos)|actualiz(?:o|amos|a))\s+(?:el\s+|mi\s+)?producto\s*(?::|,|-)?\s*(?:a\s+|por\s+|es\s+|son\s+)?(?:ya\s+no\s+(?:es|son)\s+[^,.;:]+[,.;:]\s*)?(?:(?:ahora\s+|y\s+)?(?:es|son|ser[aá]n?|quiero|necesito)\s+)?(.+)/i,
-  /\b(?:ahora\s+)?(?:el|mi)\s+producto\s+(?:ahora\s+|ya\s+)?(?:es|son|ser[aá]n?|va\s+a\s+ser)\s+(?:ahora\s+)?(.+)/i,
-  /\bya\s+no\s+(?:es|son|quiero|necesito|importo|voy\s+a\s+importar|busco)\s+[^,.;:]+?\s+sino\s+(?:(?:que\s+)?(?:es|son|quiero|necesito|importo|busco)\s+)?(.+)/i,
-  /\bya\s+no\s+(?:es|son|quiero|necesito|importo|voy\s+a\s+importar|busco)\s+[^,.;:]+?(?:[,.;:]|\s+sino)\s*(?:(?:ahora|sino|que|y)\s+)*(?:(?:es|son|quiero|necesito|importo|busco|voy\s+a\s+importar|me\s+interesa[n]?)\s+)+(.+)/i,
-  /\ben\s+(?:vez|lugar)\s+de\s+(?!\d)[^,.;:]+[,:]\s*(?:ahora\s+)?(?:(?:es|son|quiero|necesito|importo)\s+)+(.+)/i,
-  /\b(?:change|switch)\s+the\s+product\s+to\s+(.+)/i,
-  /\b(?:now\s+)?the\s+product\s+is\s+(?:now\s+)?(.+)/i,
-  /\b(?:not|no\s+longer)\s+[a-z ]{3,40}?(?:\s+anymore)?[,;:.]\s*(?:it'?s|they'?re|it\s+is|they\s+are|now\s+(?:it'?s|i\s+want|i\s+need))\s+(.+)/i,
+// ── An explicit product statement, wherever it sits in the message ──────────
+// "Cambio definitivo de producto: ahora quiero importar 3 compresores industriales de tornillo,
+// trifásicos 220 V, 60 Hz, tanque de 500 litros y libres de aceite. Ya tengo proforma…",
+// "no es un molino, es un compresor", "ya no son guantes sino compresores", "the product is now…".
+// It wins over any other intent in the same message (a contact request still carries the new
+// product) and keeps EVERY characteristic the client wrote (voltage, frequency, capacity,
+// material, exclusions…): the description is what the search, the estimate and SEAL use.
+const ART = "(?:(?:un|una|unos|unas|el|la|los|las|a|an|the)\\s+)?";
+const TRIGGERS: RegExp[] = [
+  // "cambio (definitivo) de producto: …", "cambiamos el producto a …", "corrijo el producto: …"
+  new RegExp(`\\b(?:cambi\\w*|corrij\\w*|corrig\\w*|actualiz\\w*)\\s+(?:[a-záéíóúüñ]+\\s+){0,2}(?:de\\s+|del\\s+|el\\s+|mi\\s+|nuestro\\s+)?producto\\s*(?:[:,\\-–]\\s*|\\s+(?:a|por|es|son)\\s+)`, "i"),
+  /\b(?:el|mi|nuestro)\s+producto\s+(?:ahora\s+|ya\s+|real\s+|correcto\s+|nuevo\s+)?(?:es|son|ser[aá]n?|va\s+a\s+ser)\s+/i,
+  /\b(?:the|my|our)\s+product\s+(?:is|will\s+be)\s+(?:now\s+)?/i,
+  /\b(?:change|switch)\s+(?:the\s+|my\s+)?product\s+to\s+/i,
 ];
-/** The product the message explicitly changes to, or null. */
-export function productChange(text: string): string | null {
-  const t = String(text || "").replace(/[¿?¡!]/g, " ").replace(/\s+/g, " ").trim();
-  for (const re of CHANGE_RES) {
-    const m = t.match(re);
-    if (!m) continue;
-    // the product ends where the next clause starts ("…molino. Quiero que revisen mi proforma")
-    let cap = m[1]
-      .split(/[.;]|,\s*(?:y\s+)?(?=(?:quiero|necesito|tengo|me|ya|pero|para|ocupo|requiero|i\b|we\b|and\b|please|por\s+favor))|\s+(?:y|e|pero|and|but)\s+(?=(?:quiero|necesito|tengo|me\b|ya\b|que\b|ocupo|requiero|hablar|i\b|we\b|want|need))/i)[0]
-      .replace(/^(?:ahora|now)\s+/i, "")
-      // the packing and the price are not part of the product name
-      .replace(/\s+(?:en|in)\s+(?:cajas?|boxes|paquetes?|packs?|sets?|bolsas?|bags?|pares|docenas?|rollos?|cartones|tarimas?)\b.*$|\s+(?:a|at|@)\s+(?:us\$|\$|usd|q\.?\s?\d|\d).*$|\s+(?:de|of)\s+\d.*$/i, "")
+// the verbs that introduce the product inside a sentence ("ahora quiero importar 3 compresores")
+const VERB_INTRO = /\b(?:(?:ahora|mejor|en\s+realidad|realmente|m[aá]s\s+bien|now|actually)\s*,?\s*)?(?:quiero|queremos|quisiera|necesito|necesitamos|voy\s+a|vamos\s+a|deseo|planeo|busco|buscamos|me\s+interesa[n]?|i\s+(?:want|need|plan)\s+to|we\s+(?:want|need)\s+to)\s+(?:importar|comprar|traer|import|buy)\s+/i;
+const NOW_INTRO = /\b(?:ahora|mejor|en\s+realidad|realmente|m[aá]s\s+bien)\s*,?\s*(?:es|son|quiero|queremos|necesito|necesitamos|busco|importo|ocupo)\s+|\b(?:now|actually)\s*,?\s*(?:it'?s|they'?re|i\s+want|i\s+need)\s+/i;
+// "no es un molino, es un compresor", "ya no son guantes sino compresores", "not gloves, it's a compressor"
+const AFTER_NEG = /\b(?:no|ya\s+no|not|no\s+longer)\s+(?:es|son|era|eran|quiero|necesito|importo|busco|is|are)?\s*[^,.;:]{2,60}?(?:\s+sino(?:\s+que)?\s+|\s*[,;:]\s*(?:(?:sino|ahora|ahora\s+bien|que)\s+)?(?:es|son|quiero|necesito|busco|importo|it'?s|they'?re|i\s+want|i\s+need)\s+)(?:importar\s+|comprar\s+)?/i;
+const EN_SWAP = /\ben\s+(?:vez|lugar)\s+de\s+(?!\d)[^,.;:]{2,60}[,:]\s*(?:ahora\s+)?(?:(?:es|son|quiero|necesito|importo)\s+(?:importar\s+)?)?|\binstead\s+of\s+(?!\d)[^,.;:]{2,60},\s*/i;
+// where the product description ends: a request to SEAL, papers in hand, a question
+const DESC_END = /\s*(?:[,;]\s*)?(?:\b(?:y|e|pero|and|but)\s+)?\b(?:ya\s+tengo|ya\s+tenemos|tengo\s+(?:una?\s+|la\s+|mi\s+)?(?:proforma|proveedor|factura|cotizaci)|necesito\s+que|necesitamos\s+que|quiero\s+que|quisiera\s+que|me\s+pueden|nos\s+pueden|pueden\s+(?:ayudar|revisar|cotizar)|podr[ií]an|quiero\s+(?:hablar|contratar|cotizar)|necesito\s+(?:hablar|cotizar|una\s+cotizaci)|me\s+(?:ayudan|cotizan)|para\s+que\s+(?:seal|ustedes|me)|i\s+already|i\s+(?:want|need)\s+to\s+(?:talk|speak|hire)|please|por\s+favor|¿).*$/i;
+// what the client says it is not ("…, no molinos", "no son guantes ni molinos")
+const NEG_TAIL = /\s*(?:[,;]\s*)?\b(?:y\s+)?(?:no|ni|not)\s+(?:(?:es|son|quiero|necesito|is|are)\s+)?(?:un|una|unos|unas|los|las|el|la|a|an)?\s*[a-záéíóúüñ]+(?:\s+(?:ni|nor|or|o)\s+[a-záéíóúüñ]+)*\s*\.?\s*$/i;
+const NEG_ITEMS = /\b(?:no|ni|ya\s+no|not|no\s+longer|nor)\s+(?:(?:es|son|era|eran|quiero|necesito|importo|busco|is|are)\s+)?(?:(?:un|una|unos|unas|el|la|los|las|a|an)\s+)?([a-záéíóúüñ]{4,})/gi;
+const QTY_WORDS: Record<string, number> = { un: 1, una: 1, uno: 1, dos: 2, tres: 3, cuatro: 4, cinco: 5, seis: 6, siete: 7, ocho: 8, nueve: 9, diez: 10, a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, ten: 10 };
+
+export interface ProductStatement {
+  description: string; // everything the client wrote about the product (specs kept)
+  name: string; // a short name to show ("compresores industriales de tornillo")
+  quantity?: number; // "3 compresores"
+  negated: string[]; // stems of what the client says it is not
+}
+const stem5 = (w: string) => w.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/(?:es|s)$/, "").slice(0, 5);
+/** Stems of the products the message rules out ("no son guantes ni molinos" → guant, molin). */
+export function negatedProducts(text: string): string[] {
+  const t = String(text || "").toLowerCase();
+  const out = new Set<string>();
+  for (const m of t.matchAll(NEG_ITEMS)) {
+    const w = m[1];
+    if (/^(?:necesito|quiero|tengo|tiene|puedo|puede|hay|est[aá]|sabe|s[eé]|solo|tambi[eé]n|todav[ií]a|creo|longer|want|need|have|sure|only|para|muchos|mucho)$/.test(w)) continue;
+    out.add(stem5(w));
+  }
+  return [...out];
+}
+/** A short name for a description: its first noun phrase, before specs and figures. */
+export function productName(description: string): string {
+  const d = String(description || "").trim();
+  const cut = d.split(/,|;|\s+(?=\d)|\s+(?:de|of|con|with|para|for)\s+(?=\d)|\s+(?:que|which|y\s+libres?|y\s+sin)\s+/i)[0].trim();
+  const words = cut.split(/\s+/).slice(0, 6);
+  while (words.length > 1 && /^(?:de|del|para|con|en|a|y|of|for|with|in|and)$/i.test(words[words.length - 1])) words.pop();
+  return words.join(" ") || d.slice(0, 60);
+}
+function sentencesOf(t: string): string[] {
+  // a decimal ("2.5 kg", "US$0.03") is not the end of a sentence
+  return t.split(/(?<![\d])[.!?;\n]+(?!\d)|(?<=\d)[.!?;\n]+(?=\s|$)/).map((x) => x.trim()).filter(Boolean);
+}
+/** The product the message states (with its whole description), or null. */
+export function productStatement(text: string): ProductStatement | null {
+  const raw = String(text || "").replace(/[¡!]/g, " ").replace(/\s+/g, " ").trim();
+  const negated = negatedProducts(raw);
+  for (const sentence of sentencesOf(raw)) {
+    let rest = "";
+    let strong = false;
+    for (const re of TRIGGERS) {
+      const m = sentence.match(re);
+      if (m && m.index !== undefined) { rest = sentence.slice(m.index + m[0].length); strong = true; break; }
+    }
+    if (!rest) for (const re of [AFTER_NEG, EN_SWAP, VERB_INTRO, NOW_INTRO]) {
+      const m = sentence.match(re);
+      if (m && m.index !== undefined) { rest = sentence.slice(m.index + m[0].length); strong = re !== NOW_INTRO; break; }
+    }
+    if (!rest) continue;
+    // a trigger right after another ("cambio de producto: ahora quiero importar 3 compresores")
+    const inner = rest.match(VERB_INTRO) || rest.match(NOW_INTRO);
+    if (inner && inner.index !== undefined && inner.index < 25) rest = rest.slice(inner.index + inner[0].length);
+    rest = rest.replace(/^(?:ya\s+no\s+(?:es|son)\s+[^,.;:]+[,;:]\s*)/i, "");
+    let desc = rest.replace(DESC_END, "").replace(NEG_TAIL, "").replace(/^\s*(?:es|son)\s+/i, "").trim();
+    // a price or a budget is not a characteristic of the product ("…, a US$3 la caja")
+    desc = desc
+      .replace(/,?\s*(?:(?:a|at|@|por|for|de|of)\s+)?(?:us\$|u\$s|usd|\$|q\.?)\s*\d+(?:[.,]\d+)?(?:\s*(?:usd|d[oó]lares?|dollars?|quetzales?))?(?:\s+(?:la|el|por|cada|per|each|c\/u)(?:\s+[a-záéíóúüñ]+)?)?/gi, "")
+      .replace(/,?\s*(?:con\s+)?(?:un\s+)?(?:presupuesto|budget)\b.*$/i, "")
+      .replace(/\s{2,}/g, " ")
       .trim();
-    cap = clean(cap).replace(/^(?:\d[\d,.]*\s+)(?=[a-záéíóúüñ])/i, "").trim();
-    if (cap.length < 3 || cap.length > 100 || !/[a-záéíóúüñ]{3}/i.test(cap)) continue;
-    if (NOT_A_PRODUCT.test(cap) || QUESTION_WORD.test(cap)) continue;
-    return cap;
+    // the quantity the client wants, said with the product ("3 compresores")
+    let quantity: number | undefined;
+    const q = desc.match(/^(\d{1,3}(?:[,.]\d{3})+|\d+)\s+(?=[a-záéíóúüñ])/i) || desc.match(/^(un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez|one|two|three|four|five|ten)\s+(?=[a-záéíóúüñ]{3})/i);
+    if (q) {
+      const n = /^\d/.test(q[1]) ? Number(q[1].replace(/[,.]/g, "")) : QTY_WORDS[q[1].toLowerCase()];
+      // "un compresor" is the product, not a quantity of 1 the client asked for
+      if (/^\d/.test(q[1]) && n >= 1 && n <= 10_000_000) quantity = n;
+      desc = desc.slice(q[0].length);
+    }
+    desc = desc.replace(new RegExp(`^${ART}`, "i"), "").replace(/[\s,.;:]+$/, "").trim();
+    if (desc.length < 3 || desc.length > 600 || !/[a-záéíóúüñ]{3}/i.test(desc)) continue;
+    if (NOT_A_PRODUCT.test(desc) || QUESTION_WORD.test(desc)) continue;
+    const name = productName(desc);
+    // what it says it is NOT is never the product
+    if (negated.includes(stem5(name.split(/\s+/)[0]))) continue;
+    if (!strong && inferCategory(desc) === "other" && desc.split(/\s+/).length < 2) continue;
+    return { description: desc, name, ...(quantity ? { quantity } : {}), negated };
+  }
+  return null;
+}
+/** The product the message explicitly changes to (its whole description), or null. */
+export function productChange(text: string): string | null {
+  return productStatement(text)?.description ?? null;
+}
+
+// ── A correction of ONE characteristic: "corrijo: es 440 V, no 220 V" ──────────
+// The rest of the description is kept as it was.
+const MEASURE = "(\\d+(?:[.,]\\d+)?)\\s*(v|vac|vdc|voltios|volts?|hz|hertz|l|lt|lts|litros?|liters?|litres?|kg|kgs|kilos?|g|gr|gramos?|kw|hp|ml|cm|mm|m|metros?|pulgadas?|in|w|watts?|psi|bar|cfm|rpm|t|ton|toneladas?|gal|galones?)\\b";
+const UNIT_KEY = (u: string) => {
+  const x = u.toLowerCase();
+  if (/^(?:v|vac|vdc|voltios|volts?)$/.test(x)) return "v";
+  if (/^(?:hz|hertz)$/.test(x)) return "hz";
+  if (/^(?:l|lt|lts|litros?|liters?|litres?)$/.test(x)) return "l";
+  if (/^(?:kg|kgs|kilos?)$/.test(x)) return "kg";
+  if (/^(?:g|gr|gramos?)$/.test(x)) return "g";
+  if (/^(?:m|metros?)$/.test(x)) return "m";
+  if (/^(?:pulgadas?|in)$/.test(x)) return "in";
+  if (/^(?:w|watts?)$/.test(x)) return "w";
+  if (/^(?:t|ton|toneladas?)$/.test(x)) return "t";
+  if (/^(?:gal|galones?)$/.test(x)) return "gal";
+  return x;
+};
+const PHASES = ["monofásic", "bifásic", "trifásic", "monofasic", "bifasic", "trifasic"];
+export interface AttributeFix { from: string; to: string; description: string }
+/** A one-characteristic correction applied to the current description, or null. */
+export function attributeCorrection(text: string, current: string): AttributeFix | null {
+  const t = String(text || "");
+  const cur = String(current || "");
+  if (!cur) return null;
+  const cue = /\b(?:corrij\w*|correcci[oó]n|corrig\w*|en\s+realidad|realmente|perd[oó]n|me\s+equivoqu[eé]|mejor|no\s+es\s+de|no\s+son\s+de|en\s+(?:vez|lugar)\s+de|cambi\w*|el\s+voltaje|la\s+frecuencia|la\s+capacidad|el\s+tanque|la\s+potencia|actually|correction|instead\s+of)\b/i.test(t);
+  if (!cue) return null;
+  const all = [...t.matchAll(new RegExp(MEASURE, "gi"))].map((m) => ({ txt: m[0], n: m[1], u: UNIT_KEY(m[2]), at: m.index ?? 0 }));
+  // the old value is the one after "no", "en vez de", "en lugar de", "instead of"
+  const isOld = (at: number) => /(?:\bno(?:\s+(?:es|son|de|era))?|en\s+(?:vez|lugar)\s+de|instead\s+of|not|antes|y\s+no)\s*(?:de\s+)?$/i.test(t.slice(Math.max(0, at - 20), at));
+  const fresh = all.filter((x) => !isOld(x.at));
+  const old = all.filter((x) => isOld(x.at));
+  const inCur = (u: string) => [...cur.matchAll(new RegExp(MEASURE, "gi"))].filter((m) => UNIT_KEY(m[2]) === u);
+  for (const f of fresh) {
+    const o = old.find((x) => x.u === f.u);
+    const present = inCur(f.u);
+    // replace the value of that unit the description already has (the old one, if named)
+    const target = present.find((m) => !o || m[1].replace(",", ".") === o.n.replace(",", ".")) || (present.length === 1 ? present[0] : undefined);
+    if (target) {
+      if (target[1].replace(",", ".") === f.n.replace(",", ".")) continue;
+      const description = cur.slice(0, target.index) + f.txt.trim() + cur.slice((target.index ?? 0) + target[0].length);
+      return { from: target[0], to: f.txt.trim(), description };
+    }
+  }
+  // phase: "es monofásico, no trifásico"
+  const low = t.toLowerCase();
+  const said = PHASES.find((p) => new RegExp(`(?<!no\\s)\\b${p}`, "i").test(low) && !new RegExp(`(?:\\bno|en\\s+vez\\s+de)\\s+(?:es\\s+)?${p}`, "i").test(low));
+  if (said) {
+    const curPhase = PHASES.find((p) => cur.toLowerCase().includes(p));
+    if (curPhase && curPhase.slice(0, 4) !== said.slice(0, 4)) {
+      const re = new RegExp(`${curPhase}\\w*`, "i");
+      const m = cur.match(re)!;
+      const to = said + (m[0].slice(curPhase.length) || "o");
+      return { from: m[0], to, description: cur.replace(re, to) };
+    }
   }
   return null;
 }
@@ -2286,6 +2418,8 @@ export interface ReplySpec {
   // data typed for the previous product (form or chat) that no longer applies: asked again
   stale?: { product: string; quantity?: string; budget?: string };
   explicitChange?: boolean; // "cambio el producto a…": a change, not a correction of a misunderstanding
+  attrFix?: { from: string; to: string }; // one characteristic corrected, the rest kept
+  confirmProduct?: string; // a doubt about the product, asked ("" = which product now?)
 }
 
 /** Whether a certificate answer for this product talks about food contact. */
@@ -2308,10 +2442,33 @@ const stems = (x: string) =>
       .filter((w) => w.length >= 4 && !STOP.has(w))
       .map((w) => w.slice(0, 5)),
   );
+// words that qualify a product, never name it ("industrial", "trifásico", "acero")
+const QUALIFIER = /^(?:industr|trifa|monof|bifas|electr|autom|digit|porta|nuevo|nueva|usado|usada|grand|peque|inoxi|plast|metal|acero|madera|vidri|profe|comer|domes|manua|hidra|neuma|marca|model|calid|gener|class|heavy|elect|autom|indus|stain|steel|plast|woode|porta|profe|comme|singl|doubl|doble|simpl|negro|blanc|black|white)/;
+/** The noun(s) that name a product: the first and the last content word of its name. */
+export function productHeads(x: string): Set<string> {
+  const name = productName(x).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  const words = (name.split(/[^a-z]+/) || []).filter((w) => w.length >= 4 && !STOP.has(w)).map((w) => w.replace(/(?:es|s)$/, "").slice(0, 5)).filter((w) => !QUALIFIER.test(w));
+  const out = new Set<string>();
+  if (words[0]) out.add(words[0]);
+  if (words.length > 1) out.add(words[words.length - 1]);
+  return out;
+}
 export function sameProduct(a: string, b: string): boolean {
   if (!a || !b) return false;
-  const A = stems(a);
-  return [...stems(b)].some((w) => A.has(w));
+  // the same product when the nouns that name it match ("molino trifásico" ≠ "compresor trifásico")
+  const A = productHeads(a);
+  const B = productHeads(b);
+  if (A.size && B.size) return [...A].some((w) => B.has(w));
+  const S = stems(a);
+  return [...stems(b)].some((w) => S.has(w));
+}
+/** "sí", "correcto", "así es" / "no", "sigue siendo…" after a product question. */
+export function confirmAnswer(text: string): "yes" | "no" | "" {
+  const t = String(text || "").trim().toLowerCase();
+  const end = "(?=$|[\\s,.;:!¡?¿])";
+  if (new RegExp(`^(?:s[ií]|correcto|exacto|as[ií]\\s+es|eso\\s+es|claro|afirmativo|yes|yep|correct|right)${end}`).test(t)) return "yes";
+  if (new RegExp(`^(?:no|sigue|contin[uú]a|el\\s+mismo|the\\s+same|nope)${end}`).test(t)) return "no";
+  return "";
 }
 
 /** "Quiero 2000 en vez de 500", "cambia la cantidad a 2,000", "make it 300". */
@@ -2337,8 +2494,8 @@ function staleLine(r: ReplySpec): string {
   const b = r.stale.budget ? (/^\d/.test(r.stale.budget) ? `US$${r.stale.budget}` : r.stale.budget) : "";
   const what = [q && Lx(`cantidad ${q}`, `quantity ${q}`), b && Lx(`presupuesto ${b}`, `budget ${b}`)].filter(Boolean).join(", ");
   return "\n\n" + Lx(
-    `Los datos que tenías para «${r.stale.product}» (${what}) quedan como historial y no los uso para «${r.newProduct}». ¿Qué cantidad${b ? " y presupuesto" : ""} necesitas de «${r.newProduct}»?`,
-    `The data you had for "${r.stale.product}" (${what}) stays as history and I won't use it for "${r.newProduct}". What quantity${b ? " and budget" : ""} do you need for "${r.newProduct}"?`,
+    `Los datos que tenías para «${productName(r.stale.product)}» (${what}) quedan como historial y no los uso para «${productName(r.newProduct)}».${r.newQuantity ? (b ? ` ¿Cuál es tu presupuesto de compra para «${productName(r.newProduct)}»?` : "") : ` ¿Qué cantidad${b ? " y presupuesto" : ""} necesitas de «${productName(r.newProduct)}»?`}`,
+    `The data you had for "${productName(r.stale.product)}" (${what}) stays as history and I won't use it for "${productName(r.newProduct)}".${r.newQuantity ? (b ? ` What is your purchase budget for "${productName(r.newProduct)}"?` : "") : ` What quantity${b ? " and budget" : ""} do you need for "${productName(r.newProduct)}"?`}`,
   );
 }
 
@@ -2360,7 +2517,16 @@ export function buildReply(r: ReplySpec): string {
     ) + staleLine(r);
   const ctx: ChatCtx = { product: r.product };
   const parts: string[] = [];
-  if (r.newQuantity) {
+  if (r.attrFix && r.newProduct) {
+    parts.push(
+      Lx(
+        `Corregido: «${r.attrFix.from}» ahora es «${r.attrFix.to}». El resto de la descripción se mantiene: «${r.newProduct}».`,
+        `Corrected: "${r.attrFix.from}" is now "${r.attrFix.to}". The rest of the description stays: "${r.newProduct}".`,
+      ),
+    );
+    return parts.join("\n\n");
+  }
+  if (r.newQuantity && !r.newProduct) {
     parts.push(
       Lx(
         `Anotado: la cantidad es ${r.newQuantity.toLocaleString("en-US")}${r.oldQuantity ? ` (antes ${r.oldQuantity.toLocaleString("en-US")})` : ""}. La paso al formulario; ahí puedes ajustarla.`,
@@ -2375,8 +2541,8 @@ export function buildReply(r: ReplySpec): string {
     parts.push(
       changed && r.explicitChange && !wrongAdvice
         ? Lx(
-            `Anotado el cambio de producto: ahora es «${r.newProduct}» (antes «${r.previous}»). Lo uso para lo que sigue y para el formulario; lo anterior queda en el historial.`,
-            `Product change noted: it is now "${r.newProduct}" (before "${r.previous}"). I'll use it from here on and in the form; the earlier data stays as history.`,
+            `Anotado el cambio de producto: ahora es «${r.newProduct}»${r.newQuantity ? `, cantidad ${r.newQuantity.toLocaleString("en-US")}` : ""} (antes «${productName(r.previous || "")}»). Lo uso para lo que sigue, para el formulario y para tu caso; lo anterior queda en el historial.`,
+            `Product change noted: it is now "${r.newProduct}"${r.newQuantity ? `, quantity ${r.newQuantity.toLocaleString("en-US")}` : ""} (before "${productName(r.previous || "")}"). I'll use it from here on, in the form and in your case; the earlier data stays as history.`,
           )
         : changed || wrongAdvice
         ? Lx(
@@ -2384,8 +2550,23 @@ export function buildReply(r: ReplySpec): string {
             `Thanks for clarifying: your product is "${r.newProduct}". Correcting what I said: ${wrongAdvice ? "what I said about food-contact materials doesn't apply to this product" : "what I answered with another product in mind doesn't apply"}; I'll use "${r.newProduct}" from here on and in the form.`,
           )
         : Lx(
-            `Anotado: tu producto es «${r.newProduct}»; lo uso para lo que sigue y para el formulario.`,
-            `Noted: your product is "${r.newProduct}"; I'll use it from here on and in the form.`,
+            `Anotado: tu producto es «${r.newProduct}»${r.newQuantity ? `, cantidad ${r.newQuantity.toLocaleString("en-US")}` : ""}; lo uso para lo que sigue y para el formulario.`,
+            `Noted: your product is "${r.newProduct}"${r.newQuantity ? `, quantity ${r.newQuantity.toLocaleString("en-US")}` : ""}; I'll use it from here on and in the form.`,
+          ),
+    );
+  }
+  // a doubt about the product is asked before anything is kept or changed
+  if (r.confirmProduct !== undefined && !r.newProduct) {
+    const cur = productName(r.previous || "");
+    parts.push(
+      r.confirmProduct
+        ? Lx(
+            `Mencionas «${productName(r.confirmProduct)}», pero tu caso dice «${cur}». ¿Tu producto ahora es «${productName(r.confirmProduct)}»? Responde «sí» para cambiarlo, o «no» para mantener «${cur}». Si cambia, escríbelo con sus características (voltaje, capacidad, material…).`,
+            `You mention "${productName(r.confirmProduct)}", but your case says "${cur}". Is your product now "${productName(r.confirmProduct)}"? Answer "yes" to change it, or "no" to keep "${cur}". If it changes, write it with its characteristics (voltage, capacity, material…).`,
+          )
+        : Lx(
+            `Indicas que ya no es «${cur}». ¿Cuál es el producto ahora? Escríbelo con sus características (voltaje, capacidad, material…) y lo actualizo en tu caso; hasta entonces tu caso sigue con «${cur}».`,
+            `You say it is no longer "${cur}". What is the product now? Write it with its characteristics (voltage, capacity, material…) and I'll update your case; until then your case stays with "${cur}".`,
           ),
     );
   }
@@ -2424,7 +2605,7 @@ export function buildReply(r: ReplySpec): string {
     q = r.reask;
     kinds = replyKinds(q).filter((k) => k === "certificate");
   }
-  if (!kinds.length && !r.newProduct) kinds = ["general"];
+  if (!kinds.length && !r.newProduct && r.confirmProduct === undefined) kinds = ["general"];
   // the price and budget of a calculation are answered with it: no generic cost paragraph
   if (kinds.includes("math") && mathMoney(q)) kinds = kinds.filter((k) => k !== "cost");
   kinds.forEach((k, i) => {
@@ -2481,20 +2662,40 @@ export function nextSpec(text: string, specs: ReplySpec[], currentProduct: strin
   // a calculation is not a product statement nor a quantity change
   // "quiero contratar a SEAL" names no product
   // an explicit change ("ahora el producto es un molino") counts in any message, also with a contact request
-  const changedTo = productChange(text);
-  const newProduct = changedTo || (mathText || kinds.includes("pairs") || kinds.includes("contact") || kinds.includes("subtotal") ? undefined : productFromMessage(text) || undefined);
+  const lastAiSpec = specs[specs.length - 1];
+  // the answer to "¿tu producto ahora es «X»?" asked in the previous reply
+  const answer = lastAiSpec?.confirmProduct !== undefined ? confirmAnswer(text) : "";
+  const st = productStatement(text);
+  const changedTo = st?.description || (answer === "yes" && lastAiSpec?.confirmProduct ? lastAiSpec.confirmProduct : null);
+  const qc0 = mathText ? null : quantityChange(text);
+  // one characteristic corrected ("es 440 V, no 220 V"): the rest of the description stays
+  const fix = !changedTo && currentProduct ? attributeCorrection(text, currentProduct) : null;
+  const newProduct = changedTo || fix?.description || (mathText || qc0 || kinds.includes("pairs") || kinds.includes("contact") || kinds.includes("subtotal") ? undefined : productFromMessage(text) || undefined);
+  // a real doubt is asked, never resolved by keeping the old product silently:
+  // the current product ruled out with nothing in its place, or another product named in a request to SEAL
+  let confirmProduct: string | undefined;
+  if (!newProduct && currentProduct) {
+    const head = productHeads(currentProduct);
+    const neg = negatedProducts(text);
+    const other = productMention(text);
+    if (neg.some((n) => head.has(n))) confirmProduct = "";
+    else if (kinds.includes("contact") && other && !sameProduct(other, currentProduct)) confirmProduct = other;
+  }
   // a product named inside a question ("¿el CE sirve para lápices?") becomes the context silently
   const mentioned = !newProduct && !mathText && !kinds.includes("contact") && !kinds.includes("subtotal") ? productMention(text) || undefined : undefined;
   // only a certificate answer that asked "¿qué producto?" is answered again for the new product
   const lastAi = specs[specs.length - 1];
   const askedForProduct = !!lastAi && !lastAi.product && replyKinds(lastAi.reask || lastAi.text).includes("certificate");
-  const qc = mathText ? null : quantityChange(text);
+  // the quantity said with a new product ("3 compresores") is that product's quantity
+  const qc = qc0 || (st?.quantity ? { qty: st.quantity, before: 0 } : null);
   return {
     mathText,
     combined,
     previousMath: follow ? lastMath : undefined,
     newQuantity: qc?.qty,
-    oldQuantity: qc ? qc.before || currentQuantity || undefined : undefined,
+    oldQuantity: qc && !st ? qc.before || currentQuantity || undefined : undefined,
+    attrFix: fix ? { from: fix.from, to: fix.to } : undefined,
+    confirmProduct,
     text,
     product: newProduct || mentioned || currentProduct,
     newProduct,
