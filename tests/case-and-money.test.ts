@@ -267,3 +267,11 @@ describe("round 2: cases designed to break the rules", () => {
     expect(one("Necesito 10.5 cajas de guantes de 100, ¿cuántos guantes son?")).not.toMatch(/= US\$/);
   });
 });
+
+describe("published price next to the client's price (screen, PDF, Excel)", () => {
+  it("priceNoteFor keeps the published range when the client typed a price", async () => {
+    const { priceNoteFor } = await import("../src/utils/scenario");
+    expect(priceNoteFor({ priceSource: "client", price: 1.5, publishedPrice: "1.70 - 1.80" })).toBe("precio indicado por el cliente (publicado: US$1.70 – US$1.80)");
+    expect(priceNoteFor({ priceSource: "client", price: 1.5 })).toBe("precio indicado por el cliente");
+  });
+});
