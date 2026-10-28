@@ -174,7 +174,7 @@ export function attributeCorrection(text: string, current: string): AttributeFix
   let t = String(text || "");
   const cur = String(current || "");
   if (!cur) return null;
-  const cue = /\b(?:corrij\w*|correcci[oó]n|corrig\w*|en\s+realidad|realmente|perd[oó]n|me\s+equivoqu[eé]|mejor|no\s+es\s+de|no\s+son\s+de|en\s+(?:vez|lugar)\s+de|cambi\w*|actualiz\w*|modific\w*|ajust\w*|el\s+voltaje|la\s+tensi[oó]n|la\s+frecuencia|la\s+capacidad|el\s+tanque|la\s+potencia|ya\s+no|ahora|nuev[oa]|actually|correction|instead\s+of|voltage|frequency|capacity|tank|now)\b/i.test(t);
+  const cue = /\b(?:corrij\w*|correcci[oó]n|corrig\w*|en\s+realidad|realmente|perd[oó]n|me\s+equivoqu[eé]|mejor|no\s+es\s+de|no\s+son\s+de|en\s+(?:vez|lugar)\s+de|cambi\w*|actualiz\w*|modific\w*|ajust\w*|el\s+voltaje|la\s+tensi[oó]n|la\s+frecuencia|la\s+capacidad|el\s+tanque|la\s+potencia|ya\s+no|ahora|nuev[oa]|pero\s+con|con\s+tanque|que\s+sean?|son|sean|mant[eé]n\w*|quiero|necesito|que\s+tenga|voltaje|tensi[oó]n|frecuencia|tanque|capacidad|fase|actually|correction|instead\s+of|voltage|frequency|capacity|tank|now)\b/i.test(t);
   if (!cue) return null;
   // "el voltaje a 440", "la capacidad del tanque a 300": the unit is the one that field has
   const unitIn = (key: string) => [...cur.matchAll(new RegExp(MEASURE, "gi"))].find((m) => UNIT_KEY(m[2]) === key)?.[2];
@@ -2451,6 +2451,9 @@ export interface ReplySpec {
   oldBudget?: number;
   fieldUpdate?: boolean; // the message changes fields of the case, not the product
   askNumber?: number; // "cambia a 300" with no field named: asked
+  askRelative?: { delta: number; from: number; to: number }; // "agrega 2 más": the new total is confirmed
+  qtyInvalid?: "decimal" | "zero" | "max"; // "la cantidad a 3.5": explained, not applied
+  budgetClear?: boolean; // "quita el presupuesto"
   qtyConflict?: { said: number; inCase: number }; // "la cantidad sigue siendo 5" with 3 in force
   budgetAsk?: boolean; // the budget came in quetzales: the form's budget is in US$
   hypothetical?: boolean; // "¿y si fueran 5?": nothing changes
@@ -2480,7 +2483,7 @@ const stems = (x: string) =>
   );
 /** Every word of `a` (numbers aside) is already in `b`: «compresores de tornillo» ⊂ «compresores industriales de tornillo, 220 V». */
 export function subsetOf(a: string, b: string): boolean {
-  const A = stems(String(a || "").replace(/\d+(?:[.,]\d+)?/g, " "));
+  const A = new Set([...stems(String(a || "").replace(/\d+(?:[.,]\d+)?/g, " "))].filter((w) => !/^(?:total|ahora|tambi|igual|mismo|misma|solo|unica|favor|pedid|canti|unida|tengo|neces|quier)/.test(w)));
   const B = stems(String(b || ""));
   return A.size > 0 && [...A].every((w) => B.has(w));
 }
@@ -2524,7 +2527,7 @@ export const HYPOTHETICAL = /(?:\by\s+si\b|\bsi\s+(?:fuera|fueran|fuese|fuesen|p
 export const KEEP_REST = /\b(?:mantengo|mantener|mantenga|mantenemos|mism[oa]s?|no\s+(?:modifiques|modifique|cambies|cambie|toques|toque|cambian|cambia|se\s+modifican?|se\s+cambian?)|sin\s+cambiar|sin\s+modificar|se\s+mantienen?|siguen?\s+(?:igual|siendo)|las\s+dem[aá]s|lo\s+dem[aá]s|el\s+resto|solo\s+(?:cambia|actualiza|modifica|ajusta|corrige)|[uú]nicamente|keep|same|don'?t\s+change|unchanged|only\s+(?:change|update)|the\s+rest)\b/i;
 
 /** "Quiero 2000 en vez de 500", "cambia la cantidad a 2,000", "de 3 a 4 compresores", "make it 300". */
-export function quantityChange(text: string): { qty: number; before: number; bare?: boolean; stated?: boolean; keepSaid?: boolean } | null {
+export function quantityChange(text: string, head = ""): { qty: number; before: number; bare?: boolean; stated?: boolean; keepSaid?: boolean; relative?: number; noun?: boolean } | null {
   const t = normalizeNumbers(` ${String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ")} `);
   if (packMath(text)) return null;
   // "paquetes de 16 en lugar de 10" changes the pack, not the quantity
@@ -2535,6 +2538,17 @@ export function quantityChange(text: string): { qty: number; before: number; bar
     const at = (m.index ?? 0) + m[0].lastIndexOf(m[g]);
     return plainAt(t, at, m[g].length);
   };
+  // "agrega 2 más", "reduce el pedido en 1": relative to the quantity in force (confirmed, never guessed)
+  const rel =
+    t.match(/\b(agreg\w*|añad\w*|sum\w*|quit\w*|rest\w*|add|remove)\b[^.;\d]{0,25}?(\d+)\b/) ||
+    t.match(/\b(aument\w*|reduc\w*|disminu\w*|sub\w*|baj\w*|increase|reduce|lower|raise)\b[^.;\d]{0,25}?\b(?:en|by)\s+(\d+)\b/) ||
+    t.match(/\b(\d+)\s+(?:[a-záéíóúñ]+\s+)?(m[aá]s|menos|adicionales|extra|more|less|fewer)\b/);
+  if (rel) {
+    const numFirst = /^\d+$/.test(rel[1]);
+    const n = Number(numFirst ? rel[1] : rel[2]);
+    const word = numFirst ? rel[2] : rel[1];
+    if (n >= 1 && plainGroup(rel, numFirst ? 1 : 2)) return { qty: 0, before: 0, relative: /^(?:quit|rest|reduc|disminu|baj|menos|less|fewer|remove|lower)/.test(word) ? -n : n };
+  }
   // "de 3 a 4 compresores", "la cantidad del pedido de 3 a 4", "from 3 to 4 units"
   for (const m of t.matchAll(/\b(?:de|from)\s+(\d+)\s+(?:unidades\s+|units\s+|piezas\s+)?(?:a|to)\s+(\d+)\b/g)) {
     const atX = (m.index ?? 0) + m[0].indexOf(m[1]);
@@ -2557,7 +2571,7 @@ export function quantityChange(text: string): { qty: number; before: number; bar
     const verb = /\b(?:cambi\w*|ajust\w*|pon\w*|modific\w*|actualiz\w*|sub\w*|baj\w*|change|set|make|update)\s+(?:[a-záéíóúñ]+\s+){0,3}$/.test(t.slice(0, set.index ?? 0));
     return { qty: Number(set[1]), before: 0, stated: !verb && /\b(?:es|son|is|ser[aá]|sea)\s*(?:de\s+)?\d+$/.test(set[0]) };
   }
-  const tries: [RegExp, boolean][] = [
+  const tries: [RegExp, boolean, boolean?][] = [
     [/(?:cambi\w*|ajust\w*|pon\w*|modific\w*|change|set|make)\s+(?:la\s+|the\s+)?(?:it\s+)?(?:a|to|en)?\s*(\d+)/, true],
     [/(?:quiero|necesito|ser[ií]an|mejor|i\s+want|i\s+need|make\s+it)\s+(\d+)\b[^\d]*?\b(?:en\s+vez\s+de|en\s+lugar\s+de|instead\s+of|y\s+no|not)\s+(\d+)/, false],
     [/\b(\d+)\s+(?:[a-záéíóúüñ]+\s+)?(?:en\s+vez\s+de|en\s+lugar\s+de|instead\s+of)\s+(\d+)/, false],
@@ -2565,8 +2579,12 @@ export function quantityChange(text: string): { qty: number; before: number; bar
     [/\b(?:son|ser[aá]n|are|it'?s)\s+(\d+)\s+(?:[a-záéíóúüñ]+\s*)?,?\s*(?:no|y\s+no|not)\s+(\d+)\b/, false],
     // "ahora son 4 unidades", "en total serán 6 piezas"
     [/\b(?:ahora|now|en\s+total|in\s+total)\s+(?:son|ser[aá]n|ser[ií]an|quiero|necesito|pido|are|i\s+need|i\s+want)\s+(\d+)\s+(?=unidades|units|piezas|pieces|equipos|m[aá]quinas)/, false],
+    // "vuelve a 3", "que sean 5", "déjalo en 5 unidades"
+    [/\b(?:vuelv\w*|regr[eé]s\w*|d[eé]ja\w*|que\s+sean|p[oó]nle|sub\w*|baj\w*|pas\w*)\s+(?:(?:la\s+cantidad|el\s+pedido|lo|la)\s+)?(?:a|en)?\s*(\d+)\b/, true],
+    // "5 unidades", "en total 5 compresores", "son 3 compresores de 300 litros"
+    [new RegExp(`\\b(\\d+)\\s+(?:unidades|units|piezas|pieces|equipos|m[aá]quinas${head ? `|${head.slice(0, Math.max(4, head.length - 2))}[a-záéíóúñ]*` : ""})\\b`), false, true],
   ];
-  for (const [re, bareKind] of tries) {
+  for (const [re, bareKind, noun] of tries) {
     const m = t.match(re);
     if (!m || !plainGroup(m, 1)) continue;
     // "300 litros en lugar de 500 litros": the word after the number is a unit, not the product
@@ -2579,7 +2597,7 @@ export function quantityChange(text: string): { qty: number; before: number; bar
     // "cambia a 300" says no field: when the product has measures it is asked, not guessed
     const after = t.slice((m.index ?? 0) + m[0].length);
     const bare = bareKind && !/^\s*(?:unidades|units|piezas|pieces|[a-záéíóúñ]{4,})/.test(after);
-    return { qty, before: m[2] ? Number(m[2]) : 0, ...(bare ? { bare } : {}) };
+    return { qty, before: m[2] ? Number(m[2]) : 0, ...(bare ? { bare } : {}), ...(noun ? { noun } : {}) };
   }
   return null;
 }
@@ -2631,6 +2649,7 @@ export function budgetInForce(specs: ReplySpec[]): number {
   for (const x of specs) {
     if (x.newProduct && x.previous && !sameProduct(x.previous, x.newProduct)) b = 0;
     if (x.newBudget) b = x.newBudget;
+    if (x.budgetClear) b = 0;
   }
   return b;
 }
@@ -2659,6 +2678,18 @@ export function buildReply(r: ReplySpec): string {
         `¿«${r.askNumber.toLocaleString("en-US")}» es la nueva cantidad de unidades o el valor de una característica (por ejemplo, la capacidad del tanque o el voltaje)? Escríbelo así: «la cantidad es ${r.askNumber}» o «el tanque es de ${r.askNumber} litros». No cambié nada; tu caso sigue así: ${now}.`,
         `Is "${r.askNumber.toLocaleString("en-US")}" the new number of units or the value of a characteristic (for example the tank capacity or the voltage)? Write it like this: "the quantity is ${r.askNumber}" or "the tank is ${r.askNumber} liters". I didn't change anything; your case stays: ${now}.`,
       );
+    if (r.askRelative && !r.attrFix && !r.newBudget)
+      return r.askRelative.from && r.askRelative.to >= 1
+        ? Lx(
+            `¿Quieres decir que la cantidad total pasa de ${r.askRelative.from.toLocaleString("en-US")} a ${r.askRelative.to.toLocaleString("en-US")}? Confírmamelo así: «la cantidad es ${r.askRelative.to}». No cambié nada; tu caso sigue así: ${now}.`,
+            `Do you mean the total quantity goes from ${r.askRelative.from.toLocaleString("en-US")} to ${r.askRelative.to.toLocaleString("en-US")}? Confirm it like this: "the quantity is ${r.askRelative.to}". I didn't change anything; your case stays: ${now}.`,
+          )
+        : Lx(`¿Cuál es la cantidad total que necesitas? Escríbela así: «la cantidad es 5». No cambié nada; tu caso sigue así: ${now}.`, `What total quantity do you need? Write it like this: "the quantity is 5". I didn't change anything; your case stays: ${now}.`);
+    if (r.qtyInvalid && !r.attrFix && !r.newBudget && !r.newQuantity)
+      return Lx(
+        `${r.qtyInvalid === "decimal" ? "La cantidad debe ser un número entero de unidades" : r.qtyInvalid === "zero" ? "La cantidad debe ser de al menos 1 unidad" : "La cantidad máxima es 10,000,000 unidades"}. No cambié la cantidad; tu caso sigue así: ${now}.`,
+        `${r.qtyInvalid === "decimal" ? "The quantity must be a whole number of units" : r.qtyInvalid === "zero" ? "The quantity must be at least 1 unit" : "The maximum quantity is 10,000,000 units"}. I didn't change the quantity; your case stays: ${now}.`,
+      );
     if (r.qtyConflict && !r.attrFix && !r.newBudget)
       return Lx(
         `Dices que la cantidad sigue siendo ${r.qtyConflict.said.toLocaleString("en-US")}, pero tu caso tiene ${r.qtyConflict.inCase.toLocaleString("en-US")}. ¿Cuál es la correcta? No cambié la cantidad; tu caso sigue así: ${now}.`,
@@ -2673,6 +2704,7 @@ export function buildReply(r: ReplySpec): string {
       r.attrFix ? Lx(`«${r.attrFix.from}» ahora es «${r.attrFix.to}»`, `"${r.attrFix.from}" is now "${r.attrFix.to}"`) : "",
       r.newQuantity ? Lx(`cantidad ${r.oldQuantity ? `${r.oldQuantity.toLocaleString("en-US")} → ` : ""}${r.newQuantity.toLocaleString("en-US")}`, `quantity ${r.oldQuantity ? `${r.oldQuantity.toLocaleString("en-US")} → ` : ""}${r.newQuantity.toLocaleString("en-US")}`) : "",
       r.newBudget ? Lx(`presupuesto de compra ${r.oldBudget ? `${fmtBudget(r.oldBudget)} → ` : ""}${fmtBudget(r.newBudget)}`, `purchase budget ${r.oldBudget ? `${fmtBudget(r.oldBudget)} → ` : ""}${fmtBudget(r.newBudget)}`) : "",
+      r.budgetClear ? Lx("presupuesto de compra quitado", "purchase budget removed") : "",
     ].filter(Boolean);
     const extra = [
       r.qtyConflict ? Lx(`No cambié la cantidad: dices ${r.qtyConflict.said.toLocaleString("en-US")} y tu caso tiene ${r.qtyConflict.inCase.toLocaleString("en-US")}; dime cuál es la correcta.`, `I didn't change the quantity: you say ${r.qtyConflict.said.toLocaleString("en-US")} and your case has ${r.qtyConflict.inCase.toLocaleString("en-US")}; tell me which one is right.`) : "",
@@ -2826,8 +2858,25 @@ export function nextSpec(
   const hypo = HYPOTHETICAL.test(low0);
   // "mantengo los mismos…", "no modifiques las especificaciones": only what is named changes
   const keepRest = KEEP_REST.test(text);
-  const qRaw = quantityChange(text);
-  // "la cantidad sigue siendo 3" with 3 in force is a confirmation, not a change
+  const head = (String(caseProduct || "").toLowerCase().match(/[a-záéíóúüñ]{4,}/) || [""])[0];
+  const qRaw0 = quantityChange(text, head);
+  // "agrega 2 más": the new total is confirmed with the client, never applied silently
+  const askRelative = qRaw0?.relative && !hypo ? { delta: qRaw0.relative, from: caseQty, to: caseQty + qRaw0.relative } : undefined;
+  // "el presupuesto sube a 6 mil": that number is the budget, not a quantity
+  const bEarly = budgetChange(text);
+  // "5 unidades" alone is the case's quantity; inside a calculation ("333 piezas a US$0.035",
+  // "perdón, son 600 piezas" after a pack question) it belongs to that calculation
+  const nounOut = !!qRaw0?.noun && (!caseProduct || kinds.length > 0 || /(?:us\$|usd|\$|\bq\s?\d)/i.test(text) || !!specs[specs.length - 1]?.mathText);
+  const qRaw = qRaw0?.relative || nounOut || (bEarly && qRaw0 && qRaw0.qty === bEarly.value) ? null : qRaw0;
+  // "la cantidad a 3.5 / 0 / 20,000,000": not a valid order quantity, said instead of applied
+  const qBad = low0.match(/\b(?:cantidad|quantity)\b[^.;\d]{0,30}?(\d+(?:[.,]\d+)?)/);
+  const qtyInvalid: ReplySpec["qtyInvalid"] = (() => {
+    if (!qBad || hypo || qRaw) return undefined;
+    if (!plainAt(low0, (qBad.index ?? 0) + qBad[0].lastIndexOf(qBad[1]), qBad[1].length) && !/[.,]\d/.test(qBad[1])) return undefined;
+    if (/[.,]\d/.test(qBad[1])) return "decimal";
+    const n = Number(qBad[1]);
+    return n < 1 ? "zero" : n > 10_000_000 ? "max" : undefined;
+  })();
   const qtySame = !!qRaw && !!caseQty && qRaw.qty === caseQty;
   const qtyConflict = qRaw?.keepSaid && caseQty && qRaw.qty !== caseQty ? { said: qRaw.qty, inCase: caseQty } : undefined;
   // "cambia a 300" names no field: with measures in the description it is asked, never guessed
@@ -2885,7 +2934,8 @@ export function nextSpec(
   const budgetAsk = bRaw?.currency === "GTQ" || undefined;
   const newBudget = bRaw && !budgetAsk && bRaw.value !== caseBudget ? bRaw.value : undefined;
   // a message that updates fields of the case names no new product (its nouns are the same product)
-  const fieldMsg = !changedTo && !hypo && !mathText && !!(fix || qc0 || newBudget || budgetAsk || askNumber || qtyConflict || qtySame || restated || (bRaw && keepRest));
+  const budgetClear = !mathText && !hypo && /\b(?:quit\w*|elimin\w*|borr\w*|remove|delete)\s+(?:el\s+|mi\s+|the\s+)?(?:presupuesto|budget)\b|\bsin\s+presupuesto\b|\bno\s+tengo\s+presupuesto\b/i.test(text) && !!caseBudget;
+  const fieldMsg = !changedTo && !hypo && !mathText && !!(fix || qc0 || newBudget || budgetAsk || askNumber || qtyConflict || qtySame || restated || askRelative || qtyInvalid || budgetClear || (bRaw && keepRest));
   // "¿y si fueran 5 unidades?", "suponiendo un presupuesto de US$6,000": answered without changing the case
   const caseUnits = new Set([...String(caseProduct || "").matchAll(new RegExp(MEASURE, "gi"))].map((m) => UNIT_KEY(m[2])));
   const hypoCase =
@@ -2927,12 +2977,15 @@ export function nextSpec(
     oldBudget: newBudget && caseBudget ? caseBudget : undefined,
     fieldUpdate: fieldMsg || undefined,
     askNumber,
+    askRelative,
+    qtyInvalid,
+    budgetClear: budgetClear || undefined,
     qtyConflict,
     budgetAsk,
     hypothetical: hypoCase || undefined,
     caseNow:
       fieldMsg || hypoCase
-        ? { product: fix?.description || caseProduct, quantity: (fieldMsg && qc?.qty) || caseQty || undefined, budget: newBudget || caseBudget || undefined }
+        ? { product: fix?.description || caseProduct, quantity: (fieldMsg && qc?.qty) || caseQty || undefined, budget: budgetClear ? undefined : newBudget || caseBudget || undefined }
         : undefined,
     confirmProduct,
     confirmQuantity,

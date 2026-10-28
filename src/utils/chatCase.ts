@@ -2,7 +2,7 @@
 // changes in the data the other screens read (form draft, case sent to SEAL). Only the
 // fields the message changed are written; the rest of the case stays as it was.
 import { nextSpec, quantityInForce, budgetInForce, fmtBudget, type ReplySpec } from "./chatReply";
-import { switchCaseProduct, rememberCase } from "./caseContext";
+import { switchCaseProduct, rememberCase, setCaseScenario } from "./caseContext";
 import { savedProduct, saveProduct, draftFacts, draftFor, updateDraft } from "./draft";
 
 export function applyChatMessage(text: string, earlier: ReplySpec[], ctx: { currentProduct: string; currentQuantity: number; startQuery?: string }): ReplySpec {
@@ -30,11 +30,12 @@ export function applyChatMessage(text: string, earlier: ReplySpec[], ctx: { curr
       {
         productType: spec.attrFix ? spec.newProduct : undefined,
         quantity: spec.newQuantity ? String(spec.newQuantity) : undefined,
-        budget: spec.newBudget ? String(spec.newBudget) : undefined,
+        budget: spec.newBudget ? String(spec.newBudget) : spec.budgetClear ? null : undefined,
       },
       stated,
     );
     if (spec.newBudget) rememberCase({ budget: fmtBudget(spec.newBudget) });
+    if (spec.budgetClear) setCaseScenario({}, ["budget"]);
   }
   return spec;
 }

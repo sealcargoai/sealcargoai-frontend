@@ -50,12 +50,13 @@ export function draftFor(product: string): { quantity?: string; budget?: string 
  * takes it, so the form, the contact summary and the request show the same case. Fields not
  * in the patch keep their value; a draft typed for another product is not touched.
  */
-export function updateDraft(patch: { productType?: string; quantity?: string; budget?: string }, forProduct: string): void {
+export function updateDraft(patch: { productType?: string; quantity?: string; budget?: string | null }, forProduct: string): void {
   try {
     const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null") || { formData: {}, step: 1, prev: null };
     const f = d.formData || {};
     if (f.productType && normP(f.productType) !== normP(forProduct) && normP(f.productType) !== normP(patch.productType || "")) return;
-    d.formData = { ...f, productType: f.productType || forProduct, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined && v !== "")) };
+    // null clears a field ("quita el presupuesto"); undefined or "" leave it as it was
+    d.formData = { ...f, productType: f.productType || forProduct, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => [k, v === null ? "" : v])) };
     sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d));
   } catch {
     /* storage unavailable */
