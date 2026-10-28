@@ -198,8 +198,9 @@ describe("a new case does not inherit", () => {
     expect(c.quantityInForce([last])).toBe(0);
     expect(caseContext().quantity).toBeUndefined();
     expect(caseContext().budget).toBeUndefined();
-    // the draft stays typed for the compressors: the form shows it as previous data, not current
-    expect(draftFacts().product).toBe(D);
+    // the form draft follows the new product, empty; the compressors' data is only "previous"
+    expect(draftFacts()).toEqual({ product: "sillas plásticas apilables" });
+    expect(JSON.parse(store[DRAFT_KEY]).prev).toMatchObject({ product: D, quantity: "4", budget: "4500.01" });
   });
   it("a new analysis clears the draft and the case", () => {
     chat(["Actualiza el presupuesto de compra a US$5,000"]);
@@ -285,5 +286,33 @@ describe("a calculation in the middle of the case never changes it (found in rou
   });
   it("a word starting with l after a number is not liters", () => {
     expect(c.attributeCorrection("Necesito 1,001 lápices", "tanque de 300 litros")).toBeNull();
+  });
+});
+
+describe("a quantity at the end of a new product is the order's (found in round 2)", () => {
+  beforeEach(() => startCase());
+  it("'…, color blanco, 200 unidades' → quantity 200, description without it", () => {
+    const { last, reply } = chat(["Cambio de producto: ahora quiero importar sillas plásticas apilables para restaurante, color blanco, 200 unidades"]);
+    expect(last.newProduct).toBe("sillas plásticas apilables para restaurante, color blanco");
+    expect(last.newQuantity).toBe(200);
+    expect(reply).toMatch(/cantidad 200/);
+    const next = chat(["Cambio de producto: ahora quiero importar sillas plásticas apilables para restaurante, color blanco, 200 unidades", "En total 250 sillas"]);
+    expect(next.reply).toMatch(/cantidad 200 → 250/);
+    expect(next.reply).toContain("«sillas plásticas apilables para restaurante, color blanco»");
+  });
+});
+
+describe("another product in the chat: the form draft follows it (found in round 2)", () => {
+  beforeEach(() => startCase());
+  it("quantity and budget said for the new product reach the form; the compressors' data stays as previous", () => {
+    chat([
+      "Cambio de producto: ahora quiero importar sillas plásticas apilables para restaurante, color blanco, 200 unidades",
+      "Presupuesto de compra US$1,500",
+      "En total 250 sillas",
+    ]);
+    expect(draftFacts()).toEqual({ product: "sillas plásticas apilables para restaurante, color blanco", quantity: "250", budget: "1500" });
+    const d = JSON.parse(store[DRAFT_KEY]);
+    expect(d.prev).toMatchObject({ product: D, quantity: "3", budget: "4500.01" });
+    expect(caseContext()).toMatchObject({ product: "sillas plásticas apilables para restaurante, color blanco", quantity: "250", budget: "US$1,500" });
   });
 });
