@@ -7,7 +7,7 @@ import { track } from "../utils/funnel";
 
 // Shown small in the corner so testers can tell which version they are seeing.
 // Update it with each published change.
-export const APP_VERSION = "2026.10.28-b";
+export const APP_VERSION = "2026.10.28-c";
 
 // Name of the main script this tab is running (it changes with every deploy)
 function currentBundle(): string {
