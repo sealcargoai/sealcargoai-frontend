@@ -54,6 +54,8 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     ctx.assumptions?.length ? L(`${ctx.assumptions.length} supuesto(s) de la estimación`, `${ctx.assumptions.length} estimate assumption(s)`) : "",
     ctx.warnings?.length ? L(`${ctx.warnings.length} advertencia(s) que viste`, `${ctx.warnings.length} warning(s) you saw`) : "",
     ctx.chat?.length ? L("Lo que escribiste en el chat", "What you wrote in the chat") : "",
+    // a product changed in this case: the earlier data goes as history, marked as not current
+    ...(ctx.earlier || []).map((x) => L(`Historial (ya no vigente): ${x}`, `History (no longer current): ${x}`)),
   ].filter(Boolean);
 
   const openForm = () => {

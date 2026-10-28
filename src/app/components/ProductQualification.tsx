@@ -1,4 +1,5 @@
-import { sendToSeal, receiptText, setCaseScenario, SCENARIO_KEYS } from "../../utils/caseContext";
+import { sendToSeal, receiptText, setCaseScenario, SCENARIO_KEYS, switchCaseProduct } from "../../utils/caseContext";
+import { sameProduct } from "../../utils/chatReply";
 import { inferCategory } from "../../utils/category";
 import { quantityWord } from "../../utils/saleUnit";
 import { plainNumber } from "../../utils/plainNumber";
@@ -44,7 +45,8 @@ export const LIMITS = {
 const SEARCH_TIMEOUT_MS = 95_000;
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
-function loadDraft(): { formData?: Record<string, string>; step?: number } | null {
+type StaleData = { product: string; quantity?: string; budget?: string; volumeCbm?: string; weightKg?: string };
+function loadDraft(): { formData?: Record<string, string>; step?: number; prev?: StaleData | null } | null {
   try {
     const raw = sessionStorage.getItem(DRAFT_KEY);
     return raw ? JSON.parse(raw) : null;
@@ -125,7 +127,16 @@ export function ProductQualification() {
   // the product is the one the client set last, in the chat or here
   const useDraft = !!draft?.formData;
   const currentProduct = savedProduct() || (useDraft ? draft!.formData!.productType : "") || userQuery;
-  const [step, setStep] = useState(useDraft && draft?.step ? draft.step : 1);
+  // the draft's quantity, budget, volume and weight were typed for the draft's product: if the
+  // product changed (in the chat), they are not reused without the client confirming them
+  const draftProduct = useDraft ? String(draft!.formData!.productType || "") : "";
+  const df = useDraft ? draft!.formData! : {};
+  const freshStale: StaleData | null =
+    draftProduct && currentProduct && !sameProduct(draftProduct, currentProduct) && (df.quantity || df.budget || df.volumeCbm || df.weightKg)
+      ? { product: draftProduct, quantity: df.quantity, budget: df.budget, volumeCbm: df.volumeCbm, weightKg: df.weightKg }
+      : null;
+  const [stale, setStale] = useState<StaleData | null>(freshStale || draft?.prev || null);
+  const [step, setStep] = useState(useDraft && draft?.step ? (freshStale ? Math.min(draft.step, 2) : draft.step) : 1);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [formData, setFormData] = useState({
@@ -138,6 +149,7 @@ export function ProductQualification() {
     volumeCbm: "", // optional — used to quote ocean freight
     weightKg: "",  // optional
     ...(useDraft ? draft!.formData : {}),
+    ...(freshStale ? { quantity: "", budget: "", volumeCbm: "", weightKg: "" } : {}),
     productType: currentProduct,
     // a quantity the client gave in the chat ("quiero 2000 en vez de 500")
     ...(location.state?.quantity && Number(location.state.quantity) >= 1 ? { quantity: String(Number(location.state.quantity)) } : {}),
@@ -145,12 +157,12 @@ export function ProductQualification() {
 
   useEffect(() => {
     try {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ formData, step }));
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ formData, step, prev: stale }));
       saveProduct(formData.productType);
     } catch {
       /* storage unavailable */
     }
-  }, [formData, step]);
+  }, [formData, step, stale]);
 
   const errors = {
     productType: fieldError("productType", formData.productType),
@@ -272,7 +284,9 @@ export function ProductQualification() {
     const productCategory = inferCategory(productDescription);
 
     setIsLoading(true);
-    // a new search: the supplier and estimate of an earlier one no longer apply
+    // a new search: the supplier and estimate of an earlier one no longer apply,
+    // and a different product leaves the previous one's data as history
+    switchCaseProduct(productDescription);
     setCaseScenario({}, SCENARIO_KEYS);
     setError("");
     setSearchFailed(false);
@@ -494,6 +508,40 @@ export function ProductQualification() {
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-6">
+            {stale && !sameProduct(stale.product, formData.productType) && (
+              <div role="status" data-testid="stale-data" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+                <p>
+                  {L(
+                    `Cambiaste el producto de «${stale.product}» a «${formData.productType}». No usé los datos que escribiste para el producto anterior`,
+                    `You changed the product from "${stale.product}" to "${formData.productType}". I didn't use the data you entered for the previous product`,
+                  )}
+                  {" ("}
+                  {[
+                    stale.quantity && L(`cantidad ${Number(stale.quantity).toLocaleString("en-US")}`, `quantity ${Number(stale.quantity).toLocaleString("en-US")}`),
+                    stale.budget && L(`presupuesto US$${stale.budget}`, `budget US$${stale.budget}`),
+                    stale.volumeCbm && `${stale.volumeCbm} m³`,
+                    stale.weightKg && `${stale.weightKg} kg`,
+                  ].filter(Boolean).join(", ")}
+                  {"). "}
+                  {L("Confirma los datos del producto actual.", "Please confirm the data for the current product.")}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <button
+                    type="button"
+                    className="underline font-semibold"
+                    onClick={() => {
+                      setFormData((d) => ({ ...d, quantity: stale.quantity || d.quantity, budget: stale.budget || d.budget, volumeCbm: stale.volumeCbm || d.volumeCbm, weightKg: stale.weightKg || d.weightKg }));
+                      setStale(null);
+                    }}
+                  >
+                    {L("Usar los datos anteriores para este producto", "Use the previous data for this product")}
+                  </button>
+                  <button type="button" className="underline" onClick={() => setStale(null)}>
+                    {L("Entendido", "Got it")}
+                  </button>
+                </div>
+              </div>
+            )}
             {/* Step 1 — free-text product description */}
             {step === 1 && (
               <div className="space-y-3 animate-fade-in">

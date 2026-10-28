@@ -4,10 +4,10 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { buildReply, nextSpec, contactIntent, urgentContact, requestStatusQuestion, type ReplySpec } from "../../utils/chatReply";
-import { lastSentCase } from "../../utils/caseContext";
+import { buildReply, nextSpec, contactIntent, urgentContact, requestStatusQuestion, quantityInForce, type ReplySpec } from "../../utils/chatReply";
+import { lastSentCase, switchCaseProduct } from "../../utils/caseContext";
 import { ContactSeal } from "./ContactSeal";
-import { savedProduct, saveProduct } from "../../utils/draft";
+import { savedProduct, saveProduct, draftFacts } from "../../utils/draft";
 
 interface Message {
   role: "user" | "ai";
@@ -72,7 +72,8 @@ export function ChatInterface() {
     const lastNamed = [...list].reverse().find((x) => x.newProduct || x.mentioned);
     return {
       currentProduct: lastNamed?.newProduct || lastNamed?.mentioned || String(startQuery || "").trim(),
-      currentQuantity: [...list].reverse().find((x) => x.newQuantity)?.newQuantity || initialQty,
+      // a quantity given for an earlier product doesn't carry over to the new one
+      currentQuantity: quantityInForce(list) || (list.some((x) => x.newProduct && x.previous) ? 0 : initialQty),
     };
   };
   const [messages, setMessages] = useState<Message[]>(() => {
@@ -80,10 +81,14 @@ export function ChatInterface() {
     const list: Message[] = (savedChat?.messages || []).map((m: Message) => ({ ...m, pending: false }));
     // the client changed the product in the form: the chat continues with it, and says so
     const inForm = savedProduct();
-    const here = contextOf(specsOf(list)).currentProduct;
+    // compared with the product the client stated (a product only mentioned in a question doesn't count)
+    const here = [...specsOf(list)].reverse().find((x) => x.newProduct)?.newProduct || String(startQuery || "").trim();
     const norm = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
     if (inForm && norm(inForm) !== norm(here)) {
       const spec: ReplySpec = { text: "", product: inForm, newProduct: inForm, previous: here, formUpdate: true };
+      // the case follows the product in force; the previous product's data becomes history
+      const old = switchCaseProduct(inForm, { product: here });
+      if (old) spec.stale = { product: old.product, quantity: old.quantity, budget: old.budget };
       list.push({ role: "ai", content: JSON.stringify(spec), id: Date.now() });
     }
     return list;
@@ -102,7 +107,7 @@ export function ChatInterface() {
     if (messages.length) endRef.current?.scrollIntoView?.({ behavior: "smooth", block: "end" });
   }, [messages]);
   const specs = specsOf(messages);
-  const { currentProduct, currentQuantity } = contextOf(specs);
+  // (the reply context, with mentions, is built per message in handleSend)
   // whoever wants to move forward gets the way to SEAL right under that answer
   const userTexts = messages.filter((m) => m.role === "user").map((m) => m.content);
   // the form is offered under a request to talk to SEAL, and under "¿ya llegó mi solicitud?" when nothing was sent yet
@@ -114,10 +119,13 @@ export function ChatInterface() {
   const lastUser = [...messages].reverse().find((m) => m.role === "user");
   const wantsSeal = !!lastContact && lastUser === lastContact;
   const INTENT_LABEL: Record<string, string> = { contratar: "quiere contratar", hablar_persona: "pide que un ejecutivo revise su caso", proforma: "tiene proforma", documentos: "ya tiene documentos", carga_en_camino: "su carga ya viene", ya_tiene_proveedor: "ya tiene proveedor" };
+  // the case's product is the one the client stated (here or in the form); a product only
+  // mentioned inside a question ("¿qué DAI pagan los molinos?") guides that answer, not the case
+  const caseProduct = [...specs].reverse().find((x) => x.newProduct)?.newProduct || savedProduct() || String(startQuery || "").trim();
   const chatCase = {
-    product: currentProduct || undefined,
-    // only a quantity the client stated here (one read from the request could be a size)
-    quantity: [...specs].reverse().find((x) => x.newQuantity) ? String(currentQuantity) : undefined,
+    product: caseProduct || undefined,
+    // only a quantity the client stated here for the product in force (one read from the request could be a size)
+    quantity: quantityInForce(specs) ? String(quantityInForce(specs)) : undefined,
     chat: userTexts.slice(-8),
   };
 
@@ -133,8 +141,13 @@ export function ChatInterface() {
       const ctx = contextOf(earlier);
       // what the message is (calculation, follow-up, product, quantity change): utils/chatReply nextSpec
       const spec = nextSpec(text, earlier, ctx.currentProduct, ctx.currentQuantity);
-      // the product named here is the one the form will use
-      if (spec.newProduct) saveProduct(spec.newProduct);
+      // the product named here is the one the form and the case use; data typed for
+      // another product (quantity, budget, supplier, estimate) stays as history and is asked again
+      if (spec.newProduct) {
+        const old = switchCaseProduct(spec.newProduct, draftFacts());
+        if (old) spec.stale = { product: old.product, quantity: old.quantity, budget: old.budget };
+        saveProduct(spec.newProduct);
+      }
       // "¿ya llegó mi solicitud?": answered with the case actually sent from this tab, if any
       if (requestStatusQuestion(text)) spec.sentCase = lastSentCase() || undefined;
       return [...prev, { role: "user", content: text, id }, { role: "ai", content: JSON.stringify(spec), id, pending: true }];
@@ -265,7 +278,7 @@ export function ChatInterface() {
               <button
                 type="button"
                 className="underline"
-                onClick={() => navigate("/qualify", { state: { query: currentProduct || query, name, email, descriptionCleaned } })}
+                onClick={() => navigate("/qualify", { state: { query: caseProduct || query, name, email, descriptionCleaned } })}
               >
                 {L("puedes usar el formulario", "you can use the form")}
               </button>
@@ -281,11 +294,11 @@ export function ChatInterface() {
               onClick={() =>
                 navigate("/qualify", {
                   state: {
-                    query: currentProduct || query,
+                    query: caseProduct || query,
                     name,
                     email,
                     descriptionCleaned,
-                    ...([...specs].reverse().find((x) => x.newQuantity) ? { quantity: String(currentQuantity) } : {}),
+                    ...(quantityInForce(specs) ? { quantity: String(quantityInForce(specs)) } : {}),
                   },
                 })
               }

@@ -937,7 +937,7 @@ export function CostBreakdown() {
               </li>
             </ul>
             <div className="mt-4">
-              <ContactSeal source="costos" requestType="Cotización confirmada (desde la estimación)" context={caseNow} label={L("Enviar mi caso a SEAL para cotizar", "Send my case to SEAL for a quote")} />
+              <ContactSeal source="costos" requestType="Solicitud de cotización formal (desde la estimación)" context={caseNow} label={L("Enviar mi caso a SEAL para cotizar", "Send my case to SEAL for a quote")} />
             </div>
             <a
               href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
