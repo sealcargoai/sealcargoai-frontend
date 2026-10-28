@@ -38,6 +38,29 @@ export function draftFacts(): { product?: string; quantity?: string; budget?: st
     return {};
   }
 }
+const normP = (x: string) => String(x || "").trim().toLowerCase().replace(/\s+/g, " ");
+/** The quantity and budget of the form draft, only when typed for exactly this product. */
+export function draftFor(product: string): { quantity?: string; budget?: string } {
+  const d = draftFacts();
+  if (!product || !d.product || normP(d.product) !== normP(product)) return {};
+  return { quantity: d.quantity, budget: d.budget };
+}
+/**
+ * A field of the case changed in the chat (quantity, budget, a characteristic): the form draft
+ * takes it, so the form, the contact summary and the request show the same case. Fields not
+ * in the patch keep their value; a draft typed for another product is not touched.
+ */
+export function updateDraft(patch: { productType?: string; quantity?: string; budget?: string }, forProduct: string): void {
+  try {
+    const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || "null") || { formData: {}, step: 1, prev: null };
+    const f = d.formData || {};
+    if (f.productType && normP(f.productType) !== normP(forProduct) && normP(f.productType) !== normP(patch.productType || "")) return;
+    d.formData = { ...f, productType: f.productType || forProduct, ...Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== undefined && v !== "")) };
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+  } catch {
+    /* storage unavailable */
+  }
+}
 export function saveProduct(value: string): void {
   try {
     if (value && value.trim()) sessionStorage.setItem(PRODUCT_KEY, value.trim());
