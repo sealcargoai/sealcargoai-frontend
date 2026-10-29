@@ -13,6 +13,8 @@ export function clearDraft(): void {
     sessionStorage.removeItem("seal_case");
     // the product the client last set, in the chat or in the form
     sessionStorage.removeItem(PRODUCT_KEY);
+    // the case number sent in the previous case ("¿ya llegó mi solicitud?" must not answer with it)
+    sessionStorage.removeItem("seal_last_case");
   } catch {
     /* storage unavailable */
   }

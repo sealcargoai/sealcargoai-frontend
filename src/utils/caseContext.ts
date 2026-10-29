@@ -5,6 +5,7 @@
 import { getLang } from "./lang";
 import { track, pushDataLayer, isQaSession } from "./funnel";
 import { sameProduct } from "./chatReply";
+import { caseForSeal } from "./caseStore";
 
 const KEY = "seal_case";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -27,6 +28,8 @@ export interface CaseContext {
   caseRef?: string;
   // data of an earlier product of this same case, kept as history, never as current data
   earlier?: string[];
+  // what the stored estimate (supplier, price, total, assumptions) was computed for
+  scenarioFor?: { product: string; quantity?: number; budget?: number };
 }
 
 const empty = (v: unknown) => v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
@@ -58,7 +61,7 @@ export function rememberCase(part: CaseContext): void {
 }
 
 /** What belongs to the scenario on screen (supplier, price, estimate, its assumptions and warnings). */
-export const SCENARIO_KEYS: (keyof CaseContext)[] = ["supplierName", "supplierUrl", "price", "priceSource", "publishedPrice", "totalCostText", "assumptions", "warnings"];
+export const SCENARIO_KEYS: (keyof CaseContext)[] = ["supplierName", "supplierUrl", "price", "priceSource", "publishedPrice", "totalCostText", "assumptions", "warnings", "scenarioFor"];
 
 /**
  * The current screen is the source of truth for these keys: present values replace,
@@ -169,8 +172,9 @@ export interface SealResult {
 
 /** Sends the request to SEAL with the whole case (this screen's data wins over the stored one). */
 export async function sendToSeal(req: SealRequest): Promise<SealResult> {
-  const body: Record<string, unknown> = { ...caseContext() };
-  for (const [k, v] of Object.entries(req)) if (!empty(v)) body[k] = v;
+  // the stored case + this screen's data, with the product, quantity and budget IN FORCE
+  // (an estimate made for other values goes as history, never as current: utils/caseStore)
+  const body: Record<string, unknown> = caseForSeal(req);
   body.lang = getLang();
   try {
     const res = await fetch(`${API}/api/email/quote`, {
