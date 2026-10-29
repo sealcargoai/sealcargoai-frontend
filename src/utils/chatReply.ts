@@ -1391,6 +1391,10 @@ export function followUpMath(text: string, previous: string): PackMath | null {
   // only a new quantity
   const n = normalizeNumbers(t.toLowerCase()).match(/(\d+(?:[.,]\d+)?)(?:\s+([a-záéíóúüñ]+))?/);
   if (n && /^\s*(?:¿\s*)?(?:y|e|and|what\s+about|y\s+si|y\s+para|y\s+con|and\s+for|and\s+if|perd[oó]n|disculp\w*|corrijo|mejor|en\s+realidad|son|eran|ser[aá]n|sorry|actually|make\s+it|i\s+meant|no,?\s+(?:son|eran))\b/i.test(t)) {
+    // "Corrijo: serán 10,000,001 compresores" after a calculation about lápices names ANOTHER
+    // item: it is not a new quantity for that calculation (that reused the lápices answer)
+    const named = n[2] && !PIECE_W.test(n[2]) && !measureOf(n[2]) && !PAIR_W.test(n[2]) && !DOZ_W.test(n[2]) && !packOf(n[2]) && !CONNECT.test(n[2]) && !NOT_ITEM.test(n[2]) ? n[2] : "";
+    if (named && prev.item && !sameProduct(named, prev.item)) return null;
     // "¿y si son 500 pares?": the client's unit, the earlier content per pack
     const w2 = n[2] && (PIECE_W.test(n[2]) || !!measureOf(n[2]) || (!CONNECT.test(n[2]) && !NOT_ITEM.test(n[2]))) && !packOf(n[2] === "pares" || n[2] === "docenas" ? "" : n[2]) ? n[2] : "";
     const unitChange = w2 && (PAIR_W.test(w2) || DOZ_W.test(w2)) && !prev.unit && !prev.measure;
@@ -2462,7 +2466,13 @@ export interface ReplySpec {
   fieldUpdate?: boolean; // the message changes fields of the case, not the product
   askNumber?: number; // "cambia a 300" with no field named: asked
   askRelative?: { delta: number; from: number; to: number }; // "agrega 2 más": the new total is confirmed
-  qtyInvalid?: "decimal" | "zero" | "max"; // "la cantidad a 3.5": explained, not applied
+  qtyInvalid?: QuantityIssue["kind"]; // "la cantidad a 3.5", "10,000,001 compresores": explained, not applied
+  qtyRaw?: string; // the value as the client wrote it ("3.5")
+  // "no cambies nada hasta confirmar": nothing in the message is applied; valid values are only proposed
+  hold?: boolean;
+  held?: { quantity?: number; budget?: number; attrFix?: { from: string; to: string }; product?: string };
+  heldApplied?: boolean; // "sí, aplícalo" after a held proposal
+  persistFailed?: boolean; // the change could not be saved: nothing was changed
   budgetClear?: boolean; // "quita el presupuesto"
   qtyConflict?: { said: number; inCase: number }; // "la cantidad sigue siendo 5" with 3 in force
   budgetAsk?: boolean; // the budget came in quetzales: the form's budget is in US$
@@ -2530,7 +2540,92 @@ export function confirmAnswer(text: string): "yes" | "no" | "" {
 // after a currency sign ("US$5,000") is money: neither is ever the quantity of the order.
 const UNIT_NEXT = /^\s*(?:(?:ml|mililitros?|l|lt|lts|litros?|liters?|litres?|gal|galon(?:es)?|gallons?|kg|kgs|kilos?|kilogramos?|g|gr|grs|gramos?|lb|lbs|libras?|oz|onzas?|t|ton|tons|toneladas?|cm|mm|m|mts?|metros?|pulgadas?|in|inch(?:es)?|ft|pies|w|watts?|vatios?|kw|kva|hp|cv|v|vac|vdc|volts?|voltios|hz|hertz|bar|psi|cfm|rpm|mah|ah|gb|tb|m3|cbm|grados?|d[oó]lares|dollars|usd|quetzales?|gtq|centavos|cents)(?![a-záéíóúñ0-9])|[%°"³]|\s*x\s*\d|[.,]\d)/i;
 const CURRENCY_BEFORE = /(?:us\$|usd|\$|\bq\.?|quetzales?|gtq)\s*$/i;
-const plainAt = (t: string, at: number, len: number) => !UNIT_NEXT.test(t.slice(at + len)) && !CURRENCY_BEFORE.test(t.slice(Math.max(0, at - 6), at));
+// The tail of a decimal ("3.5" → "5") or a negative sign ("-1") is never a plain number on its own:
+// `\b(\d+)` stops at the point, so without this "3.5 compresores" was read as 5 compresores.
+const PART_OF_NUMBER_BEFORE = /(?:\d[.,]|[-−]\s?)$/;
+const plainAt = (t: string, at: number, len: number) => !UNIT_NEXT.test(t.slice(at + len)) && !CURRENCY_BEFORE.test(t.slice(Math.max(0, at - 6), at)) && !PART_OF_NUMBER_BEFORE.test(t.slice(Math.max(0, at - 2), at));
+
+/** Order quantity limits (the form uses the same: whole number from 1 to 10,000,000). */
+export const QTY_MIN = 1;
+export const QTY_MAX = 10_000_000;
+export const validQuantity = (n: unknown): n is number => typeof n === "number" && Number.isInteger(n) && n >= QTY_MIN && n <= QTY_MAX;
+
+/**
+ * "No cambies nada hasta confirmar…", "don't change anything yet": an explicit instruction not to
+ * modify the case. It blocks every change in that message (the values are only proposed).
+ * "no cambies el presupuesto" (keep one field, change another) is NOT a hold: see KEEP_REST.
+ */
+export const HOLD =
+  /\b(?:no\s+(?:lo\s+|la\s+|los\s+|las\s+|le\s+)?(?:cambies|cambie|modifiques|modifique|actualices|actualice|guardes|guarde|apliques|aplique)\b[^.;]{0,30}?\bhasta\s+(?:que|confirm|saber|verificar|revisar)|no\s+(?:cambies|cambie|modifiques|modifique|actualices|actualice|guardes|guarde|toques|toque|apliques|aplique|registres|registre)\s+(?:nada(?!\s+m[aá]s)|todav[ií]a|a[uú]n|ning[uú]n\s+dato|hasta)|no\s+hagas\s+(?:ning[uú]n\s+)?cambios?|sin\s+(?:cambiar|modificar|guardar|aplicar)\s+nada|todav[ií]a\s+no\s+(?:cambies|modifiques|actualices|guardes|apliques)|(?:don'?t|do\s+not)\s+(?:change|modify|update|save|touch|apply)\s+(?:anything(?!\s+else)|it\s+yet|yet|until)|(?:don'?t|do\s+not)\s+(?:change|modify|update|save|apply)\s+[a-z\s]{0,20}\buntil\b|no\s+changes?\s+(?:yet|until))/i;
+
+/** "el presupuesto es -500", "presupuesto a US$0", "budget 200,000,000": not a valid purchase budget. */
+export function budgetIssue(t: string): QuantityIssue | null {
+  const s = ` ${t.replace(/[¿?¡!]/g, " ")} `;
+  const m = s.match(/\b(?:presupuesto|budget)\b[^.;\d−-]{0,35}?(?:us\$|usd|\$|\bq\.?\s?)?\s*((?:[-−]\s?)?(?:us\$|\$)?\s?\d+(?:\.\d+)?)/);
+  if (!m) return null;
+  const raw = m[1].replace(/\s+/g, "").replace(/^([-−]?)us\$/i, "$1US$");
+  const n = Number(raw.replace(/[^\d.]/g, ""));
+  if (/^[-−]/.test(raw) || !(n > 0)) return { kind: "budgetMin", raw };
+  if (n > 100_000_000) return { kind: "budgetMax", raw };
+  return null;
+}
+
+/** Words that ask for a change ("cambia", "¿puedes actualizar…?", "mejor…", "en vez de", "change"). */
+export const CHANGE_REQUEST =
+  /\b(?:cambi(?:a|e|á|ar|alo|ala|en)|actualiz(?:a|e|á|ar)|modific(?:a|á|ar)|modifique|corrig(?:e|á|ir)|corrija|corrijo|correcci[oó]n|p[oó]n(?:le|lo|la|er)?|ponga|ajust(?:a|e|á|ar)|sub(?:e|ir)|baj(?:a|ar)|quiero|queremos|necesito|necesitamos|mejor|en\s+vez\s+de|en\s+lugar\s+de|ahora\s+(?:es|son|ser[aá]n?)|ser[aá]n|d[eé]jal[oa]|que\s+sean?|change|update|set|modify|correct|make\s+it|i\s+(?:want|need)|instead\s+of)\b/i;
+
+export interface QuantityIssue { kind: "decimal" | "zero" | "max" | "ambiguous" | "missing" | "budgetMin" | "budgetMax"; raw: string }
+/**
+ * A quantity the message gives for the order that is not a valid whole number of units:
+ * "3.5 compresores", "la cantidad a 0", "-1 unidades", "10,000,001 compresores",
+ * "5 o 6 compresores", "cambia la cantidad a" (no number). Numbers with a unit ("3.5 kg",
+ * "220 V") or money ("US$3.5") are characteristics or prices, never the quantity.
+ * `t` must already be lowercased and normalized (normalizeNumbers).
+ */
+export function quantityIssue(t: string, head = ""): QuantityIssue | null {
+  const s = ` ${t.replace(/[¿?¡!]/g, " ")} `;
+  const stem = head ? head.slice(0, Math.max(4, head.length - 2)) : "";
+  const NOUN = `(?:unidades|unidad|units?|piezas?|pieces?|equipos?|m[aá]quinas?${stem ? `|${stem}[a-záéíóúñ]*` : ""})\\b`;
+  // ranges and approximations: the client has not decided the number yet
+  const amb =
+    s.match(new RegExp(`\\b(\\d+(?:[.,]\\d+)?\\s*(?:o|ó|or|/|-|–)\\s*\\d+(?:[.,]\\d+)?)\\s+(?:de\\s+)?${NOUN}`)) ||
+    s.match(new RegExp(`\\b((?:entre|between)\\s+\\d+\\s+(?:y|and)\\s+\\d+)\\s+(?:de\\s+)?${NOUN}`)) ||
+    s.match(new RegExp(`\\b((?:unos|unas|aproximadamente|aprox\\.?|alrededor\\s+de|m[aá]s\\s+o\\s+menos|cerca\\s+de|about|around|approximately|roughly)\\s+\\d+)\\s+(?:de\\s+)?${NOUN}`)) ||
+    s.match(/\b(?:cantidad|quantity)\b[^.;\d]{0,30}?((?:entre|between)\s+\d+\s+(?:y|and)\s+\d+|\d+\s*(?:o|ó|or)\s*\d+|(?:unos|unas|aproximadamente|aprox\.?|alrededor\s+de|about|around|approximately)\s+\d+)/);
+  if (amb) return { kind: "ambiguous", raw: amb[1].trim() };
+  const cands: string[] = [];
+  for (const m of s.matchAll(new RegExp(`(?:^|[^\\d.,])((?:[-−]\\s?|menos\\s+)?\\d+(?:[.,]\\d+)?)\\s+(?:de\\s+)?${NOUN}`, "g"))) cands.push(m[1]);
+  const byField = s.match(/\b(?:cantidad|quantity)\b[^.;\d−-]{0,30}?((?:[-−]\s?)?\d+(?:[.,]\d+)?)/);
+  if (byField) {
+    const at = (byField.index ?? 0) + byField[0].lastIndexOf(byField[1]);
+    const after = s.slice(at + byField[1].length);
+    if (!UNIT_NEXT.test(after.replace(/^[.,]\d+/, "")) && !CURRENCY_BEFORE.test(s.slice(Math.max(0, at - 6), at))) cands.push(byField[1]);
+  }
+  // "quiero 3.5 tanques", "serán 10000001;", "cambia a 3.5", "mejor 2.5 en lugar de 4", "agrega 0.5 más":
+  // a number right after a word that sets the order (not a size: "quiero 3.5 kg" has a unit)
+  const VERB = /(?:\b(?:quiero|queremos|necesito|necesitamos|pido|pedimos|ser[aá]n|ser[aá]\s+de|ser[aá]|comprar[eé]|compraremos|compramos|son|mejor|cambi\w*\s+(?:la\s+cantidad\s+)?(?:a|en|por)|p[oó]n\w*(?:\s+(?:a|en))?|d[eé]ja\w*\s+en|agreg\w*|añad\w*|sum\w*|que\s+sean|i\s+(?:need|want)|we(?:'ll|\s+will)\s+(?:buy|need|order)|make\s+it|buy|order)\s+(?:de\s+|unos\s+|unas\s+)?)((?:[-−]\s?)?\d+(?:[.,]\d+)?)(?![\d])/g;
+  for (const m of s.matchAll(VERB)) {
+    const at = (m.index ?? 0) + m[0].length;
+    const after = s.slice(at);
+    if (UNIT_NEXT.test(after) || CURRENCY_BEFORE.test(s.slice(Math.max(0, at - m[1].length - 6), at - m[1].length))) continue;
+    if (/^\s*(?:%|x\b|por\s+(?:caja|paquete|ciento))/i.test(after)) continue;
+    cands.push(m[1]);
+  }
+  // "tres compresores y medio", "3 y medio", "three and a half": not a whole number
+  const half = s.match(new RegExp(`\\b(\\d+\\s+(?:(?:de\\s+)?${NOUN}\\s+)?(?:y\\s+medi[oa]|and\\s+a\\s+half))`)) || s.match(/\b(\d+\s+(?:1\/2|½|0[.,]5)(?![\d]))(?!\s*(?:kg|l\b|litros|lb|m\b|metros|pulgadas|in\b|"))/);
+  if (half) return { kind: "decimal", raw: half[1].trim().replace(/\s0[.,]5$/, " 1/2") };
+  for (const raw of cands) {
+    const neg = /^(?:[-−]|menos)/.test(raw);
+    const num = raw.replace(/^(?:[-−]\s?|menos\s+)/, "");
+    if (/[.,]\d/.test(num)) return { kind: "decimal", raw: raw.trim() };
+    const n = Number(num);
+    if (neg || n < QTY_MIN) return { kind: "zero", raw: raw.trim() };
+    if (n > QTY_MAX) return { kind: "max", raw: raw.trim() };
+  }
+  // "cambia la cantidad a", "update the quantity" with no number at all
+  if (!/\d/.test(s) && /\b(?:cambi\w*|actualiz\w*|modific\w*|ajust\w*|pon\w*|change|update|set)\b[^.;]{0,25}\b(?:la\s+cantidad|the\s+quantity)\b(?:\s+(?:a|en|to))?\s*[.;]?\s*$/.test(s.trim() + " ")) return { kind: "missing", raw: "" };
+  return null;
+}
 /** A conditional or comparison ("¿y si fueran 5?", "suponiendo 300 litros…") never changes the order. */
 export const HYPOTHETICAL = /(?:\by\s+si\b|\bsi\s+(?:fuera|fueran|fuese|fuesen|pido|pidiera|pidiese|compro|comprara|cambio|cambiara|subo|subiera|bajo|bajara|aumento|aumentara|tuviera|quisiera|llevo|llevara|el\s+presupuesto|la\s+cantidad|en\s+vez|en\s+lugar|ahora|son|es|tuviese)\b|\bsi\s+(?:[a-záéíóúñ]+\s+){0,3}(?:fuera|fueran|fuese|fuesen|tuviera|tuvieran|costara|costaran|viniera|vinieran|cambiara|cambiaran|pidiera|subiera|bajara)\b|\bsuponiendo\b|\bsupongamos\b|\bsupon(?:é|e|go)\b|\bhipot[eé]tic\w*|\bqu[eé]\s+pasa(?:r[ií]a)?\s+si\b|\bsolo\s+para\s+comparar\b|\bpara\s+comparar\b|\bsin\s+cambiar\s+(?:el|mi)\s+pedido\b|\bwhat\s+if\b|\bsuppose\b|\bif\s+i\s+(?:order|ordered|bought|buy|change|changed|wanted)\b|\bhow\s+much\s+would\b|\bcu[aá]nto\s+(?:ser[ií]a|costar[ií]a|saldr[ií]a|me\s+saldr[ií]a)n?\b)/i;
 /** "mantengo los mismos…", "no modifiques las especificaciones", "solo cambia…": the rest stays. */
@@ -2683,6 +2778,52 @@ export function buildReply(r: ReplySpec): string {
   // fields of the current case updated: what changed, and the whole case as it is now saved
   if (r.caseNow && (r.fieldUpdate || r.hypothetical)) {
     const now = caseLine(r.caseNow);
+    if (r.persistFailed)
+      return Lx(
+        `No pude guardar el cambio en este navegador, así que tu caso no cambió: ${now}. Puedes intentarlo de nuevo o corregirlo en el formulario.`,
+        `I couldn't save the change in this browser, so your case did not change: ${now}. You can try again or correct it in the form.`,
+      );
+    if (r.qtyInvalid && (r.hold || (!r.newQuantity && !r.newBudget && !r.attrFix))) {
+      const raw = r.qtyRaw ? (/^\d+$/.test(r.qtyRaw) ? Number(r.qtyRaw).toLocaleString("en-US") : r.qtyRaw) : "";
+      const why = {
+        decimal: Lx(
+          `No se aceptan cantidades fraccionarias: la cantidad debe ser un número entero de unidades${raw ? `, así que «${raw}» no se puede registrar` : ""}.`,
+          `Fractional quantities are not accepted: the quantity must be a whole number of units${raw ? `, so "${raw}" can't be recorded` : ""}.`,
+        ),
+        zero: Lx(`La cantidad debe ser de al menos 1 unidad${raw ? ` («${raw}» no es válida)` : ""}.`, `The quantity must be at least 1 unit${raw ? ` ("${raw}" is not valid)` : ""}.`),
+        max: Lx(
+          `La cantidad máxima es ${QTY_MAX.toLocaleString("en-US")} unidades${raw ? ` y «${raw}» la supera` : ""}.`,
+          `The maximum quantity is ${QTY_MAX.toLocaleString("en-US")} units${raw ? ` and "${raw}" exceeds it` : ""}.`,
+        ),
+        ambiguous: Lx(`«${raw}» no es una cantidad exacta.`, `"${raw}" is not an exact quantity.`),
+        missing: Lx("No indicaste la nueva cantidad.", "You didn't give the new quantity."),
+        budgetMin: Lx(`El presupuesto de compra debe ser mayor a US$0${raw ? ` («${raw}» no es válido)` : ""}.`, `The purchase budget must be greater than US$0${raw ? ` ("${raw}" is not valid)` : ""}.`),
+        budgetMax: Lx(`El presupuesto de compra máximo es US$100,000,000${raw ? ` y «${raw}» lo supera` : ""}.`, `The maximum purchase budget is US$100,000,000${raw ? ` and "${raw}" exceeds it` : ""}.`),
+      }[r.qtyInvalid];
+      if (r.qtyInvalid === "budgetMin" || r.qtyInvalid === "budgetMax")
+        return Lx(
+          `${r.hold ? "Como pediste, no cambié nada. " : ""}${why} No cambié el presupuesto ni ningún otro dato; tu caso sigue así: ${now}. Si quieres cambiarlo, indícame un monto en US$ (por ejemplo: «el presupuesto es US$5,000»).`,
+          `${r.hold ? "As you asked, I didn't change anything. " : ""}${why} I didn't change the budget or any other data; your case stays: ${now}. If you want to change it, give me an amount in US$ (for example: "the budget is US$5,000").`,
+        );
+      return Lx(
+        `${r.hold ? "Como pediste, no cambié nada. " : ""}${why} No cambié la cantidad ni ningún otro dato; tu caso sigue así: ${now}. Si quieres cambiarla, indícame una cantidad entera de 1 a ${QTY_MAX.toLocaleString("en-US")} (por ejemplo: «la cantidad es 4»).`,
+        `${r.hold ? "As you asked, I didn't change anything. " : ""}${why} I didn't change the quantity or any other data; your case stays: ${now}. If you want to change it, give me a whole quantity from 1 to ${QTY_MAX.toLocaleString("en-US")} (for example: "the quantity is 4").`,
+      );
+    }
+    if (r.hold) {
+      const h = r.held;
+      const prop = h
+        ? [
+            h.attrFix ? Lx(`«${h.attrFix.from}» → «${h.attrFix.to}»`, `"${h.attrFix.from}" → "${h.attrFix.to}"`) : "",
+            h.quantity ? Lx(`cantidad ${h.quantity.toLocaleString("en-US")}`, `quantity ${h.quantity.toLocaleString("en-US")}`) : "",
+            h.budget ? Lx(`presupuesto de compra ${fmtBudget(h.budget)}`, `purchase budget ${fmtBudget(h.budget)}`) : "",
+          ].filter(Boolean).join("; ")
+        : "";
+      return Lx(
+        `Entendido: no cambié nada. Tu caso sigue así: ${now}.${prop ? ` Cuando quieras aplicar el cambio (${prop}), respóndeme «sí, aplícalo».` : ""}`,
+        `Understood: I didn't change anything. Your case stays: ${now}.${prop ? ` When you want to apply the change (${prop}), reply "yes, apply it".` : ""}`,
+      );
+    }
     if (r.askNumber)
       return Lx(
         `¿«${r.askNumber.toLocaleString("en-US")}» es la nueva cantidad de unidades o el valor de una característica (por ejemplo, la capacidad del tanque o el voltaje)? Escríbelo así: «la cantidad es ${r.askNumber}» o «el tanque es de ${r.askNumber} litros». No cambié nada; tu caso sigue así: ${now}.`,
@@ -2695,11 +2836,6 @@ export function buildReply(r: ReplySpec): string {
             `Do you mean the total quantity goes from ${r.askRelative.from.toLocaleString("en-US")} to ${r.askRelative.to.toLocaleString("en-US")}? Confirm it like this: "the quantity is ${r.askRelative.to}". I didn't change anything; your case stays: ${now}.`,
           )
         : Lx(`¿Cuál es la cantidad total que necesitas? Escríbela así: «la cantidad es 5». No cambié nada; tu caso sigue así: ${now}.`, `What total quantity do you need? Write it like this: "the quantity is 5". I didn't change anything; your case stays: ${now}.`);
-    if (r.qtyInvalid && !r.attrFix && !r.newBudget && !r.newQuantity)
-      return Lx(
-        `${r.qtyInvalid === "decimal" ? "La cantidad debe ser un número entero de unidades" : r.qtyInvalid === "zero" ? "La cantidad debe ser de al menos 1 unidad" : "La cantidad máxima es 10,000,000 unidades"}. No cambié la cantidad; tu caso sigue así: ${now}.`,
-        `${r.qtyInvalid === "decimal" ? "The quantity must be a whole number of units" : r.qtyInvalid === "zero" ? "The quantity must be at least 1 unit" : "The maximum quantity is 10,000,000 units"}. I didn't change the quantity; your case stays: ${now}.`,
-      );
     if (r.qtyConflict && !r.attrFix && !r.newBudget)
       return Lx(
         `Dices que la cantidad sigue siendo ${r.qtyConflict.said.toLocaleString("en-US")}, pero tu caso tiene ${r.qtyConflict.inCase.toLocaleString("en-US")}. ¿Cuál es la correcta? No cambié la cantidad; tu caso sigue así: ${now}.`,
@@ -2869,7 +3005,38 @@ export function nextSpec(
   // "mantengo los mismos…", "no modifiques las especificaciones": only what is named changes
   const keepRest = KEEP_REST.test(text);
   const head = (String(caseProduct || "").toLowerCase().match(/[a-záéíóúüñ]{4,}/) || [""])[0];
-  const qRaw0 = quantityChange(text, head);
+  // --- mutation gate: what the message may change in the case is decided here, deterministically ---
+  // "no cambies nada hasta confirmar…": nothing is applied in this message
+  const holdMsg = !hypo && HOLD.test(low0);
+  // a quantity that is not a whole number from 1 to 10,000,000 is never applied (nor rounded)
+  const issue0 = !hypo && !isMath ? quantityIssue(low0, head) || budgetIssue(low0) : null;
+  // "no cambies nada, solo dime si aceptan 3.5": the decimal is the quantity being asked about
+  const holdDecimal = !issue0 && HOLD.test(low0) && !hypo ? low0.match(/(?<![\d.,$])(\d+[.,]\d+)(?![\d.,])/) : null;
+  const issue: QuantityIssue | null = issue0 || (holdDecimal && !UNIT_NEXT.test(low0.slice((holdDecimal.index ?? 0) + holdDecimal[0].length)) ? { kind: "decimal", raw: holdDecimal[1] } : null);
+  // the message addresses a field of THIS case ("actualiza solo la cantidad"): it is never read as a
+  // follow-up of an earlier calculation or of another product's question
+  const caseDirected =
+    !isMath &&
+    (holdMsg || !!issue || /\b(?:actualiz\w*|cambi\w*|corrij\w*|correg\w*|modific\w*|ajust\w*|update|change|correct|set)\b[^.;]{0,40}\b(?:cantidad|presupuesto|quantity|budget)\b|\b(?:solo|s[oó]lamente|[uú]nicamente)\s+(?:la\s+cantidad|el\s+presupuesto)\b|\bonly\s+the\s+(?:quantity|budget)\b/i.test(low0));
+  // "sí, aplícalo" right after a held proposal: the proposal is applied (validated again)
+  const prevSpec = specs[specs.length - 1];
+  if (prevSpec?.held && !hypo && (confirmAnswer(text) === "yes" || /^\s*(?:confirm\w*|apl[ií]ca\w*|adelante|procede|go\s+ahead|apply\s+it)\b/i.test(text)) && !holdMsg) {
+    const h = prevSpec.held;
+    const q = h.quantity && validQuantity(h.quantity) && h.quantity !== caseQty ? h.quantity : undefined;
+    const b = h.budget && h.budget >= 1 && h.budget <= 100_000_000 && h.budget !== caseBudget ? h.budget : undefined;
+    const prod = h.attrFix && h.product ? h.product : undefined;
+    return {
+      text, product: prod || caseProduct, previous: caseProduct, fieldUpdate: true, heldApplied: true,
+      newQuantity: q, oldQuantity: q ? caseQty || undefined : undefined,
+      newBudget: b, oldBudget: b && caseBudget ? caseBudget : undefined,
+      attrFix: prod ? h.attrFix : undefined, newProduct: prod,
+      caseNow: { product: prod || caseProduct, quantity: q || caseQty || undefined, budget: b || caseBudget || undefined },
+    };
+  }
+  // "¿El tanque de 300 litros sirve?", "¿Tienen tanque de 300 litros?": a QUESTION about a value,
+  // with no request to change it, never changes the case (it used to replace 500 L by 300 L)
+  const questionOnly = /[¿?]/.test(text) && !CHANGE_REQUEST.test(low0);
+  const qRaw0 = questionOnly ? null : quantityChange(text, head);
   // "agrega 2 más": the new total is confirmed with the client, never applied silently
   const askRelative = qRaw0?.relative && !hypo ? { delta: qRaw0.relative, from: caseQty, to: caseQty + qRaw0.relative } : undefined;
   // "el presupuesto sube a 6 mil": that number is the budget, not a quantity
@@ -2879,21 +3046,14 @@ export function nextSpec(
   const nounOut = !!qRaw0?.noun && (!caseProduct || kinds.length > 0 || /(?:us\$|usd|\$|\bq\s?\d)/i.test(text) || !!specs[specs.length - 1]?.mathText);
   const qRaw = qRaw0?.relative || nounOut || (bEarly && qRaw0 && qRaw0.qty === bEarly.value) ? null : qRaw0;
   // "la cantidad a 3.5 / 0 / 20,000,000": not a valid order quantity, said instead of applied
-  const qBad = low0.match(/\b(?:cantidad|quantity)\b[^.;\d]{0,30}?(\d+(?:[.,]\d+)?)/);
-  const qtyInvalid: ReplySpec["qtyInvalid"] = (() => {
-    if (!qBad || hypo || qRaw) return undefined;
-    if (!plainAt(low0, (qBad.index ?? 0) + qBad[0].lastIndexOf(qBad[1]), qBad[1].length) && !/[.,]\d/.test(qBad[1])) return undefined;
-    if (/[.,]\d/.test(qBad[1])) return "decimal";
-    const n = Number(qBad[1]);
-    return n < 1 ? "zero" : n > 10_000_000 ? "max" : undefined;
-  })();
+  const qtyInvalid: ReplySpec["qtyInvalid"] = issue?.kind;
   const qtySame = !!qRaw && !!caseQty && qRaw.qty === caseQty;
   const qtyConflict = qRaw?.keepSaid && caseQty && qRaw.qty !== caseQty ? { said: qRaw.qty, inCase: caseQty } : undefined;
   // "cambia a 300" names no field: with measures in the description it is asked, never guessed
   const askNumber = qRaw?.bare && caseProduct && new RegExp(MEASURE, "i").test(caseProduct) ? qRaw.qty : undefined;
   const qcEarly = qRaw && !qtySame && !qtyConflict && !askNumber ? qRaw : null;
   const isQtyChange = !!qcEarly && (qcEarly.before === caseQty || (!qcEarly.before && !specs[specs.length - 1]?.mathText));
-  if (!isMath && !isQtyChange && (!kinds.length || stockLine))
+  if (!isMath && !isQtyChange && !caseDirected && (!kinds.length || stockLine))
     for (const x of [...specs].reverse()) {
       if (!x.mathText) continue;
       follow = followUpMath(text, x.mathText);
@@ -2902,7 +3062,7 @@ export function nextSpec(
   // the order written in two messages: "necesito 500 piezas" then "vienen 24 por caja",
   // or "¿cuántas cajas necesito?" then "500 piezas, cajas de 24"
   let combined: string | undefined;
-  if (!follow && !(isMath && packMath(text) && packMath(text)!.mode !== "ask")) {
+  if (!follow && !caseDirected && !(isMath && packMath(text) && packMath(text)!.mode !== "ask")) {
     const earlier = [...specs].reverse().filter((x) => !/^\s*(?:hola|buen[oa]s?\b|hi|hello|ok|gracias|thanks)\W*$/i.test(x.text)).slice(0, 1)[0];
     const earlierDone = earlier?.mathText ? packMath(earlier.mathText, true) : null;
     if (earlier && /\d|cu[aá]nt|how\s+many/i.test(earlier.text) && !(earlierDone && earlierDone.mode !== "ask" && !earlierDone.invalid)) {
@@ -2939,9 +3099,9 @@ export function nextSpec(
   const qc0 = mathText ? null : qcEarly || qcR;
   // characteristics corrected ("es 440 V, no 220 V", "el tanque de 300 litros"): the rest stays
   // (never inside a calculation: "necesito 1,001 lápices…" is not a 1,001 L tank)
-  const fix = !changedTo && caseProduct && !hypo && !isMath && !kinds.includes("math") && !kinds.includes("subtotal") && !kinds.includes("pairs") ? attributeCorrection(text, caseProduct) : null;
+  const fix = !changedTo && caseProduct && !hypo && !questionOnly && !isMath && !kinds.includes("math") && !kinds.includes("subtotal") && !kinds.includes("pairs") ? attributeCorrection(text, caseProduct) : null;
   // the purchase budget ("solo actualiza el presupuesto a US$5,000") is money, never a quantity
-  const bRaw = mathText || changedTo || kinds.includes("subtotal") || kinds.includes("pairs") || kinds.includes("math") ? null : budgetChange(text);
+  const bRaw = mathText || changedTo || questionOnly || kinds.includes("subtotal") || kinds.includes("pairs") || kinds.includes("math") ? null : budgetChange(text);
   const budgetAsk = bRaw?.currency === "GTQ" || undefined;
   const newBudget = bRaw && !budgetAsk && bRaw.value !== caseBudget ? bRaw.value : undefined;
   // a message that updates fields of the case names no new product (its nouns are the same product)
@@ -2976,8 +3136,12 @@ export function nextSpec(
   const lastAi = specs[specs.length - 1];
   const askedForProduct = !!lastAi && !lastAi.product && replyKinds(lastAi.reask || lastAi.text).includes("certificate");
   // the quantity said with a new product ("3 compresores") is that product's quantity
-  const qc = qc0 || (st?.quantity ? { qty: st.quantity, before: 0 } : null) || yesQty;
-  return {
+  const qcAny = qc0 || (st?.quantity ? { qty: st.quantity, before: 0 } : null) || yesQty;
+  // every path that proposes a quantity goes through the same range check (restated product,
+  // new product statement, "sí" to a question): 10,000,001 is never applied by any of them
+  const outOfRange: QuantityIssue | null = qcAny && !validQuantity(qcAny.qty) ? { kind: qcAny.qty > QTY_MAX ? "max" : qcAny.qty < QTY_MIN ? "zero" : "decimal", raw: String(qcAny.qty) } : null;
+  const qc = outOfRange ? null : qcAny;
+  const spec: ReplySpec = {
     mathText,
     combined,
     previousMath: follow ? lastMath : undefined,
@@ -3008,6 +3172,25 @@ export function nextSpec(
     previous: caseProduct,
     reask: askedForProduct ? lastAi.reask || lastAi.text : undefined,
     earlierFood: specs.some((x) => (replyKinds(x.text).includes("certificate") || !!x.reask) && foodAdvice(x.product)),
+  };
+  const bad = issue || outOfRange;
+  if (!bad && !holdMsg) return spec;
+  // Blocked: a message with an invalid value, or one that says not to change anything, changes
+  // NOTHING (all or nothing: no half-applied corrections). The case stays exactly as it was and
+  // the reply is built from that unchanged case.
+  const proposal = holdMsg && !bad ? { quantity: qc?.qty, budget: newBudget, attrFix: spec.attrFix, product: fix?.description } : undefined;
+  const hasProposal = !!proposal && !!(proposal.quantity || proposal.budget || proposal.attrFix);
+  return {
+    text,
+    product: caseProduct || currentProduct,
+    previous: caseProduct,
+    fieldUpdate: true,
+    hold: holdMsg || undefined,
+    held: hasProposal ? proposal : undefined,
+    qtyInvalid: bad?.kind,
+    qtyRaw: bad?.raw,
+    caseNow: { product: caseProduct, quantity: caseQty || undefined, budget: caseBudget || undefined },
+    earlierFood: spec.earlierFood,
   };
 }
 

@@ -15,6 +15,13 @@ export function applyChatMessage(text: string, earlier: ReplySpec[], ctx: { curr
     quantity: saved.product ? saved.quantity : quantityInForce(earlier) || undefined,
     budget: saved.product ? saved.budget : undefined,
   });
+  // a blocked message (an invalid value, or "no cambies nada hasta confirmar") writes nothing:
+  // the reply states the case exactly as it is saved now
+  if (spec.hold || spec.qtyInvalid) {
+    const now = currentCase();
+    spec.caseNow = { product: now.product || stated, quantity: now.quantity, budget: now.budget };
+    return spec;
+  }
   const otherProduct = !!spec.newProduct && !!stated && !sameProduct(stated, spec.newProduct);
   if (spec.newProduct && (otherProduct || !stated)) {
     // another product: the previous one's quantity, budget, supplier and estimate become history
@@ -32,6 +39,9 @@ export function applyChatMessage(text: string, earlier: ReplySpec[], ctx: { curr
   // the reply states the saved case, never what the parser alone understood
   const after = currentCase();
   if (spec.caseNow) spec.caseNow = { product: after.product, quantity: after.quantity, budget: after.budget };
-  if (spec.newQuantity && after.quantity !== spec.newQuantity) spec.newQuantity = after.quantity;
+  // a change that did not land (storage blocked or full) is never announced as done
+  const lost = (spec.newQuantity && after.quantity !== spec.newQuantity) || (spec.newBudget && after.budget !== spec.newBudget) || (spec.budgetClear && after.budget);
+  if (lost && !otherProduct)
+    return { text: spec.text, product: spec.product, previous: spec.previous, fieldUpdate: true, persistFailed: true, caseNow: { product: after.product || stated, quantity: after.quantity, budget: after.budget } };
   return spec;
 }
