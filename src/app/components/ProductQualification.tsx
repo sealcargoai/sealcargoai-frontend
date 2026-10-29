@@ -4,7 +4,9 @@ import { inferCategory } from "../../utils/category";
 import { quantityWord } from "../../utils/saleUnit";
 import { plainNumber } from "../../utils/plainNumber";
 import { useState, useEffect, useRef } from "react";
-import { DRAFT_KEY, savedProduct, saveProduct } from "../../utils/draft";
+import { DRAFT_KEY, saveProduct } from "../../utils/draft";
+import { formStart } from "../../utils/caseStore";
+import { fieldError, LIMITS } from "../../utils/formValidation";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
 import { useNavigate, useLocation } from "react-router";
 import {
@@ -30,75 +32,15 @@ import {
 // Order matters: machinery first (machines mention electrical specs). Short
 // words use \b so e.g. "aplicables" doesn't match "cable".
 
-// Field limits (shown to the client next to each field)
-export const LIMITS = {
-  productMin: DESCRIPTION_MIN_CHARS,
-  productMax: 1500,
-  quantityMax: 10_000_000,
-  budgetMax: 100_000_000,
-  volumeMax: 5_000,
-  weightMax: 5_000_000,
-};
+// Field limits and validation: utils/formValidation (tested on their own)
+export { LIMITS } from "../../utils/formValidation";
 
 // DRAFT_KEY lives in utils/draft.ts
 // The backend gives up at ~75 s; the browser waits a little longer, then offers a way out
 const SEARCH_TIMEOUT_MS = 95_000;
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
-type StaleData = { product: string; quantity?: string; budget?: string; volumeCbm?: string; weightKg?: string };
-function loadDraft(): { formData?: Record<string, string>; step?: number; prev?: StaleData | null } | null {
-  try {
-    const raw = sessionStorage.getItem(DRAFT_KEY);
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
-
-/** Returns an error message for the field, or "" when valid. */
-function fieldError(name: string, value: string): string {
-  const v = plainNumber(name, value);
-  const n = Number(v);
-  // "50.000" could be fifty or fifty thousand: ask instead of guessing
-  if (name !== "quantity" && name !== "productType" && /^\d{1,3}(?:\.\d{3})+$/.test(v))
-    return Lx(
-      `¿${v} es ${Number(v.replace(/\./g, "")).toLocaleString("en-US")}? Escríbelo sin puntos de miles (por ejemplo ${v.replace(/\./g, "")}); usa punto solo para decimales.`,
-      `Is ${v} meant as ${Number(v.replace(/\./g, "")).toLocaleString("en-US")}? Write it without thousands points (for example ${v.replace(/\./g, "")}); use a point only for decimals.`,
-    );
-  if (name !== "productType" && v && !(name === "quantity" ? /^\d+$/ : /^\d+(?:\.\d+)?$/).test(v))
-    return name === "quantity"
-      ? Lx("Escribe solo el número entero, sin letras, decimales ni símbolos (por ejemplo 1000).", "Enter only the whole number, without letters, decimals or symbols (for example 1000).")
-      : Lx("Escribe solo el número, sin letras ni símbolos; usa punto para decimales (por ejemplo 3.5).", "Enter only the number, without letters or symbols; use a point for decimals (for example 3.5).");
-  switch (name) {
-    case "productType":
-      // what gets searched is the cleaned text (sentences addressed to the tool are left out)
-      if (!descriptionIsDetailed(v) || !descriptionIsDetailed(cleanDescription(v).text)) return descriptionDetailMessage();
-      if (v.length > LIMITS.productMax) return Lx(`Máximo ${LIMITS.productMax.toLocaleString("en-US")} caracteres.`, `Maximum ${LIMITS.productMax.toLocaleString("en-US")} characters.`);
-      return "";
-    case "quantity":
-      if (!v) return Lx("La cantidad es obligatoria.", "Quantity is required.");
-      if (!Number.isInteger(n) || n < 1) return Lx("Escribe una cantidad entera mayor a 0.", "Enter a whole number greater than 0.");
-      if (n > LIMITS.quantityMax) return Lx(`Máximo ${LIMITS.quantityMax.toLocaleString("en-US")} unidades.`, `Maximum ${LIMITS.quantityMax.toLocaleString("en-US")} units.`);
-      return "";
-    case "budget":
-      if (!v) return "";
-      if (!(n >= 1)) return Lx("El presupuesto de compra debe ser de al menos US$1.", "The purchase budget must be at least US$1.");
-      if (n > LIMITS.budgetMax) return Lx(`Máximo US$${LIMITS.budgetMax.toLocaleString("en-US")}.`, `Maximum US$${LIMITS.budgetMax.toLocaleString("en-US")}.`);
-      return "";
-    case "volumeCbm":
-      if (!v) return "";
-      if (!(n > 0)) return Lx("El volumen debe ser mayor a 0.", "Volume must be greater than 0.");
-      if (n > LIMITS.volumeMax) return Lx(`Máximo ${LIMITS.volumeMax.toLocaleString("en-US")} m³.`, `Maximum ${LIMITS.volumeMax.toLocaleString("en-US")} m³.`);
-      return "";
-    case "weightKg":
-      if (!v) return "";
-      if (!(n > 0)) return Lx("El peso debe ser mayor a 0.", "Weight must be greater than 0.");
-      if (n > LIMITS.weightMax) return Lx(`Máximo ${LIMITS.weightMax.toLocaleString("en-US")} kg.`, `Maximum ${LIMITS.weightMax.toLocaleString("en-US")} kg.`);
-      return "";
-  }
-  return "";
-}
-
+import type { StaleData } from "../../utils/caseStore";
 
 export function ProductQualification() {
   const navigate = useNavigate();
@@ -122,21 +64,10 @@ export function ProductQualification() {
   const userEmail = location.state?.email || storedData?.email || "";
   // A saved draft (same session) is restored so nothing typed is lost after an
   // error or a reload. A new query coming from the start screen wins.
-  const draft = loadDraft();
-  // the draft of this case is always kept (a new case from the start screen clears it);
-  // the product is the one the client set last, in the chat or here
-  const useDraft = !!draft?.formData;
-  const currentProduct = savedProduct() || (useDraft ? draft!.formData!.productType : "") || userQuery;
-  // the draft's quantity, budget, volume and weight were typed for the draft's product: if the
-  // product changed (in the chat), they are not reused without the client confirming them
-  const draftProduct = useDraft ? String(draft!.formData!.productType || "") : "";
-  const df = useDraft ? draft!.formData! : {};
-  const freshStale: StaleData | null =
-    draftProduct && currentProduct && !sameProduct(draftProduct, currentProduct) && (df.quantity || df.budget || df.volumeCbm || df.weightKg)
-      ? { product: draftProduct, quantity: df.quantity, budget: df.budget, volumeCbm: df.volumeCbm, weightKg: df.weightKg }
-      : null;
-  const [stale, setStale] = useState<StaleData | null>(freshStale || draft?.prev || null);
-  const [step, setStep] = useState(useDraft && draft?.step ? (freshStale ? Math.min(draft.step, 2) : draft.step) : 1);
+  // what the form opens with: utils/caseStore formStart (the draft of the product in force)
+  const start = formStart(userQuery, location.state?.quantity);
+  const [stale, setStale] = useState<StaleData | null>(start.stale);
+  const [step, setStep] = useState(start.step);
   const [isLoading, setIsLoading] = useState(false);
   // a double click or Enter while the search starts never sends two searches (nor spends two queries)
   const searching = useRef(false);
@@ -155,13 +86,7 @@ export function ProductQualification() {
     destination: "GT", // SEAL SmartTrade AI calculates imports into Guatemala only
     volumeCbm: "", // optional — used to quote ocean freight
     weightKg: "",  // optional
-    ...(useDraft ? draft!.formData : {}),
-    ...(freshStale ? { quantity: "", budget: "", volumeCbm: "", weightKg: "" } : {}),
-    productType: currentProduct,
-    // a quantity the client gave in the chat ("quiero 2000 en vez de 500"), only when the draft of
-    // this product has none: the chat writes its changes to the draft, and the navigation state
-    // survives a reload, so it must never undo a quantity typed here afterwards
-    ...(location.state?.quantity && Number(location.state.quantity) >= 1 && !(useDraft && df.quantity && !freshStale) ? { quantity: String(Number(location.state.quantity)) } : {}),
+    ...start.formData,
   });
 
   useEffect(() => {

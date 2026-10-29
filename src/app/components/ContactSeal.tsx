@@ -6,9 +6,9 @@ import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { MessageSquare, X } from "lucide-react";
 import { useLanguage } from "../context/LanguageContext";
-import { caseContext, sendToSeal, receiptText, type CaseContext, type SealResult } from "../../utils/caseContext";
+import { sendToSeal, receiptText, type CaseContext, type SealResult } from "../../utils/caseContext";
+import { caseForSeal } from "../../utils/caseStore";
 import { track } from "../../utils/funnel";
-import { draftFacts } from "../../utils/draft";
 
 function storedUser(): { name: string; email: string } {
   try {
@@ -41,17 +41,9 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
   const [error, setError] = useState("");
   const [result, setResult] = useState<SealResult | null>(null);
 
-  const ctx: CaseContext = { ...caseContext(), ...Object.fromEntries(Object.entries(context).filter(([, v]) => v !== undefined && v !== "" && !(Array.isArray(v) && !v.length))) };
-  // the quantity typed in the form for this same product (before any search) goes with the case
-  const df = draftFacts();
-  // only when the draft was typed for exactly the product in force (a later change in the chat,
-  // even to a similar product, leaves the draft's quantity as the previous product's)
-  const norm = (x: string) => x.trim().toLowerCase().replace(/\s+/g, " ");
-  const draftQty = !ctx.quantity && df.quantity && df.product && norm(df.product) === norm(String(ctx.product || ctx.productDescription || "")) ? df.quantity : "";
-  if (draftQty) ctx.quantity = draftQty;
-  // the purchase budget typed (form) or changed (chat) for this same product
-  const draftBudget = !ctx.budget && df.budget && df.product && norm(df.product) === norm(String(ctx.product || ctx.productDescription || "")) && Number(df.budget) >= 1 ? `US$${Number(df.budget).toLocaleString("en-US", { minimumFractionDigits: Number.isInteger(Number(df.budget)) ? 0 : 2, maximumFractionDigits: 2 })}` : "";
-  if (draftBudget) ctx.budget = draftBudget;
+  // what SEAL will receive: the stored case, this screen's data and the product, quantity and
+  // budget in force (an estimate made for other values is listed as no longer current): utils/caseStore
+  const ctx: CaseContext = caseForSeal(context as Record<string, unknown>);
   const summary = [
     ctx.product || ctx.productDescription ? `${L("Producto", "Product")}: ${String(ctx.product || ctx.productDescription).slice(0, 600)}` : "",
     ctx.quantity ? `${L("Cantidad", "Quantity")}: ${Number(ctx.quantity) ? Number(ctx.quantity).toLocaleString("en-US") : ctx.quantity}` : "",
@@ -92,8 +84,6 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     setSending(true);
     const r = await sendToSeal({
       ...context,
-      ...(draftQty ? { quantity: draftQty } : {}),
-      ...(draftBudget ? { budget: draftBudget } : {}),
       requestType: requestType || "Contacto directo con SEAL",
       source,
       intent,

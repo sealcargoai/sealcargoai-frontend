@@ -1,4 +1,5 @@
 import { setCaseScenario, SCENARIO_KEYS } from "../../utils/caseContext";
+import { currentCase, scenarioMatches } from "../../utils/caseStore";
 import { ContactSeal } from "./ContactSeal";
 import { supplierKey, loadCostChoices, saveCostChoices } from "../../utils/draft";
 import { componentText, type ComponentFlag } from "../../utils/componentMatch";
@@ -343,7 +344,18 @@ export function CostBreakdown() {
   const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
   // Assumptions shown on screen that the PDF and Excel must keep
   // the purchase budget and the small-order note go to the PDF / Excel as they appear here
+  // the case in force (form or chat) may have changed after this estimate was calculated
+  const scenarioFor = { product: productDescription, quantity: requestedQty || undefined, budget: budget > 0 ? budget : undefined };
+  const inForce = currentCase();
+  const staleEstimate = !!inForce.product && !scenarioMatches(scenarioFor, inForce);
+  const staleNote = staleEstimate
+    ? L(
+        `Esta estimación se calculó para ${requestedQty.toLocaleString("en-US")} unidades${budget > 0 ? `, presupuesto US$${budget.toLocaleString("en-US")}` : ""} de «${productDescription.slice(0, 120)}». Tu caso vigente dice ${inForce.quantity ? `${inForce.quantity.toLocaleString("en-US")} unidades` : "otra cantidad"}${inForce.budget ? `, presupuesto US$${inForce.budget.toLocaleString("en-US")}` : ""} de «${inForce.product.slice(0, 120)}»: esta estimación ya no corresponde al caso vigente.`,
+        `This estimate was calculated for ${requestedQty.toLocaleString("en-US")} units${budget > 0 ? `, budget US$${budget.toLocaleString("en-US")}` : ""} of "${productDescription.slice(0, 120)}". Your current case says ${inForce.quantity ? `${inForce.quantity.toLocaleString("en-US")} units` : "another quantity"}${inForce.budget ? `, budget US$${inForce.budget.toLocaleString("en-US")}` : ""} of "${inForce.product.slice(0, 120)}": this estimate no longer matches the current case.`,
+      )
+    : "";
   const reportNotes = [
+    staleNote,
     ...reportNotesFor(sc, costs.perUnit, Q),
     budgetNote(costs, budget, (usd) => Q(usd)),
     smallOrderNote(costs, unitWordFor(unitInfo.unit, 1), (usd) => Q(usd)),
@@ -368,9 +380,13 @@ export function CostBreakdown() {
     destination: /^gt$/i.test(destination) ? "Guatemala" : destination,
     assumptions: [...sc.notes, ...reportNotes].filter((n, i, all) => n && all.indexOf(n) === i).slice(0, 12) as string[],
     warnings: reportDiffs.items.slice(0, 12),
+    // what this estimate was computed for: a later change of the case makes it history (utils/caseStore)
+    scenarioFor,
   };
-  // the scenario on screen replaces the stored one (nothing inherited from another supplier)
-  setCaseScenario(caseNow, ["productDescription", "quantity", "budget", "destination", ...SCENARIO_KEYS]);
+  // the scenario on screen replaces the stored one (nothing inherited from another supplier);
+  // the product, quantity and budget stay the ones in force (utils/caseStore)
+  setCaseScenario(caseNow, ["destination", ...SCENARIO_KEYS]);
+  if (!inForce.product) setCaseScenario(caseNow, ["productDescription", "quantity", "budget"]);
 
   // ── Chart data ────────────────────────────────────────────────────────────
   const costData = costs.lines
@@ -534,6 +550,15 @@ export function CostBreakdown() {
           </p>
         </div>
 
+        {staleEstimate && (
+          <div data-testid="stale-estimate" className="mb-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            {staleNote}{" "}
+            {L(
+              "Vuelve al formulario y consulta de nuevo para recalcular; si envías tu caso a SEAL ahora, esta estimación va como anterior (no vigente).",
+              "Go back to the form and search again to recalculate; if you send your case to SEAL now, this estimate goes as a previous one (no longer current).",
+            )}
+          </div>
+        )}
         <SelectedSupplierCard supplier={stateSupplier} description={productDescription} />
         <OwnPrice current={customPrice} unit={unitInfo.unit} onChange={(v) => setCustomPrice(v)} published={publishedPriceText(originalSupplier)} />
         {unitInfo.multi && (
@@ -942,7 +967,12 @@ export function CostBreakdown() {
             </div>
             <a
               href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
-                L(
+                staleEstimate
+                  ? L(
+                      `Hola SEAL, quiero una cotización para ${inForce.quantity ? `${inForce.quantity.toLocaleString("en-US")} unidades` : "mi caso"} de: ${inForce.product.slice(0, 200)}${inForce.budget ? ` (presupuesto de compra US$${inForce.budget.toLocaleString("en-US")})` : ""}. Tenía una estimación anterior para ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)} que ya no está vigente.`,
+                      `Hello SEAL, I'd like a quote for ${inForce.quantity ? `${inForce.quantity.toLocaleString("en-US")} units` : "my case"} of: ${inForce.product.slice(0, 200)}${inForce.budget ? ` (purchase budget US$${inForce.budget.toLocaleString("en-US")})` : ""}. I had an earlier estimate for ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)} that is no longer current.`,
+                    )
+                  : L(
                   `Hola SEAL, quiero una cotización confirmada para ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` de: ${productDescription.slice(0, 200)}` : ""} (escenario estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", sin flete" : ""}).`,
                   `Hello SEAL, I'd like a confirmed quote for ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` of: ${productDescription.slice(0, 200)}` : ""} (estimated scenario ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", without freight" : ""}).`,
                 ),

@@ -4,11 +4,12 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { buildReply, contactIntent, urgentContact, requestStatusQuestion, quantityInForce, budgetInForce, fmtBudget, type ReplySpec } from "../../utils/chatReply";
+import { buildReply, contactIntent, urgentContact, requestStatusQuestion, quantityInForce, fmtBudget, type ReplySpec } from "../../utils/chatReply";
 import { applyChatMessage } from "../../utils/chatCase";
 import { lastSentCase, switchCaseProduct } from "../../utils/caseContext";
 import { ContactSeal } from "./ContactSeal";
-import { savedProduct, draftFor } from "../../utils/draft";
+import { savedProduct } from "../../utils/draft";
+import { currentCase } from "../../utils/caseStore";
 
 interface Message {
   role: "user" | "ai";
@@ -123,15 +124,13 @@ export function ChatInterface() {
   // the case's product is the one the client stated (here or in the form); a product only
   // mentioned inside a question ("¿qué DAI pagan los molinos?") guides that answer, not the case
   const caseProduct = [...specs].reverse().find((x) => x.newProduct)?.newProduct || savedProduct() || String(startQuery || "").trim();
-  // the quantity and budget in force: the form draft of this exact product (the chat writes its
-  // changes there too), else what the client said here (one read from the request could be a size)
-  const inDraft = draftFor(caseProduct);
-  const caseQtyNow = Number(inDraft.quantity) || quantityInForce(specs) || 0;
-  const caseBudgetNow = Number(inDraft.budget) || budgetInForce(specs) || 0;
+  // the product, quantity and budget in force, as every screen shows them (utils/caseStore)
+  const inForce = currentCase();
+  const caseQtyNow = inForce.quantity || 0;
   const chatCase = {
-    product: caseProduct || undefined,
+    product: inForce.product || caseProduct || undefined,
     quantity: caseQtyNow ? String(caseQtyNow) : undefined,
-    budget: caseBudgetNow ? fmtBudget(caseBudgetNow) : undefined,
+    budget: inForce.budget ? fmtBudget(inForce.budget) : undefined,
     chat: userTexts.slice(-8),
   };
 
