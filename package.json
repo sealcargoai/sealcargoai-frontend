@@ -6,7 +6,8 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:acceptance": "vitest run tests/acceptance-matrix.test.ts"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
