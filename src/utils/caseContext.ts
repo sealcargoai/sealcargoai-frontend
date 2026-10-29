@@ -168,6 +168,7 @@ export interface SealResult {
   notified?: boolean; // SEAL's inbox got it (false = registered only: SEAL sees it in the registry)
   caseUrl?: string; // signed page: what SEAL received and the case status
   test?: boolean; // the server identified it as a test record (not a commercial lead)
+  error?: string; // the server's reason for a rejection (e.g. "quantity_not_integer")
 }
 
 /** Sends the request to SEAL with the whole case (this screen's data wins over the stored one). */
@@ -182,8 +183,8 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const j = res.ok ? await res.json().catch(() => ({})) : {};
-    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test};
+    const j = await res.json().catch(() => ({}));
+    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test, ...(!res.ok && typeof j.error === "string" ? { error: j.error.slice(0, 40) } : {}) };
     if (out.ok) {
       // the history of earlier products went with THIS case; a later case of another product
       // starts without it (SEAL must not read guantes/molinos as part of a termos request)

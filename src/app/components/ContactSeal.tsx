@@ -97,7 +97,11 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     // a confirmation only with a case number from the server; on failure what was written stays
     if (r.ok) return setResult(r);
     setError(
-      r.status === 400
+      r.status === 400 && /^quantity_/.test(r.error || "")
+        ? L("La cantidad de tu caso no es válida (debe ser un número entero de 1 a 10,000,000). Corrígela en el chat o en el formulario y vuelve a enviar.", "Your case quantity is not valid (it must be a whole number from 1 to 10,000,000). Correct it in the chat or the form and send again.")
+        : r.status === 400 && /^budget_/.test(r.error || "")
+        ? L("El presupuesto de tu caso no es válido (mayor a US$0 y hasta US$100,000,000). Corrígelo y vuelve a enviar.", "Your case budget is not valid (above US$0 and up to US$100,000,000). Correct it and send again.")
+        : r.status === 400
         ? L("Revisa tu nombre y correo (por ejemplo nombre@empresa.com).", "Check your name and email (for example name@company.com).")
         : r.status === 429
           ? L("Se alcanzó el límite de envíos por ahora. Escríbenos al WhatsApp +502 5996 4664.", "The sending limit was reached for now. Message us on WhatsApp +502 5996 4664.")

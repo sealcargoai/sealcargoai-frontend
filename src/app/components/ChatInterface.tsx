@@ -4,7 +4,7 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { buildReply, contactIntent, urgentContact, requestStatusQuestion, quantityInForce, fmtBudget, type ReplySpec } from "../../utils/chatReply";
+import { buildReply, contactIntent, urgentContact, requestStatusQuestion, quantityInForce, fmtBudget, validQuantity, type ReplySpec } from "../../utils/chatReply";
 import { applyChatMessage } from "../../utils/chatCase";
 import { lastSentCase, switchCaseProduct } from "../../utils/caseContext";
 import { ContactSeal } from "./ContactSeal";
@@ -67,8 +67,9 @@ export function ChatInterface() {
   // quantity: the last one the client gave here, else the one in their request
   const initialQty = (() => {
     // "500 ml", "20 kg", "12 V" are sizes, not the quantity
-    const m = String(startQuery || "").replace(/(\d),(\d{3})/g, "$1$2").match(/\b(\d+)\s*(?!\s*(?:ml|l|lt|lts|litros?|kg|kgs|g|gr|grs|gramos?|oz|lb|lbs|libras?|t|ton|toneladas?|cm|mm|m|mts?|metros?|pulgadas?|in|ft|pies|w|v|kw|kva|hp|hz|mah|gb|tb|agujas|needles|%|"|x\s*\d)\b)(?=\s|$)/i);
-    return m ? Number(m[1]) : 0;
+    // (the tail of "3.5" or of "-1" is not a quantity, and an out-of-range number is not used)
+    const m = String(startQuery || "").replace(/(\d),(\d{3})/g, "$1$2").match(/(?<![\d.,\-−])(\d+)\s*(?!\s*(?:ml|l|lt|lts|litros?|kg|kgs|g|gr|grs|gramos?|oz|lb|lbs|libras?|t|ton|toneladas?|cm|mm|m|mts?|metros?|pulgadas?|in|ft|pies|w|v|kw|kva|hp|hz|mah|gb|tb|agujas|needles|%|"|x\s*\d)\b)(?=\s|$)/i);
+    return m && validQuantity(Number(m[1])) ? Number(m[1]) : 0;
   })();
   const contextOf = (list: ReplySpec[]) => {
     const lastNamed = [...list].reverse().find((x) => x.newProduct || x.mentioned);
@@ -95,6 +96,8 @@ export function ChatInterface() {
     }
     return list;
   });
+  // the conversation as last applied (read synchronously by handleSend)
+  const messagesRef = useRef<Message[]>(messages);
   useEffect(() => {
     try {
       sessionStorage.setItem(CHAT_KEY, JSON.stringify({ query: startQuery, name, messages }));
@@ -141,15 +144,20 @@ export function ChatInterface() {
     // The question and its reply are added together, right after the earlier ones:
     // a second question sent while a reply is still "typing" is answered after it,
     // with that reply already counted (a follow-up builds on it), never mixed up.
-    setMessages((prev) => {
-      const earlier = specsOf(prev);
-      const ctx = contextOf(earlier);
-      // what the message is and what it changes in the case: utils/chatCase applyChatMessage
-      const spec = applyChatMessage(text, earlier, { ...ctx, startQuery: String(startQuery || "") });
-      // "¿ya llegó mi solicitud?": answered with the case actually sent from this tab, if any
-      if (requestStatusQuestion(text)) spec.sentCase = lastSentCase() || undefined;
-      return [...prev, { role: "user", content: text, id }, { role: "ai", content: JSON.stringify(spec), id, pending: true }];
-    });
+    // The message is applied ONCE, outside the React state updater (React may run an updater
+    // twice, and this one writes the case), against the conversation as it is right now: a second
+    // message sent while a reply is still "typing" builds on this one, never on a stale copy.
+    const prev = messagesRef.current;
+    const earlier = specsOf(prev);
+    const ctx = contextOf(earlier);
+    // what the message is and what it changes in the case: utils/chatCase applyChatMessage
+    const spec = applyChatMessage(text, earlier, { ...ctx, startQuery: String(startQuery || "") });
+    // "¿ya llegó mi solicitud?": answered with the case actually sent from this tab, if any
+    if (requestStatusQuestion(text)) spec.sentCase = lastSentCase() || undefined;
+    const added: Message[] = [{ role: "user", content: text, id }, { role: "ai", content: JSON.stringify(spec), id, pending: true }];
+    messagesRef.current = [...prev, ...added];
+    // pure updater: it only appends this exchange
+    setMessages((list) => [...list, ...added]);
     setInput("");
     setTimeout(() => {
       setMessages((prev) => prev.map((m) => (m.id === id && m.pending ? { ...m, pending: false } : m)));

@@ -2,7 +2,8 @@
 
 Comando: `npm run test:acceptance` (archivo `tests/acceptance-matrix.test.ts`).
 Suite completa: `npm test`. Build: `npm run build`.
-Tipos: `npx -y -p typescript@5 tsc --noEmit --strict --jsx react-jsx --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --allowImportingTsExtensions --resolveJsonModule src/main.tsx` (solo se aceptan avisos TS7016/TS2307 de tipos de librerías e imágenes).
+Tipos: `npx -y -p typescript@5 tsc --noEmit --strict --jsx react-jsx --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --allowImportingTsExtensions --resolveJsonModule --types vite/client src/main.tsx` (solo se aceptan avisos TS7016/TS2307 de tipos de librerías e imágenes; sin `--types vite/client` aparecen 8 TS2339 de `import.meta.env`, preexistentes).
+Auditoría 2026-10-29: `npm run test:audit` (archivo `tests/audit-2026-10-29.test.ts`, ver `AUDIT-2026-10-29.md`).
 
 ## Qué se comprueba
 

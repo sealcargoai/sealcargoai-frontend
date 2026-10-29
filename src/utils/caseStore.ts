@@ -34,6 +34,11 @@ export function leadingNumber(v: unknown): number | undefined {
   return Number.isFinite(n) && n > 0 ? n : undefined;
 }
 
+/** Whole units from 1 to 10,000,000, else undefined (never rounded). */
+const validQty = (n: number | undefined) => (n !== undefined && Number.isInteger(n) && n >= 1 && n <= 10_000_000 ? n : undefined);
+/** Purchase budget up to US$100,000,000, else undefined. */
+const validBudget = (n: number | undefined) => (n !== undefined && n > 0 && n <= 100_000_000 ? n : undefined);
+
 type Draft = { formData?: Record<string, string>; step?: number; prev?: unknown };
 function readDraft(): Draft | null {
   try {
@@ -58,14 +63,15 @@ export function currentCase(): CaseFields {
   if (!product) return { product: "" };
   // the draft, when it was typed for this product
   if (d.productType && norm(d.productType) === norm(product)) {
-    const quantity = leadingNumber(d.quantity);
-    const budget = leadingNumber(d.budget);
+    // a quantity typed in the form but not valid yet ("3.5", "0", "10000001") is not the case's quantity
+    const quantity = validQty(leadingNumber(d.quantity));
+    const budget = validBudget(leadingNumber(d.budget));
     return { product, ...(quantity ? { quantity } : {}), ...(budget ? { budget } : {}) };
   }
   // no draft for it (a chat-only case, a contact from the start page): the stored case, when it is this product
   if (norm(c.product || c.productDescription) === norm(product)) {
-    const quantity = leadingNumber(c.quantity);
-    const budget = leadingNumber(c.budget);
+    const quantity = validQty(leadingNumber(c.quantity));
+    const budget = validBudget(leadingNumber(c.budget));
     return { product, ...(quantity ? { quantity } : {}), ...(budget ? { budget } : {}) };
   }
   return { product };
@@ -100,8 +106,10 @@ export function writeCase(patch: { product?: string; quantity?: number | null; b
       if (!f.budget && before.budget) f.budget = String(before.budget);
     }
     f.productType = product;
-    if (patch.quantity !== undefined) f.quantity = patch.quantity === null ? "" : String(patch.quantity);
-    if (patch.budget !== undefined) f.budget = patch.budget === null ? "" : String(patch.budget);
+    // the last guard before storage: an out-of-range value is never written (the read-back then
+    // shows the change did not happen, and the chat says so)
+    if (patch.quantity !== undefined && (patch.quantity === null || validQty(patch.quantity))) f.quantity = patch.quantity === null ? "" : String(patch.quantity);
+    if (patch.budget !== undefined && (patch.budget === null || validBudget(patch.budget))) f.budget = patch.budget === null ? "" : String(patch.budget);
     d.formData = f;
     if (!d.step) d.step = 1;
     writeDraft(d);
@@ -111,8 +119,8 @@ export function writeCase(patch: { product?: string; quantity?: number | null; b
     const wasProduct = String(c.product || c.productDescription || "");
     c.product = product;
     if (c.productDescription && norm(wasProduct) === norm(before.product)) c.productDescription = product;
-    const q = leadingNumber(f.quantity);
-    const b = leadingNumber(f.budget);
+    const q = validQty(leadingNumber(f.quantity));
+    const b = validBudget(leadingNumber(f.budget));
     if (q) c.quantity = String(q);
     else delete c.quantity;
     if (b) c.budget = fmtBudget(b);
@@ -208,7 +216,7 @@ export function formStart(userQuery = "", stateQuantity?: unknown): { formData: 
       : null;
   const formData: Record<string, string> = { ...df, ...(freshStale ? { quantity: "", budget: "", volumeCbm: "", weightKg: "" } : {}), productType: product };
   const q = Number(stateQuantity);
-  if (Number.isInteger(q) && q >= 1 && !(df.quantity && !freshStale)) formData.quantity = String(q);
+  if (Number.isInteger(q) && q >= 1 && q <= 10_000_000 && !(df.quantity && !freshStale)) formData.quantity = String(q);
   const step = draft?.formData && draft.step ? (freshStale ? Math.min(draft.step, 2) : draft.step) : 1;
   return { formData, stale: freshStale || (draft?.prev as StaleData | null) || null, step };
 }
