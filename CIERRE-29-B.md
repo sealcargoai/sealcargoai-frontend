@@ -71,6 +71,17 @@ Entornos: **L** = local unitario/integración con mocks (vitest, `sessionStorage
 | ES/EN coherentes; sin promesas | L `R22/R23`; N `B70` |
 | Ningún envío real | L sandbox; S `EMAIL_DRY_RUN`; N `B03`, `B22`, `B90` |
 
+## 30-b · regresiones reportadas sobre v2026.10.30-a
+
+| Problema reportado | Causa raíz | Corrección | Pruebas |
+|---|---|---|---|
+| Consulta de cantidad respondida con un cálculo anterior de lápices | El seguimiento de cálculos (`followUpMath`) tomaba cualquier número suelto como continuación del último cálculo, aunque hubiera un caso abierto | Un número suelto después de un cálculo, con caso abierto y sin referencia explícita a los artículos del cálculo, se **pregunta** (`askContext`); nada cambia. «¿Y para 600 lápices?» sigue usando el cálculo | L `R38.6`, `AUDIT-X` (actualizada: «¿Y si fueran 600?» ahora pregunta; el equivalente explícito «600 lápices» da 25 cajas); N `B87` |
+| «Corrijo: son 6 compresores» después de un cálculo convertía la frase en producto y borraba cantidad y presupuesto | `nounOut` suprimía «N compresores» tras el cálculo; la frase quedaba como producto nuevo porque «corrijo» se tomaba como sustantivo principal | `namesCaseProduct` (el sustantivo del caso tiene prioridad) y `cleanProductName` rechaza correcciones, verbos y «son/serían + número» | L `R38.2`, `R38.6`; N `B86` |
+| «No enviar caso comercial» terminaba en la descripción y el presupuesto no se reconocía | `requestFacts` no separaba notas de control y su captura del monto tomaba «5,000. No» como número | `stripControl()` separa notas de control (oraciones, paréntesis, guiones, comas y la frase dentro de la oración) antes de leer el pedido o un mensaje; captura estricta del monto; el saludo dice que la nota se tomó como nota; un mensaje solo de control no cambia nada | L `R38.5`; N `B85`, `B88` |
+| 3.5 con «no cambies nada» y 10,000,001 con «actualiza únicamente la cantidad» | (ya rechazados en 30-a; ahora con regresión permanente exacta) | — | L `R38.1`, `R38.8`; N `B81`, `B82`, `B86` |
+
+Matriz permanente `R38.1`–`R38.8`: mensajes exactos, límites 1 / 10,000,000 y 0 / negativos / fracciones / >máximo, cambios encadenados en ambos órdenes, hipotético↔cambio, negaciones y notas de control (chat y pedido inicial), navegación chat↔formulario, recarga, borradores con versión vieja y resumen, ES/EN sin mezcla.
+
 ## Comandos
 
 ```
