@@ -67,7 +67,7 @@ export function LandingPage() {
     writeCaseTx({ product: facts.product, quantity: facts.quantity ?? null, budget: facts.budget ?? null });
     rememberCase({ productDescription: facts.product });
     track("consulta_iniciada");
-    navigate("/chat", { state: { query: facts.product, request: cleaned.text, requestIssues: facts.issues, descriptionCleaned: cleaned.removed, name: n, email: m } });
+    navigate("/chat", { state: { query: facts.product, request: cleaned.text, requestIssues: facts.issues, requestControl: facts.control, descriptionCleaned: cleaned.removed, name: n, email: m } });
   };
 
   return (
