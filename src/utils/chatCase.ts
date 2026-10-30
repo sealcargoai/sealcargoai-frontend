@@ -10,7 +10,28 @@ import { nextSpec, quantityInForce, sameProduct, type ReplySpec } from "./chatRe
 import { draftFacts } from "./draft";
 import { caseVersion, currentCase, readPending, setPending, writeCaseTx } from "./caseStore";
 
-export function applyChatMessage(text: string, earlier: ReplySpec[], ctx: { currentProduct: string; currentQuantity: number; startQuery?: string }): ReplySpec {
+/** 30-e: the answer to «¿Ese número es para el cálculo anterior o para tu caso?» ("para mi caso",
+ * "para el cálculo") is read as the number asked about, said the explicit way; anything else: null. */
+export function contextAnswer(text: string, asked: string, item = ""): string | null {
+  const t = String(text || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[.!¡]+$/, "")
+    .trim();
+  const nums = String(asked || "").match(/(?:us\s?\$|usd\s*|\$)?\s*\d[\d,.]*/gi) || [];
+  if (nums.length !== 1) return null;
+  const n = nums[0].trim();
+  const money = /us\s?\$|usd|\$|d[oó]lar|dollar|presupuesto|budget/i.test(asked);
+  if (/^(?:s[ií],?\s*)?(?:es\s+|son\s+|era\s+|eran\s+)?(?:para|de|del)\s+(?:mi|el|tu)\s+caso$|^(?:it'?s\s+)?(?:for\s+)?(?:my|the)\s+case$/.test(t))
+    return money ? `el presupuesto es ${n}` : `la cantidad es ${n}`;
+  if (/^(?:es\s+|era\s+)?(?:para|de|del)\s+(?:el\s+)?c[aá]lculo(?:\s+anterior)?$|^(?:it'?s\s+)?(?:for\s+)?the\s+(?:earlier\s+)?calculation$/.test(t) && !money)
+    return `¿y para ${n}${item ? ` ${item}` : ""}?`;
+  return null;
+}
+
+export function applyChatMessage(textIn: string, earlier: ReplySpec[], ctx: { currentProduct: string; currentQuantity: number; startQuery?: string }): ReplySpec {
+  const lastSpec = earlier[earlier.length - 1];
+  const text = (lastSpec?.askContext && contextAnswer(textIn, lastSpec.text, lastSpec.askContext.item)) || textIn;
   const saved = currentCase();
   const version = caseVersion();
   // the pending proposal lives in its own store; it belongs to this case only
