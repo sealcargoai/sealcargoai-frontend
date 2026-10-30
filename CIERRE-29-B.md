@@ -94,7 +94,17 @@ Matriz permanente `R38.1`–`R38.8`: mensajes exactos, límites 1 / 10,000,000 y
 | Enter repetido en el mismo instante → dos avisos de inicio | `submitting` (estado) no protege dos envíos antes del re-render | `useRef` de envío iniciado | N `B91` |
 | Aviso de inicio lento → el cliente queda en «Procesando…» mientras responda el servidor | `await fetch` sin límite de tiempo | Límite de 4 s (`AbortController`); el análisis abre igual | N `B92` |
 
-Backend: `test/aviso-inicio-30-c.test.mjs` fija que el aviso no crea caso, va marcado [PRUEBA], dice que no es solicitud ni cotización, y que con `QA_LEADS_EMAIL` una prueba no llega a ventas.
+Backend: el enrutamiento del aviso de inicio lo cubre `test/recipients.test.mjs` («the other emails follow the same rule: landing lead…»: real → solo ventas; prueba → marcada y con copias de desarrollo) y el de `QA_LEADS_EMAIL` el caso «explicit authorization and a QA inbox…». (Corrección 30-d: el archivo `aviso-inicio-30-c.test.mjs` citado antes no existe en el repositorio.)
+
+## Validación 30-d (sobre v2026.10.30-c · a7e3e2a en producción)
+
+Pruebas en producción con datos ficticios y los envíos al backend interceptados en el navegador (ningún correo, búsqueda ni caso salió). Defectos encontrados:
+
+| Defecto | Causa raíz | Corrección | Regresión |
+|---|---|---|---|
+| «me equivoqué, son 750 unidades», «perdón, me equivoqué: el presupuesto es US$3,500», «actually, make it 650 units» no se aplicaban («negación o condición») | `fullyUnderstood` trataba «me equivoqué»/«actually»/«correction» como retractación en cualquier posición | `LEAD_CORRECTION`: si la corrección ABRE el mensaje y va seguida de puntuación, solo introduce el valor; al final sigue retractando | `R40.1`, `R40.2`, `B98` |
+| La respuesta a «no enviar» decía que un caso solo llega con «Enviar a SEAL», pero «Pedir a SEAL que revise mi caso» también envía | Texto fijo en `buildReply` (controlOnly) | El texto nombra ambos botones | `R40.3` |
+| «Pedir a SEAL que revise mi caso» (búsqueda fallida) enviaba el caso con un clic, sin decir qué datos salen | Botón llamaba a `sendToSeal` directamente; sin guarda síncrona | Paso de confirmación que lista lo que recibe SEAL («Sí, enviar a SEAL» / «Cancelar») y guarda `useRef` contra doble clic | `B95`–`B97` |
 
 ## Comandos
 
