@@ -9,6 +9,8 @@ import { LanguageToggle } from "./LanguageToggle";
 import { getUserData, getSearchLimit } from "../../utils/searchLimit";
 import { ContactSeal } from "./ContactSeal";
 import { rememberCase } from "../../utils/caseContext";
+import { requestFacts } from "../../utils/requestFacts";
+import { writeCaseTx } from "../../utils/caseStore";
 import { track } from "../../utils/funnel";
 
 const QUERY_MIN = DESCRIPTION_MIN_CHARS;
@@ -59,9 +61,13 @@ export function LandingPage() {
     getUserData(m, n);
     setSubmitting(false);
     clearDraft(); // a new query starts a new analysis
-    rememberCase({ productDescription: cleaned.text });
+    // the request's facts go into the case with the chat's own rules: product description, and the
+    // quantity and purchase budget only when they are exact and valid (utils/requestFacts)
+    const facts = requestFacts(cleaned.text);
+    writeCaseTx({ product: facts.product, quantity: facts.quantity ?? null, budget: facts.budget ?? null });
+    rememberCase({ productDescription: facts.product });
     track("consulta_iniciada");
-    navigate("/chat", { state: { query: cleaned.text, descriptionCleaned: cleaned.removed, name: n, email: m } });
+    navigate("/chat", { state: { query: facts.product, request: cleaned.text, requestIssues: facts.issues, descriptionCleaned: cleaned.removed, name: n, email: m } });
   };
 
   return (
