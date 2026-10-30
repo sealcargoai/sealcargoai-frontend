@@ -82,6 +82,20 @@ Entornos: **L** = local unitario/integración con mocks (vitest, `sessionStorage
 
 Matriz permanente `R38.1`–`R38.8`: mensajes exactos, límites 1 / 10,000,000 y 0 / negativos / fracciones / >máximo, cambios encadenados en ambos órdenes, hipotético↔cambio, negaciones y notas de control (chat y pedido inicial), navegación chat↔formulario, recarga, borradores con versión vieja y resumen, ES/EN sin mezcla.
 
+## 30-c · validación final sobre v2026.10.30-b · 15f5bc2 (producción)
+
+| Defecto (visto en producción) | Causa raíz | Corrección | Pruebas |
+|---|---|---|---|
+| «No enviar.» al final del pedido quedaba en el producto | `CONTROL_PART` solo reconocía «no enviar» con objeto («caso», «correo»…) | «no enviar / no mandar / do not send» como parte completa es nota de control | L `R39.3`; N `B93` |
+| «Son cuatro unidades, cada una con tanque de 500 litros.» respondía ««500» no es una cantidad exacta» | `valueTokenIssue` no reconocía la cantidad escrita en palabras y tomaba el 500; `fullyUnderstood` rechazaba la cláusula «cada una con…» | La cantidad en palabras se reconoce; «cada una con X» se acepta: si X no está en la descripción se informa «No agregué X» | L `R39.1`, `R39.2`; N `B94` |
+| «El presupuesto máximo de compra es cinco mil dólares.» no se aplicaba | El campo admitía un solo calificativo («máximo» o «de compra») | Hasta dos calificativos (chat y pedido inicial); «dollars» como moneda | L `R39.1`, `R39.3`; N `B94` |
+| «El equipo es para uso industrial; todavía no tengo marca definida.» se respondía como pregunta abierta | Respuesta genérica única | Una afirmación sin cambio recibe «Anotado…, tu caso sigue igual»; un número sin campo claro recibe una pregunta | L `R39.1`, `R39.2` |
+| Mismo presupuesto dicho otra vez → respuesta genérica | El valor igual al del caso no contaba como mensaje de campo | Responde «Sin cambios» | L `R39.1` |
+| Enter repetido en el mismo instante → dos avisos de inicio | `submitting` (estado) no protege dos envíos antes del re-render | `useRef` de envío iniciado | N `B91` |
+| Aviso de inicio lento → el cliente queda en «Procesando…» mientras responda el servidor | `await fetch` sin límite de tiempo | Límite de 4 s (`AbortController`); el análisis abre igual | N `B92` |
+
+Backend: `test/aviso-inicio-30-c.test.mjs` fija que el aviso no crea caso, va marcado [PRUEBA], dice que no es solicitud ni cotización, y que con `QA_LEADS_EMAIL` una prueba no llega a ventas.
+
 ## Comandos
 
 ```

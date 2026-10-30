@@ -1477,3 +1477,107 @@ describe("R38.8 · español / inglés sin mezclar", () => {
       await expectCase({ ...BASE, quantity: 6 });
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// R39 · validación final 30-c sobre v2026.10.30-b: defectos encontrados en producción y sus vecinos
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+const P30 = "compresores industriales de tornillo de 220 V";
+const B30: Exp = { product: P30, quantity: 3, budget: 4000 };
+
+describe("R39.1 · mensajes válidos no previstos: se aplican los campos inequívocos y nada más", () => {
+  it("«Son cuatro unidades, cada una con tanque de 500 litros.» → cantidad 4; el tanque se informa como no agregado", async () => {
+    startCase("3", "4000", P30);
+    const r = chat(["Son cuatro unidades, cada una con tanque de 500 litros."]);
+    expect(r.reply).toMatch(/cantidad 3 → 4/);
+    expect(r.reply).toMatch(/No agregué «tanque de 500 litros»/);
+    await expectCase({ ...B30, quantity: 4 }, r.reply);
+  });
+  it("con la característica ya en el caso, no hay nota", async () => {
+    startCase("3");
+    const r = chat(["Son 4 unidades, cada una con tanque de 500 litros"]);
+    expect(r.reply).not.toMatch(/No agregué/);
+    await expectCase({ ...BASE, quantity: 4 }, r.reply);
+  });
+  it("«El presupuesto máximo de compra es cinco mil dólares.» → US$5,000", async () => {
+    startCase("3", "4000", P30);
+    await expectCase({ ...B30, budget: 5000 }, chat(["El presupuesto máximo de compra es cinco mil dólares."]).reply);
+  });
+  it("«Corrijo únicamente el presupuesto a US$4,800; conserva los demás datos.» → US$4,800", async () => {
+    startCase("3", "4000", P30);
+    await expectCase({ ...B30, budget: 4800 }, chat(["Corrijo únicamente el presupuesto a US$4,800; conserva los demás datos."]).reply);
+  });
+  it("«El equipo es para uso industrial; todavía no tengo marca definida.» → anotado, nada cambia, no se trata como pregunta", async () => {
+    startCase("3", "4000", P30);
+    const r = chat(["El equipo es para uso industrial; todavía no tengo marca definida."]);
+    expect(r.reply).toMatch(/^Anotado\./);
+    expect(r.reply).not.toMatch(/preguntas abiertas/);
+    await expectCase(B30);
+  });
+  for (const [msg, exp] of [
+    ["Necesito 7 unidades en total", { quantity: 7 }],
+    ["the budget is five thousand dollars", { budget: 5000 }],
+    ["El presupuesto máximo de compra es cinco mil quinientos dólares", { budget: 5500 }],
+    ["Son cuatro unidades", { quantity: 4 }],
+  ] as const)
+    it(`válido: ${msg}`, async () => {
+      startCase("3", "4000", P30);
+      await expectCase({ ...B30, ...exp }, chat([msg]).reply);
+    });
+  it("el mismo presupuesto dicho otra vez: «Sin cambios», no una respuesta genérica", async () => {
+    startCase("3", "4000", P30);
+    const r = chat(["El presupuesto es de cuatro mil dólares"]);
+    expect(r.reply).toMatch(/^Sin cambios/);
+    await expectCase(B30, r.reply);
+  });
+});
+
+describe("R39.2 · ambigüedad: se pregunta y nada cambia", () => {
+  for (const msg of [
+    "Son cuatro, cada una con tanque de 500 litros",
+    "Mi presupuesto no es de cinco mil dólares sino de seis mil dólares",
+    "El presupuesto máximo es de unos seis mil dólares",
+    "El presupuesto máximo es de seis mil dólares aproximadamente",
+    "Son 8 unidades, cada una con tanque de 500 litros o 300 litros",
+    "Son 3.5 unidades, cada una con tanque de 500 litros",
+    "Son 10,000,001 unidades, cada una con tanque de 500 litros",
+    "El presupuesto máximo de compra es Q5,000",
+  ])
+    it(msg, async () => {
+      startCase("3", "4000", P30);
+      const r = chat([msg]);
+      expect(r.reply).toMatch(/no cambié|No cambié/);
+      await expectCase(B30, r.reply);
+    });
+  it("saludos y pedidos de ayuda siguen con la respuesta general (no «Anotado»)", () => {
+    startCase("3", "4000", P30);
+    for (const m of ["Gracias", "hola", "Necesito ayuda"]) expect(chat([m]).reply, m).not.toMatch(/^Anotado/);
+  });
+});
+
+describe("R39.3 · pedido inicial: números en palabras y «no enviar» suelto", () => {
+  for (const [req, exp] of [
+    ["Quiero importar cuatro compresores con un presupuesto de cinco mil dólares", { product: "compresores", quantity: 4, budget: 5000 }],
+    ["PRUEBA QA – No enviar caso comercial. Quiero importar 4 compresores industriales de tornillo de 220 V con un presupuesto de US$5,000. No enviar.", { product: P30, quantity: 4, budget: 5000 }],
+    [
+      "Quiero importar 4 compresores de tornillo de 220 V con un presupuesto máximo de compra de US$5,000. PRUEBA QA, no enviar.",
+      { product: "compresores de tornillo de 220 V", quantity: 4, budget: 5000 },
+    ],
+    ["Quiero importar 4 compresores. No enviar todavía.", { product: "compresores", quantity: 4 }],
+    ["I want to import four screw compressors with a budget of five thousand dollars", { product: "screw compressors", quantity: 4, budget: 5000 }],
+  ] as const)
+    it(req.slice(0, 70), () => {
+      const f = requestFacts(req);
+      expect({ product: f.product, quantity: f.quantity, budget: f.budget }).toEqual({ quantity: undefined, budget: undefined, ...exp });
+      expect(f.issues).toEqual([]);
+      expect(f.product).not.toMatch(/enviar|prueba|qa/i);
+    });
+  it("un número en palabras que es parte del nombre no se convierte", () => {
+    expect(requestFacts("Quiero importar sillas de dos plazas").product).toBe("sillas de dos plazas");
+  });
+  it("«no enviar» suelto en el chat no cambia nada", async () => {
+    startCase();
+    const r = chat(["No enviar."]);
+    expect(r.last.controlOnly).toBe(true);
+    await expectCase(BASE, r.reply);
+  });
+});

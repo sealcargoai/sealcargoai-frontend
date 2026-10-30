@@ -12,7 +12,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.10.30-b";
+const EXPECT_VERSION = "2026.10.30-c";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
@@ -394,6 +394,81 @@ try {
       "B88 frase de control sola: no cambia nada; tras recargar el caso y el historial siguen iguales",
       /no se envía nada a SEAL/.test(r4) && s.q === "4" && s.b === "5000" && s.p === "compresores industriales de tornillo de 220 V" && /Son 600/.test(after) && /como una nota/.test(after),
       JSON.stringify(s),
+    );
+    await ctx.close();
+  }
+  {
+    // VALIDACIÓN 30-c: aviso de inicio (doble envío, respuesta lenta), nota «No enviar.» y mensajes válidos no previstos
+    const { ctx, page } = await newPage();
+    const landing = async (text, mode) => {
+      await page.goto(`${BASE}/?qa=1`);
+      await page.evaluate((mode) => {
+        sessionStorage.clear();
+        window.__leads = 0;
+        const of = window.fetch;
+        window.fetch = function (u, o) {
+          if (/\/api\/email\/lead/.test(String(u))) {
+            window.__leads++;
+            if (mode === "slow")
+              return new Promise((r, j) => {
+                const s = o && o.signal;
+                s && s.addEventListener("abort", () => j(new DOMException("aborted", "AbortError")));
+                setTimeout(() => r(new Response("{}", { status: 200 })), 20000);
+              });
+          }
+          return of.apply(this, arguments);
+        };
+      }, mode);
+      const q = page.locator("form input").first();
+      await q.fill(text);
+      await q.press("Enter");
+      await page.waitForTimeout(300);
+      await page.fill("input[placeholder='Juan Pérez']", "PRUEBA QA");
+      await page.fill("input[placeholder='juan@empresa.com']", "qa-prueba@example.com");
+      const t0 = Date.now();
+      if (mode === "double")
+        await page.evaluate(() => {
+          const f = document.querySelector("input[placeholder='juan@empresa.com']").form;
+          f.requestSubmit();
+          f.requestSubmit();
+        });
+      else await page.locator("input[placeholder='juan@empresa.com']").press("Enter");
+      await page.waitForURL(/\/chat/, { timeout: 15000 });
+      return { ms: Date.now() - t0, leads: await page.evaluate(() => window.__leads) };
+    };
+    const REQ = "Quiero importar 4 compresores industriales de tornillo de 220 V con un presupuesto de US$5,000";
+    const d = await landing(REQ, "double");
+    check("B91 doble envío en el mismo instante: un solo aviso de inicio", d.leads === 1, JSON.stringify(d));
+    const sl = await landing(REQ, "slow");
+    check("B92 aviso lento (20 s): el análisis abre en menos de 6 s", sl.ms < 6000 && sl.leads === 1, JSON.stringify(sl));
+    await landing(`PRUEBA QA. ${REQ}. No enviar.`, "normal");
+    let s = caseOf(await state(page));
+    check("B93 «No enviar.» al final del pedido no entra en el producto", s.p === "compresores industriales de tornillo de 220 V" && s.q === "4" && s.b === "5000" && s.sync, JSON.stringify(s));
+    await say(page, "La cantidad es 3");
+    await say(page, "El presupuesto es US$4,000");
+    const v1 = await say(page, "Son cuatro unidades, cada una con tanque de 500 litros.");
+    const s1 = caseOf(await state(page));
+    const v2 = await say(page, "El presupuesto máximo de compra es cinco mil dólares.");
+    const s2 = caseOf(await state(page));
+    const v3 = await say(page, "Corrijo únicamente el presupuesto a US$4,800; conserva los demás datos.");
+    const s3 = caseOf(await state(page));
+    const v4 = await say(page, "El equipo es para uso industrial; todavía no tengo marca definida.");
+    const s4 = caseOf(await state(page));
+    check(
+      "B94 mensajes válidos no previstos: 4 unidades, US$5,000, US$4,800, dato sin campo; nada más cambia",
+      s1.q === "4" &&
+        s1.b === "4000" &&
+        /No agregué «tanque de 500 litros»/.test(v1) &&
+        s2.q === "4" &&
+        s2.b === "5000" &&
+        s3.q === "4" &&
+        s3.b === "4800" &&
+        s4.q === "4" &&
+        s4.b === "4800" &&
+        /^Anotado\./.test(v4) &&
+        s4.p === "compresores industriales de tornillo de 220 V" &&
+        s4.sync,
+      JSON.stringify([s1, s2, s3, s4].map((x) => [x.q, x.b])) + " " + (v2 + " | " + v4).slice(0, 120),
     );
     await ctx.close();
   }

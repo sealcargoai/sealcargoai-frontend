@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { clearDraft } from "../../utils/draft";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
 import { useNavigate } from "react-router";
@@ -18,6 +18,7 @@ const QUERY_MAX = 1500; // same limit as the product description in the next ste
 const NAME_MIN = 2;
 const NAME_MAX = 120;
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
+const NOTICE_TIMEOUT_MS = 4000; // the start notice is sent in the background of the first click; it never blocks the flow
 
 
 export function LandingPage() {
@@ -27,6 +28,8 @@ export function LandingPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // a second submit in the same instant (Enter repeated, double click before the re-render) is ignored
+  const startedRef = useRef(false);
   const [formError, setFormError] = useState("");
   const navigate = useNavigate();
 
@@ -42,9 +45,14 @@ export function LandingPage() {
     if (!queryOk) return setFormError(queryTrim.length > QUERY_MAX ? L(`Máximo ${QUERY_MAX.toLocaleString("en-US")} caracteres.`, `Maximum ${QUERY_MAX.toLocaleString("en-US")} characters.`) : descriptionDetailMessage());
     if (n.length < NAME_MIN) return setFormError(L("Escribe tu nombre completo.", "Enter your full name."));
     if (!EMAIL_RE.test(m)) return setFormError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
+    if (startedRef.current) return;
+    startedRef.current = true;
     setFormError("");
     setSubmitting(true);
 
+    // the start notice never holds the client back: after a few seconds the analysis opens anyway
+    const ctrl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctrl ? setTimeout(() => ctrl.abort(), NOTICE_TIMEOUT_MS) : null;
     try {
       await fetch(
         `${import.meta.env.VITE_API_URL || "http://localhost:3001"}/api/email/lead`,
@@ -52,10 +60,13 @@ export function LandingPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: n, email: m, query: cleaned.text }),
+          ...(ctrl ? { signal: ctrl.signal } : {}),
         },
       );
     } catch {
       // Lead notification is not critical for the client's flow
+    } finally {
+      if (timer) clearTimeout(timer);
     }
     // Initialize user in localStorage
     getUserData(m, n);

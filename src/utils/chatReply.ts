@@ -412,6 +412,23 @@ export function tidy(raw: string): string {
   return t.trim();
 }
 
+/**
+ * Numbers written in words where they carry a case value: an amount of money ("cinco mil dólares",
+ * "five thousand dollars") and the count that opens a request ("cuatro compresores…"). The rest of
+ * the text (a product name that contains a number word) is left as written.
+ */
+export function spelledValues(text: string, opening = false): string {
+  let t = String(text || "").replace(new RegExp(NUM_SEQ.source + "(?=\\s*(?:d[oó]lares|dollars|usd)\\b)", "gi"), (m) => {
+    const v = wordsToNumber(m.trim().toLowerCase());
+    return v && v >= 1 ? v.toLocaleString("en-US") : m;
+  });
+  if (opening) {
+    const lead = t.match(new RegExp(`^\\s*(${NUM_SEQ.source})(?=\\s+[a-záéíóúüñ])`, "i"));
+    const v = lead ? wordsToNumber(lead[1].trim().toLowerCase()) : null;
+    if (lead && v && v >= 2) t = t.replace(lead[1], String(v));
+  }
+  return t;
+}
 function normalizeNumbers(t: string): string {
   return tidy(t)
     .replace(/(\d+(?:[.,]\d+)?)\s*(?:mil|thousand)\b/g, (_, n) => String(Math.round(parseFloat(n.replace(",", ".")) * 1000)))
@@ -2435,6 +2452,18 @@ const FIXED: Record<string, () => string> = {
       "No pude leer este cálculo con seguridad y prefiero no adivinar. Escríbemelo así: 1) cantidad total y su unidad (piezas, pares, sets…), 2) qué trae cada empaque y en qué unidad, y 3) si hay pedido mínimo o múltiplos. Ejemplo: «Necesito 200 pares; cada caja trae 20 pares; mínimo 15 cajas».",
       "I couldn't read this calculation reliably and I'd rather not guess. Send it like this: 1) total quantity and its unit (pieces, pairs, sets…), 2) what each pack holds and in what unit, and 3) any minimum order or multiples. Example: \"I need 200 pairs; each box holds 20 pairs; minimum 15 boxes\".",
     ),
+  unclearValue: () =>
+    Lx(
+      "No pude identificar con seguridad qué dato quieres cambiar con ese número, así que no cambié nada. Si es la cantidad, escríbelo así: «la cantidad es 4»; si es el presupuesto de compra: «el presupuesto es US$5,000».",
+      "I couldn't tell for sure which data you want to change with that number, so I didn't change anything. If it is the quantity, write: \"the quantity is 4\"; if it is the purchase budget: \"the budget is US$5,000\".",
+    ),
+  // a statement that is not a change of the case ("es para uso industrial; todavía no tengo marca"):
+  // acknowledged, never answered as if it were a question, and nothing is changed
+  noted: () =>
+    Lx(
+      "Anotado. En este chat solo actualizo el producto, la cantidad y el presupuesto de compra, y ese dato no cambia ninguno de ellos, así que tu caso sigue igual. Si quieres que forme parte de la descripción del producto, puedes agregarlo en el formulario.",
+      "Noted. In this chat I only update the product, the quantity and the purchase budget, and that detail doesn't change any of them, so your case stays the same. If you want it to be part of the product description, you can add it in the form.",
+    ),
   general: () =>
     Lx(
       "Gracias. Por ahora no respondo preguntas abiertas en este chat. Para orientarte, continúa con el formulario: ahí ordenamos tus datos y preparamos las referencias y estimaciones. Si prefieres hablar con una persona, escribe al WhatsApp de SEAL +502 5996 4664.",
@@ -2484,6 +2513,7 @@ export interface ReplySpec {
   forbidden?: CaseField[]; // fields the client said not to change ("do not update the quantity to 8")
   fromMismatch?: { said: number; inCase: number; to: number }; // "de 7 a 8" with 4 in the case
   askContext?: { item: string; product: string };
+  detailNote?: string; // "cada una con tanque de 500 litros": a detail of each unit that the case description doesn't have (not added)
   controlOnly?: boolean; // the message was only a note for testers ("no enviar caso comercial") // a bare number after a calculation: the calculation or the case?
   unsure?: string[]; // a change with a negation, condition, deferral or question not understood: proposed, not applied
   heldApplied?: boolean; // "sí, aplícalo" after a held proposal
@@ -2875,6 +2905,8 @@ export function valueTokenIssue(rawText: string, value: number): QuantityIssue |
     }
   }
   if (seen && dirty) return { kind: "ambiguous", raw: dirty.replace(/\s+/g, " ").slice(0, 30) };
+  // written in words ("cuatro unidades", "cinco mil dólares"): the other digits belong to something else
+  if (!seen && [...t.matchAll(NUM_SEQ)].some((w) => wordsToNumber(w[0].trim()) === whole)) return null;
   // the value is nowhere in the text as written, yet the text has digits ("10'000,001" read as 1):
   // unless it comes from words with a multiplier ("2 mil", "10k", "1.5 millones"), it is asked
   if (!seen && /\d/.test(t) && !/\d\s*(?:mil|k|thousand|mill[oó]n(?:es)?|millions?)\b/.test(t)) {
@@ -2902,7 +2934,7 @@ function productOnly(name: string): string {
  * request) and are answered as before; their negations and conditions are checked by
  * uncertainMarkers. General by design: unknown wording is asked, never guessed.
  */
-export function fullyUnderstood(text: string, change: { quantity?: number; budget?: number; budgetClear?: boolean; fixTo?: string; fixFrom?: string; product?: string; head?: string; productHead?: string; current?: { quantity?: number; budget?: number } }, resolvedSpans: string[] = []): { ok: boolean; why?: string } {
+export function fullyUnderstood(text: string, change: { quantity?: number; budget?: number; budgetClear?: boolean; fixTo?: string; fixFrom?: string; product?: string; head?: string; productHead?: string; current?: { quantity?: number; budget?: number } }, resolvedSpans: string[] = []): { ok: boolean; why?: string; note?: string } {
   let t = ` ${normalizeNumbers(String(text || "").toLowerCase())} `;
   for (const sp of resolvedSpans) if (sp.trim()) t = t.split(sp).join(" ");
   t = t
@@ -2932,7 +2964,7 @@ export function fullyUnderstood(text: string, change: { quantity?: number; budge
   const VERB = `(?:${SETV}|${RELV})(?:\\s+(?:[uú]nicamente|solo|s[oó]lo|only|just))?`;
   const UNIT = `(?:unidades|unidad|units?|piezas?|pieces?|equipos?|m[aá]quinas?|pcs${stem ? `|${stem}[a-záéíóúñ]*` : ""})`;
   const FQ = "(?:(?:(?:la|the)\\s+)?(?:(?:order|requested|purchase|total)\\s+)?(?:cantidad|quantity)(?:\\s+(?:del?\\s+pedido|total|solicitada|requerida|correcta|de\\s+compra|of\\s+the\\s+order|ordered))?|(?:el|mi|the|my)\\s+(?:pedido|orden|order))";
-  const FB = "(?:(?:el|mi|un|nuestro|the|my|a|our)\\s+)?(?:(?:purchase|total)\\s+)?(?:presupuesto|budget)(?:\\s+(?:de\\s+compra|total|m[aá]ximo|disponible|for\\s+the\\s+purchase|purchase|of\\s+purchase))?";
+  const FB = "(?:(?:el|mi|un|nuestro|the|my|a|our)\\s+)?(?:(?:purchase|total|maximum|max)\\s+)?(?:presupuesto|budget)(?:\\s+(?:de\\s+compra|total|m[aá]ximo|disponible|for\\s+the\\s+purchase|purchase|of\\s+purchase)){0,2}";
   const SET = "(?:a|(?<!(?:sub|baj|aument|reduc|increas|decreas|rais|lower)\\w*\\s(?:\\w+\\s){0,4})en|por|to|es|ser[aá]|sea|son|ser[aá]n|queda|quedar[aá]|pasa\\s+a|sube\\s+a|baja\\s+a|:|=|is|will\\s+be|be|now|should\\s+be)";
   const okClause = (c: string): boolean => {
     const q = change.quantity ? num(change.quantity) : "";
@@ -2951,7 +2983,7 @@ export function fullyUnderstood(text: string, change: { quantity?: number; budge
         new RegExp(`^${PRE}(?:${VERB}\\s+)?${FQ}\\s*(?:(?:de|from)\\s+${OLDQ}\\s+)?(?:${SET}\\s*)?(?:de\\s+)?${NQ}$`),
         new RegExp(`^${PRE}${VERB}(?:\\s+(?:la|lo|el|it|them|le))?(?:\\s+(?:a|en|to))?\\s+${NQ}$`),
         new RegExp(`^${PRE}${SETV}\\s+${NQ}$`),
-        new RegExp(`^${PRE}(?:(?:ahora|now|en\\s+total|in\\s+total|que)\\s+)?(?:son|ser[aá]n|sean|quiero|queremos|necesito|necesitamos|ocupo|ocupamos|pido|pedimos|compro|compramos|comprar[eé]|compraremos|vamos\\s+a\\s+(?:pedir|comprar|traer)|traeremos|i\\s+need|we\\s+need|i\\s+want|we\\s+want|i'?ll\\s+(?:buy|take|order)|we'?ll\\s+(?:buy|take|order|need)|it'?s|they'?re|it\\s+will\\s+be|they\\s+will\\s+be|make\\s+it)\\s+(?:de\\s+)?${NQ}$`),
+        new RegExp(`^${PRE}(?:(?:ahora|now|en\\s+total|in\\s+total|que)\\s+)?(?:son|ser[aá]n|sean|quiero|queremos|necesito|necesitamos|ocupo|ocupamos|pido|pedimos|compro|compramos|comprar[eé]|compraremos|vamos\\s+a\\s+(?:pedir|comprar|traer)|traeremos|i\\s+need|we\\s+need|i\\s+want|we\\s+want|i'?ll\\s+(?:buy|take|order)|we'?ll\\s+(?:buy|take|order|need)|it'?s|they'?re|it\\s+will\\s+be|they\\s+will\\s+be|make\\s+it)\\s+(?:de\\s+)?${NQ}(?:\\s+(?:en\\s+total|in\\s+total))?$`),
         new RegExp(`^${PRE}${NQ}$`),
         new RegExp(`^${PRE}(?:en\\s+total|in\\s+total|total)\\s*(?::\\s*)?(?:son\\s+|ser[aá]n\\s+)?${NQ}$`),
         // "son 3 compresores de 300 litros": the quantity with characteristics the case already has
@@ -3004,6 +3036,18 @@ export function fullyUnderstood(text: string, change: { quantity?: number; budge
       return true;
     });
   };
+  const notes: string[] = [];
+  // "son 4 unidades, cada una con tanque de 500 litros": what EACH unit has. Characteristics the case
+  // already has are a restatement; any other is reported as not added (the quantity is still clear)
+  const perUnit = (cl: string): boolean => {
+    if (!change.quantity) return false;
+    const m = cl.match(/^(?:cada\s+(?:una|uno)|each(?:\s+one)?|tod[oa]s|all\s+of\s+them)\s+(?:con|de|with|of|tiene|has|lleva)\s+(.{2,80})$/);
+    if (!m || /\b(?:no|ni|sin|not|without|o|u|or)\b/.test(m[1])) return false;
+    const prod = (change.product || "").toLowerCase();
+    const measures = [...m[1].matchAll(/(\d+(?:[.,]\d+)?)\s*([a-z]+)/g)];
+    if (!measures.length || measures.some((x) => !new RegExp(`(?<![\\d.,])${x[1].replace(".", "\\.")}\\s*${x[2]}\\b`).test(prod))) notes.push(m[1].trim());
+    return true;
+  };
   const valueHints: string[] = [];
   if (change.quantity) valueHints.push(String(change.quantity));
   if (change.budget) valueHints.push(String(Math.trunc(change.budget)));
@@ -3041,6 +3085,7 @@ export function fullyUnderstood(text: string, change: { quantity?: number; budge
       // the part that names the new product is read by the product parser
       if (change.productHead && has(cl, change.productHead) && !valueHints.some((h) => h && h !== change.productHead && has(cl, h))) continue;
       const carries = valueHints.some((h) => h && has(cl, h));
+      if (!carries && perUnit(cl)) continue;
       if (carries) {
         if (!okClause(cl)) return { ok: false, why: cl.slice(0, 60) };
       } else if (/\d/.test(cl)) {
@@ -3065,7 +3110,7 @@ export function fullyUnderstood(text: string, change: { quantity?: number; budge
       }
     }
   }
-  return { ok: true };
+  return notes.length ? { ok: true, note: notes.join("; ") } : { ok: true };
 }
 
 /** A product name that can be used as such (no question, link, joke, alternative or field data attached). */
@@ -3091,7 +3136,7 @@ export function cleanProductName(name: string): boolean {
  * word like "prueba" ("kit de prueba de pH") is untouched. The removed parts are returned.
  */
 const CONTROL_PART =
-  /\b(?:no\s+(?:se\s+)?(?:enviar|env[ií]e[sn]?|env[ií]o|mandar|mandes|registrar|registres|crear|generar|cotizar|contactar|notificar)\s+(?:(?:el|un|una|ning[uú]n|ninguna|este|esta|como)\s+)?(?:caso|lead|solicitud|cotizaci[oó]n|correo|email|mensaje|nada|pedido|prospecto)(?:\s+(?:comercial|real|a\s+seal|a\s+ventas))?|(?:esto\s+es\s+|es\s+|solo\s+|s[oó]lo\s+|just\s+|only\s+)?(?:una\s+|a\s+)?(?:prueba|test|testing|qa)(?:\s+(?:qa|interna|de\s+qa|t[eé]cnica|only|run|de\s+control))*|caso\s+(?:de\s+)?prueba|no\s+es\s+(?:un\s+)?(?:caso|pedido|lead|cliente)\s+real|(?:do\s+not|don'?t)\s+(?:send|submit|create|register|email)(?:\s+(?:a|the|any))?(?:\s+(?:commercial|real))?(?:\s+(?:case|lead|request|order|email))?|not\s+a\s+real\s+(?:case|lead|order|client)|ignorar\s+(?:este|el)\s+(?:caso|mensaje))\b/gi;
+  /\b(?:no\s+(?:se\s+)?(?:enviar|env[ií]e[sn]?|env[ií]o|mandar|mandes|registrar|registres|crear|generar|cotizar|contactar|notificar)\s+(?:(?:el|un|una|ning[uú]n|ninguna|este|esta|como)\s+)?(?:caso|lead|solicitud|cotizaci[oó]n|correo|email|mensaje|nada|pedido|prospecto)(?:\s+(?:comercial|real|a\s+seal|a\s+ventas))?|(?:esto\s+es\s+|es\s+|solo\s+|s[oó]lo\s+|just\s+|only\s+)?(?:una\s+|a\s+)?(?:prueba|test|testing|qa)(?:\s+(?:qa|interna|de\s+qa|t[eé]cnica|only|run|de\s+control))*|caso\s+(?:de\s+)?prueba|no\s+es\s+(?:un\s+)?(?:caso|pedido|lead|cliente)\s+real|(?:do\s+not|don'?t)\s+(?:send|submit|create|register|email)(?:\s+(?:a|the|any))?(?:\s+(?:commercial|real))?(?:\s+(?:case|lead|request|order|email))?|not\s+a\s+real\s+(?:case|lead|order|client)|ignorar\s+(?:este|el)\s+(?:caso|mensaje)|no\s+(?:enviar|mandar|env[ií]es|mandes)(?:\s+(?:todav[ií]a|a[uú]n|por\s+ahora))?|(?:do\s+not|don'?t)\s+send(?:\s+(?:yet|it))?)\b/gi;
 const STRONG_CONTROL =
   /\s*\b(?:no\s+(?:se\s+)?(?:enviar|env[ií]e[sn]?|mandar|mandes|registrar|registres)\s+(?:(?:el|un|una|ning[uú]n|ninguna|este|esta|como)\s+)?(?:caso|lead|solicitud|prospecto)\s+(?:comercial|real|a\s+seal)|(?:do\s+not|don'?t)\s+(?:send|submit|register)\s+(?:(?:a|the|any)\s+)?(?:commercial|real)\s+(?:case|lead|request))\b[.!]?/gi;
 export function stripControl(text: string): { text: string; removed: string[] } {
@@ -3240,7 +3285,7 @@ export function budgetChange(text: string): { value: number; currency: "USD" | "
   // "Q40,000": the thousands separator is read after the currency letter too
   const t = normalizeNumbers(` ${String(text || "").toLowerCase().replace(/[¿?¡!]/g, " ").replace(/\bq\.?(?=\d)/g, "q ")} `);
   if (HYPOTHETICAL.test(t.replace(POLITE, " "))) return null;
-  const m = t.match(/\b(?:presupuesto|budget)\b(?:\s+(?:de\s+compra|total|m[aá]ximo|disponible|purchase|for\s+the\s+purchase))?[^.;\d]{0,30}?(us\$|usd|\$|\bq\.?|gtq|quetzales)?\s*(\d+(?:\.\d{1,2})?)(?!\d)\s*(d[oó]lares|usd|quetzales|gtq)?/);
+  const m = t.match(/\b(?:presupuesto|budget)\b(?:\s+(?:de\s+compra|total|m[aá]ximo|disponible|purchase|for\s+the\s+purchase)){0,2}[^.;\d]{0,30}?(us\$|usd|\$|\bq\.?|gtq|quetzales)?\s*(\d+(?:\.\d{1,2})?)(?!\d)\s*(d[oó]lares|dollars|usd|quetzales|gtq)?/);
   if (!m) return null;
   // "no cambies el presupuesto, son 3 unidades": the number belongs to something else
   const between = m[0].slice(0, m[0].lastIndexOf(m[2]));
@@ -3295,6 +3340,24 @@ function caseLine(c: NonNullable<ReplySpec["caseNow"]>): string {
   );
 }
 
+/** A number or a case field in a message that changed nothing: the value was not read with certainty. */
+function valueNotRead(text: string): boolean {
+  const t = String(text || "").toLowerCase();
+  NUM_SEQ.lastIndex = 0;
+  const hasNum = /\d/.test(t) || [...t.matchAll(NUM_SEQ)].some((m) => (wordsToNumber(m[0].trim()) || 0) >= 2);
+  return hasNum && /\b(?:cantidad|quantity|presupuesto|budget|unidades?|units?|piezas?|pieces?|d[oó]lares|dollars|usd|us\$|son|ser[aá]n|serían|cada\s+una|cada\s+uno|each)\b|us\$/.test(t);
+}
+/** A piece of information about the purchase ("es para uso industrial; no tengo marca"), not a greeting or a request for help. */
+function isStatement(text: string): boolean {
+  const t = String(text || "").toLowerCase().trim();
+  const words = t.split(/\s+/).filter((w) => /[a-záéíóúüñ]/.test(w));
+  return words.length >= 4 && !/^(?:hola|buen[oa]s|gracias|ok|okay|necesit\w*|quiero|quisiera|ayud\w*|me\s+gustar[ií]a|por\s+favor|hello|hi|thanks|i\s+(?:need|want|would)|help|please)\b/.test(t);
+}
+/** A question (mark or question word), as opposed to a statement. */
+function isQuestion(text: string): boolean {
+  const t = String(text || "").toLowerCase().trim();
+  return /[?¿]/.test(t) || /^(?:qu[eé]|c[oó]mo|cu[aá]nt\w*|cu[aá]l\w*|d[oó]nde|cu[aá]ndo|qui[eé]n\w*|por\s*qu[eé]|puedo|pueden|podr[ií]a\w*|tienen|hay|es\s+posible|se\s+puede|how|what|which|where|when|who|why|can|could|do|does|is|are)\b/.test(t);
+}
 export function buildReply(r: ReplySpec): string {
   if (r.formUpdate)
     return Lx(
@@ -3433,6 +3496,12 @@ export function buildReply(r: ReplySpec): string {
         : "",
       r.qtyConflict ? Lx(`No cambié la cantidad: dices ${r.qtyConflict.said.toLocaleString("en-US")} y tu caso tiene ${r.qtyConflict.inCase.toLocaleString("en-US")}; dime cuál es la correcta.`, `I didn't change the quantity: you say ${r.qtyConflict.said.toLocaleString("en-US")} and your case has ${r.qtyConflict.inCase.toLocaleString("en-US")}; tell me which one is right.`) : "",
       r.budgetAsk ? Lx("No cambié el presupuesto: en el formulario va en dólares (US$); ¿me lo indicas en US$?", "I didn't change the budget: the form uses US dollars (US$); can you give it in US$?") : "",
+      r.detailNote
+        ? Lx(
+            `No agregué «${r.detailNote}» a la descripción del producto: si cada unidad debe llevarlo, corrígelo en el formulario o dime «cambia la descripción a …».`,
+            `I didn't add "${r.detailNote}" to the product description: if each unit must have it, correct it in the form or tell me "change the description to …".`,
+          )
+        : "",
     ].filter(Boolean).join(" ");
     if (!changes.length)
       return extra
@@ -3531,7 +3600,7 @@ export function buildReply(r: ReplySpec): string {
     q = r.reask;
     kinds = replyKinds(q).filter((k) => k === "certificate");
   }
-  if (!kinds.length && !r.newProduct && r.confirmProduct === undefined) kinds = ["general"];
+  if (!kinds.length && !r.newProduct && r.confirmProduct === undefined) kinds = [valueNotRead(q) ? "unclearValue" : isQuestion(q) || !isStatement(q) ? "general" : "noted"];
   // the price and budget of a calculation are answered with it: no generic cost paragraph
   if (kinds.includes("math") && mathMoney(q)) kinds = kinds.filter((k) => k !== "cost");
   kinds.forEach((k, i) => {
@@ -3744,7 +3813,7 @@ export function nextSpec(
   const newBudget = (bRaw && !budgetAsk && bRaw.value !== caseBudget ? bRaw.value : undefined) ?? budgetOfNewProduct;
   // a message that updates fields of the case names no new product (its nouns are the same product)
   const budgetClear = !mathText && !hypo && /\b(?:quit\w*|elimin\w*|borr\w*|remove|delete)\s+(?:el\s+|mi\s+|the\s+)?(?:presupuesto|budget)\b|\bsin\s+presupuesto\b|\bno\s+tengo\s+presupuesto\b/i.test(text) && !!caseBudget;
-  const fieldMsg = !changedTo && !hypo && !mathText && !!(fix || qc0 || newBudget || budgetAsk || askNumber || qtyConflict || qtySame || restated || askRelative || qtyInvalid || budgetClear || (bRaw && keepRest));
+  const fieldMsg = !changedTo && !hypo && !mathText && !!(fix || qc0 || newBudget || budgetAsk || askNumber || qtyConflict || qtySame || restated || askRelative || qtyInvalid || budgetClear || (bRaw && keepRest) || (bRaw && !budgetAsk && !!caseBudget && bRaw.value === caseBudget));
   // "¿y si fueran 5 unidades?", "suponiendo un presupuesto de US$6,000": answered without changing the case
   const caseUnits = new Set([...String(caseProduct || "").matchAll(new RegExp(MEASURE, "gi"))].map((m) => UNIT_KEY(m[2])));
   const hypoCase =
@@ -3896,6 +3965,7 @@ export function nextSpec(
       const productHead = productStated ? (spec.newProduct!.toLowerCase().match(/[a-záéíóúüñ]{4,}/) || [""])[0] : undefined;
       const fu = fullyUnderstood(text, { quantity: productStated ? undefined : spec.newQuantity, budget: spec.newBudget, budgetClear: spec.budgetClear, fixTo: spec.attrFix?.to, fixFrom: spec.attrFix?.from, product: spec.attrFix ? spec.newProduct || fix?.description || caseProduct : productStated ? spec.newProduct : caseProduct, head, productHead, current: { quantity: caseQty || undefined, budget: caseBudget || undefined } }, ban.spans);
       if (!fu.ok) unsure.push(`unparsed:${fu.why}`);
+      else if (fu.note) spec.detailNote = fu.note;
       if (spec.newProduct && !spec.attrFix && !cleanProductName(spec.newProduct)) unsure.push(`product:${spec.newProduct.slice(0, 40)}`);
       // the SAME product described again must not silently lose characteristics the case has
       // ("ahora son 7 compresores, gracias" is not a new description without 220 V, 60 Hz…)
