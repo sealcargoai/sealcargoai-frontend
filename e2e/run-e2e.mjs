@@ -12,7 +12,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.10.30-d";
+const EXPECT_VERSION = "2026.10.30-e";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
@@ -521,6 +521,84 @@ try {
       "B97 doble clic en «Sí, enviar a SEAL»: un solo caso, con cantidad 7 y US$5,000",
       n2 === 1 && String(body.quantity) === "7" && /5,?000/.test(String(body.budget)),
       `${n2} ${JSON.stringify({ q: body.quantity, b: body.budget })}`,
+    );
+    await ctx.close();
+  }
+  {
+    // validación final sobre 30-d · B99-B103: límite de 1,500 caracteres, error de búsqueda al cambiar de
+    // idioma y la respuesta a «¿es para el cálculo o para tu caso?»
+    const { ctx, page } = await newPage("es");
+    await page.goto(`${BASE}/?qa=1`);
+    const D = (n) => "PRUEBA botellas de vidrio de 500 ml con tapa metálica para salsa picante. ".repeat(40).slice(0, n - 1) + "x";
+    const hero = page.locator("form input[type=text]").first();
+    await hero.fill(D(1600));
+    const heroMsg = await page.locator("[role=alert]").first().innerText();
+    const heroBtn = await page
+      .getByRole("button", { name: /Comenzar/ })
+      .first()
+      .isDisabled();
+    const heroLen = await hero.inputValue();
+    await hero.fill(D(1500));
+    const heroBtn1500 = await page
+      .getByRole("button", { name: /Comenzar/ })
+      .first()
+      .isDisabled();
+    check(
+      "B99 inicio: 1,600 caracteres no se cortan, se bloquea y se dice cuánto sobra; 1,500 pasa",
+      heroLen.length === 1600 && heroBtn && /te pasaste por 100 caracteres/.test(heroMsg) && !heroBtn1500,
+      `${heroLen.length} ${heroBtn} ${heroBtn1500} ${heroMsg.slice(0, 80)}`,
+    );
+    await startCase(page, "4", "5000");
+    await page.goto(`${BASE}/qualify`);
+    await page.waitForSelector("text=Paso");
+    for (let i = 0; i < 3 && (await page.locator("textarea").count()) === 0; i++) await page.getByRole("button", { name: /Anterior/ }).click();
+    const ta = page.locator("textarea");
+    const P0 = await ta.inputValue();
+    await ta.fill(D(1501));
+    await page.getByRole("button", { name: /Siguiente Paso/ }).click({ force: true });
+    const formStep = (await page.locator("body").innerText()).match(/Paso \d de 3/)?.[0];
+    const formMsg = await page.locator("[role=alert]").first().innerText();
+    await ta.fill(D(1500));
+    await page.getByRole("button", { name: /Siguiente Paso/ }).click();
+    const formStep1500 = (await page.locator("body").innerText()).match(/Paso \d de 3/)?.[0];
+    check(
+      "B100 formulario: 1,501 bloquea con «te pasaste por 1 carácter»; 1,500 avanza",
+      formStep === "Paso 1 de 3" && /te pasaste por 1 carácter/.test(formMsg) && formStep1500 === "Paso 2 de 3",
+      `${formStep} ${formStep1500} ${formMsg.slice(0, 80)}`,
+    );
+    await page.getByRole("button", { name: /Anterior/ }).click();
+    await page.locator("textarea").fill(P0);
+    await page.evaluate(() =>
+      localStorage.setItem("sealcargo_user_data", JSON.stringify({ userId: "user_e2e", email: "qa-prueba@example.com", name: "PRUEBA QA", searchCount: 0, searches: [], limitReached: false })),
+    );
+    for (let i = 0; i < 3 && (await page.getByRole("button", { name: /Consultar referencias/ }).count()) === 0; i++) await page.getByRole("button", { name: /Siguiente Paso/ }).click();
+    await page.getByRole("button", { name: /Consultar referencias/ }).click();
+    await page.getByRole("button", { name: /Pedir a SEAL que revise mi caso/ }).waitFor({ timeout: 15000 });
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((x) => x.innerText.trim() === "EN").click());
+    await page.waitForTimeout(400);
+    const alertEn = await page.locator("[role=alert]").first().innerText();
+    check("B101 el error de búsqueda en pantalla cambia a inglés con el idioma", /Your data is still here/.test(alertEn) && !/Tus datos/.test(alertEn), alertEn.slice(0, 120));
+    await page.evaluate(() => [...document.querySelectorAll("button")].find((x) => x.innerText.trim() === "ES").click());
+    await startCase(page, "600", "4500");
+    await say(page, "Si compro 500 botellas en cajas de 12, ¿cuántas cajas serían?");
+    const a1 = await say(page, "Son 700");
+    const c1 = caseOf(await state(page));
+    const a2 = await say(page, "es para mi caso");
+    const c2 = caseOf(await state(page));
+    check(
+      "B102 «Son 700» tras un cálculo se pregunta; «es para mi caso» → cantidad 700 en chat y formulario",
+      /cálculo anterior/.test(a1) && c1.q === "600" && c2.q === "700" && c2.mq === "700" && c2.sync,
+      `${c1.q}→${c2.q} ${a2.slice(0, 60)}`,
+    );
+    const a3 = await say(page, "Mi presupuesto de compra ahora es de cinco mil dólares");
+    const c3 = caseOf(await state(page));
+    await page.reload();
+    await page.waitForSelector("input[type=text]");
+    const c4 = caseOf(await state(page));
+    check(
+      "B103 «ahora es de cinco mil dólares» → US$5,000; tras recargar se conserva",
+      c3.b === "5000" && c4.q === "700" && c4.b === "5000" && c4.sync,
+      `${JSON.stringify([c3.b, c4.q, c4.b])} ${a3.slice(0, 50)}`,
     );
     await ctx.close();
   }
