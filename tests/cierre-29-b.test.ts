@@ -1379,6 +1379,9 @@ describe("R38.5 · negaciones y frases de control", () => {
       expect(f.control.length).toBeGreaterThan(0);
       expect(f.product).not.toMatch(/enviar|caso|comercial|prueba|qa/i);
     });
+  it("la misma nota escrita dos veces se informa una vez", () => {
+    expect(requestFacts("PRUEBA QA – No enviar caso comercial. Quiero importar 4 compresores de tornillo. No enviar caso comercial.").control).toEqual(["PRUEBA QA", "No enviar caso comercial"]);
+  });
   it("un producto que contiene «prueba» no se recorta", () => {
     expect(requestFacts("Quiero importar 10 kits de prueba de pH").product).toBe("kits de prueba de pH");
   });
