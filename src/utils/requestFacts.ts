@@ -5,7 +5,7 @@
 // Here the request is split into those fields with the SAME rules the chat applies: a value is
 // taken only when it is exact and valid (whole units 1..10,000,000; a plain US$ amount up to
 // US$100,000,000). Anything doubtful is left out of the case and reported, never guessed.
-import { valueTokenIssue, notationIssue, validQuantity } from "./chatReply";
+import { valueTokenIssue, notationIssue, validQuantity, stripControl } from "./chatReply";
 
 export interface RequestFacts {
   product: string;
@@ -13,6 +13,8 @@ export interface RequestFacts {
   budget?: number;
   /** values written in the request that were NOT taken (shown to the client, never applied) */
   issues: { field: "quantity" | "budget"; raw: string; why: "decimal" | "zero" | "max" | "format" | "ambiguous" | "currency" }[];
+  /** notes for testers removed from the request ("No enviar caso comercial", "PRUEBA QA"): never case data */
+  control: string[];
 }
 
 const INTRO =
@@ -27,7 +29,9 @@ function plainInt(raw: string): number | undefined {
 }
 
 export function requestFacts(text: string): RequestFacts {
-  const original = String(text || "").trim();
+  // notes for the people testing ("PRUEBA QA – No enviar caso comercial") are not part of the case
+  const control = stripControl(String(text || "").trim());
+  const original = control.text.trim();
   let rest = original;
   const issues: RequestFacts["issues"] = [];
   let budget: number | undefined;
@@ -35,7 +39,7 @@ export function requestFacts(text: string): RequestFacts {
 
   // ── budget clause: "con un presupuesto de US$5,000", ", presupuesto: 5000 dólares", "budget US$5,000"
   const bRe =
-    /(?:[,;.]\s*|\s+(?:y|e|con|and|with)\s+|^)(?:(?:un|mi|el|nuestro|a|my|our|the)\s+)?(?:presupuesto|budget)(?:\s+(?:de\s+compra|total|m[aá]ximo|disponible|aproximado|of\s+purchase|for\s+the\s+purchase))?\s*(?:de|es|ser[aá]|of|is|:|=)?\s*(?:de\s+)?((?:unos|unas|aprox\w*|about|around|alrededor\s+de|hasta|m[aá]ximo|up\s+to)\s+)?(us\s?\$|usd|\$|q\.?\s?|gtq|€|eur)?\s*([\d][\d.,]*(?:\s*[a-z]+)?)?\s*(usd|d[oó]lares|dollars|quetzales|gtq|euros?|pesos|mxn)?(?=[\s,;.!?)]|$)/i;
+    /(?:[,;.]\s*|\s+(?:y|e|con|and|with)\s+|^)(?:(?:un|mi|el|nuestro|a|my|our|the)\s+)?(?:presupuesto|budget)(?:\s+(?:de\s+compra|total|m[aá]ximo|disponible|aproximado|of\s+purchase|for\s+the\s+purchase))?\s*(?:de|es|ser[aá]|of|is|:|=)?\s*(?:de\s+)?((?:unos|unas|aprox\w*|about|around|alrededor\s+de|hasta|m[aá]ximo|up\s+to)\s+)?(us\s?\$|usd|\$|q\.?\s?|gtq|€|eur)?\s*(\d(?:[\d.,]*\d)?(?:e[+-]?\d+)?(?:\s*(?:k|mil|millones?|mill[oó]n|mm|m)(?![a-záéíóúüñ]))?)?\s*(usd|d[oó]lares|dollars|quetzales|gtq|euros?|pesos|mxn)?(?=[\s,;.!?)]|$)/i;
   const bm = rest.match(bRe);
   if (bm) {
     const approx = !!bm[1];
@@ -90,5 +94,5 @@ export function requestFacts(text: string): RequestFacts {
     .trim();
   // too little left to be a description: the request text (without the budget clause) is kept
   if ((product.match(/[a-záéíóúüñ]{3,}/gi) || []).length < 1) product = rest.replace(/^[\s,;:.-]+|[\s,;:.-]+$/g, "").trim() || original;
-  return { product, ...(quantity ? { quantity } : {}), ...(budget ? { budget } : {}), issues };
+  return { product, ...(quantity ? { quantity } : {}), ...(budget ? { budget } : {}), issues, control: control.removed };
 }
