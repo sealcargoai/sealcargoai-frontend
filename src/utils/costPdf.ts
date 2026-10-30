@@ -8,7 +8,7 @@ import jsPDF from "jspdf";
 import { differencesHeading, differencesFootnote } from "./differences";
 import autoTable from "jspdf-autotable";
 import { drawCompanyInfoBox, drawCompanyFooter } from "./reportExports";
-import { formatQ, formatUSD, formatUnitUSD, formatUnitQ, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
+import { formatQ, formatQCents, formatQTotal, formatUSD, formatUnitUSD, formatUnitQ, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
@@ -194,7 +194,7 @@ function drawCostPdf(d: CostPdfInput, tight: boolean): any {
       return [
         l.label,
         pending ? Lx("Por cotizar", "To be quoted") : l.detail,
-        pending ? Lx("Por cotizar", "To be quoted") : formatQ(l.amount, fx, 2),
+        pending ? Lx("Por cotizar", "To be quoted") : formatQCents(l.amount, fx),
         pending || !(d.costs.totalCost > 0) ? "-" : `${((l.amount / d.costs.totalCost) * 100).toFixed(1)}%`,
       ];
     }),
@@ -203,7 +203,7 @@ function drawCostPdf(d: CostPdfInput, tight: boolean): any {
         ? Lx("TOTAL PARCIAL, SIN FLETE", "PARTIAL TOTAL, WITHOUT FREIGHT")
         : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA"),
       `${d.quantity.toLocaleString("en-US")} ${unitWordFor(d.costs.saleUnit, d.quantity)}`,
-      formatQ(d.costs.totalCost, fx, 2),
+      formatQTotal(d.costs, fx),
       "100%",
     ]],
     headStyles: { fillColor: [11, 60, 93], textColor: 255, fontStyle: "bold" },
