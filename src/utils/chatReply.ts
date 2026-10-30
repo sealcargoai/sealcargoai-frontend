@@ -3125,6 +3125,14 @@ export function stripControl(text: string): { text: string; removed: string[] } 
   joined = joined.replace(STRONG_CONTROL, (m) => (removed.push(m.trim()), " "));
   STRONG_CONTROL.lastIndex = 0;
   if (!removed.length) return { text: String(text || ""), removed };
+  // the same note written twice is reported once
+  const seen = new Set<string>();
+  const unique = removed.filter((x) => {
+    const k = x.toLowerCase().replace(/\s+/g, " ");
+    return seen.has(k) ? false : (seen.add(k), true);
+  });
+  removed.length = 0;
+  removed.push(...unique);
   const out = joined
     .replace(/\s+/g, " ")
     .replace(/^[\s,;:.–—-]+/, "")
