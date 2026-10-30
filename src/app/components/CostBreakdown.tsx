@@ -50,6 +50,7 @@ import {
   calculateCosts,
   useRates,
   formatQ,
+  formatQCents,
   formatUSD, formatUnitUSD, formatUnitQ,
   estimateNote,
   scenarioVariables,
@@ -798,7 +799,7 @@ export function CostBreakdown() {
               </div>
               <div className="text-right sm:text-right ml-13 sm:ml-0 flex-shrink-0">
                 <div className="text-xl sm:text-2xl font-bold text-[#0B3C5D]">
-                  {item.pending ? L("Por cotizar", "To be quoted") : Q(item.amount, 2)}
+                  {item.pending ? L("Por cotizar", "To be quoted") : formatQCents(item.amount, costs.exchangeRate)}
                 </div>
                 <div className="text-xs sm:text-sm text-slate-600">
                   {item.displayPercent}
