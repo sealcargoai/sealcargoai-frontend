@@ -4,10 +4,15 @@ import { router } from "./routes";
 import { LanguageProvider } from "./context/LanguageContext";
 import { Lx } from "../utils/lang";
 import { track } from "../utils/funnel";
+import { SANDBOX } from "../utils/sandbox";
 
 // Shown small in the corner so testers can tell which version they are seeing.
 // Update it with each published change.
-export const APP_VERSION = "2026.10.29-a";
+export const APP_VERSION = "2026.10.29-b";
+// The commit this build was made from (Vercel sets it at build time; "local" otherwise), shown with
+// the version so a test can always tell which code it ran against.
+declare const __APP_COMMIT__: string;
+export const APP_COMMIT = typeof __APP_COMMIT__ === "string" ? __APP_COMMIT__ : "local";
 
 // Name of the main script this tab is running (it changes with every deploy)
 function currentBundle(): string {
@@ -91,9 +96,14 @@ export default function App() {
     <LanguageProvider>
       <RouterProvider router={router} />
       <NewVersionBanner />
+      {SANDBOX && (
+        <div role="status" className="fixed bottom-2 left-2 z-[100] rounded-md bg-amber-300 text-amber-950 text-[11px] font-semibold px-2 py-1 shadow">
+          {Lx("ENTORNO DE PRUEBA · no se envían solicitudes, correos ni eventos", "TEST ENVIRONMENT · no requests, emails or events are sent")}
+        </div>
+      )}
       {/* at the end of the page (not floating), so it never covers content */}
       <div aria-hidden="true" className="text-[10px] text-slate-400 text-right px-3 py-1 select-none bg-slate-50">
-        v{APP_VERSION}
+        v{APP_VERSION} · {APP_COMMIT}
       </div>
     </LanguageProvider>
   );
