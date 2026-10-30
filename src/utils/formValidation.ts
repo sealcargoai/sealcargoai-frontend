@@ -35,7 +35,7 @@ export function fieldError(name: string, value: string): string {
     case "productType":
       // what gets searched is the cleaned text (sentences addressed to the tool are left out)
       if (!descriptionIsDetailed(v) || !descriptionIsDetailed(cleanDescription(v).text)) return descriptionDetailMessage();
-      if (v.length > LIMITS.productMax) return Lx(`Máximo ${LIMITS.productMax.toLocaleString("en-US")} caracteres.`, `Maximum ${LIMITS.productMax.toLocaleString("en-US")} characters.`);
+      if (v.length > LIMITS.productMax) return overLimitMessage(v.length, LIMITS.productMax);
       return "";
     case "quantity":
       if (!v) return Lx("La cantidad es obligatoria.", "Quantity is required.");
@@ -61,4 +61,12 @@ export function fieldError(name: string, value: string): string {
   return "";
 }
 
-
+/** 30-e: over the limit, say by how much (the field no longer cuts a pasted text silently). */
+export function overLimitMessage(length: number, max: number): string {
+  const over = Math.max(0, length - max);
+  const f = (n: number) => n.toLocaleString("en-US");
+  return Lx(
+    `Máximo ${f(max)} caracteres: te pasaste por ${f(over)} ${over === 1 ? "carácter" : "caracteres"}. Reduce la descripción para continuar.`,
+    `Maximum ${f(max)} characters: you are ${f(over)} ${over === 1 ? "character" : "characters"} over. Shorten the description to continue.`,
+  );
+}
