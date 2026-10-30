@@ -101,6 +101,8 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
         ? L("La cantidad de tu caso no es válida (debe ser un número entero de 1 a 10,000,000). Corrígela en el chat o en el formulario y vuelve a enviar.", "Your case quantity is not valid (it must be a whole number from 1 to 10,000,000). Correct it in the chat or the form and send again.")
         : r.status === 400 && /^budget_/.test(r.error || "")
         ? L("El presupuesto de tu caso no es válido (mayor a US$0 y hasta US$100,000,000). Corrígelo y vuelve a enviar.", "Your case budget is not valid (above US$0 and up to US$100,000,000). Correct it and send again.")
+        : r.status === 400 && r.error === "invalid_fields"
+        ? L("Algunos datos del caso no tienen un formato válido. Revisa el formulario y vuelve a enviar.", "Some case data is not in a valid format. Check the form and send again.")
         : r.status === 400
         ? L("Revisa tu nombre y correo (por ejemplo nombre@empresa.com).", "Check your name and email (for example name@company.com).")
         : r.status === 429

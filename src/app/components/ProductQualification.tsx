@@ -4,8 +4,7 @@ import { inferCategory } from "../../utils/category";
 import { quantityWord } from "../../utils/saleUnit";
 import { plainNumber } from "../../utils/plainNumber";
 import { useState, useEffect, useRef } from "react";
-import { DRAFT_KEY, saveProduct } from "../../utils/draft";
-import { formStart } from "../../utils/caseStore";
+import { formStart, saveFormDraft, caseVersion } from "../../utils/caseStore";
 import { fieldError, LIMITS } from "../../utils/formValidation";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
 import { useNavigate, useLocation } from "react-router";
@@ -89,13 +88,21 @@ export function ProductQualification() {
     ...start.formData,
   });
 
+  // The draft is saved through the case store (one transaction with the case SEAL receives, with
+  // the case's version). The form remembers the version it last saved or loaded: if the case moved
+  // since (a newer write from elsewhere), this screen does not overwrite it — it reloads it.
+  const savedRev = useRef<number>(caseVersion().rev);
   useEffect(() => {
-    try {
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify({ formData, step, prev: stale }));
-      saveProduct(formData.productType);
-    } catch {
-      /* storage unavailable */
+    const r = saveFormDraft(formData, step, stale, savedRev.current);
+    if (r.conflict) {
+      const fresh = formStart("");
+      savedRev.current = caseVersion().rev;
+      setFormData((f) => ({ ...f, ...fresh.formData }));
+      setStale(fresh.stale);
+      setStep(fresh.step);
+      return;
     }
+    savedRev.current = r.version.rev;
   }, [formData, step, stale]);
 
   const errors = {
