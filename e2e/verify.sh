@@ -18,7 +18,7 @@ step "frontend: closure matrix (test:cierre)" npm run -s test:cierre
 step "frontend: audit 29-a suite (test:audit)" npm run -s test:audit
 step "frontend: acceptance matrix (test:acceptance)" npm run -s test:acceptance
 step "frontend: types (tsc --strict)" bash -c "npx -y -p typescript@5 tsc --noEmit --strict --jsx react-jsx --module esnext --target es2022 --moduleResolution bundler --skipLibCheck --allowImportingTsExtensions --resolveJsonModule --types vite/client src/main.tsx 2>&1 | grep -v 'TS7016\|TS2307\|Try .npm' | grep 'error' && exit 1 || exit 0"
-step "frontend: format (prettier, files of this closure)" npx -y prettier@3.3.3 --config .prettierrc.cierre.json --check tests/cierre-29-b.test.ts tests/chat-component-29-b.test.tsx tests/sandbox-29-b.test.ts e2e/run-e2e.mjs src/utils/sandbox.ts src/utils/chatCase.ts
+step "frontend: format (prettier, files of this closure)" npx -y prettier@3.3.3 --config .prettierrc.cierre.json --check tests/cierre-29-b.test.ts tests/chat-component-29-b.test.tsx tests/sandbox-29-b.test.ts e2e/run-e2e.mjs src/utils/sandbox.ts src/utils/chatCase.ts src/utils/requestFacts.ts
 step "frontend: whitespace (git diff --check vs base)" git diff --check cf8768c HEAD
 step "frontend: production build" npm run -s build
 step "frontend: production build has GTM and no sandbox banner active" bash -c "grep -q googletagmanager dist/index.html"
