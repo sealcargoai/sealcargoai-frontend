@@ -2483,6 +2483,8 @@ export interface ReplySpec {
   heldStale?: boolean; // "sí" arrived after the case changed: the proposal is asked again, not applied
   forbidden?: CaseField[]; // fields the client said not to change ("do not update the quantity to 8")
   fromMismatch?: { said: number; inCase: number; to: number }; // "de 7 a 8" with 4 in the case
+  askContext?: { item: string; product: string };
+  controlOnly?: boolean; // the message was only a note for testers ("no enviar caso comercial") // a bare number after a calculation: the calculation or the case?
   unsure?: string[]; // a change with a negation, condition, deferral or question not understood: proposed, not applied
   heldApplied?: boolean; // "sí, aplícalo" after a held proposal
   persistFailed?: boolean; // the change could not be saved: nothing was changed
@@ -3072,10 +3074,83 @@ export function cleanProductName(name: string): boolean {
   if (!n || /[?¿@]|https?:|www\.|\.com\b/.test(n)) return false;
   if (/[()]|\b(?:gracias|thanks?|please|por\s+favor|porfa|aprox\w*|approx\w*|otro\s+pedido|other\s+order|para\s+(?:el|la)\s+(?:otr|pr[oó]xim|siguient)\w*|ayer|yesterday|jaja\w*|jeje\w*|lol|xd|broma|kidding|joke|cantidad|presupuesto|quantity|budget|correo|email|tel[eé]fono|whatsapp|requisitos|decime|dime|d[ií]game|cu[aá]nto|ma[ñn]ana|despu[eé]s|luego|later)\b/.test(n)) return false;
   if (/\s(?:o|u|or)\s/.test(n)) return false;
+  // a correction or an instruction is not a product name ("Corrijo: son 6 compresores", "actualiza la cantidad")
+  if (/^(?:corrijo|correcci[oó]n|corregir|corrige|perd[oó]n|disculpa|ok|okay|bueno|mejor|no|s[ií]|son|es|ser[aá]n?|ser[ií]an?|fueran|quiero|queremos|quisiera|necesito|necesitamos|cambia|cambie|cambiar|actualiza|actualice|actualizar|pon|ponle|deja|dejar|mant[eé]n|conserva|agrega|a[ñn]ade|quita|elimina|borra|confirmo|confirma|correct(?:ion)?|sorry|actually|make\s+it|change|update|set|keep|it'?s|they\s+are|i\s+(?:want|need))(?![a-záéíóúüñ0-9])/.test(n)) return false;
+  if (/\b(?:son|ser[ií]an?|ser[aá]n|fueran|are|would\s+be)\s+\d/.test(n)) return false;
+  CONTROL_PART.lastIndex = 0;
+  if (CONTROL_PART.test(n) && (CONTROL_PART.lastIndex = 0, /\b(?:no\s+(?:se\s+)?(?:enviar|mandar|registrar)|do\s+not|don'?t|qa)\b/.test(n))) return false;
   if (/^(?:\d+\s*)?(?:v|hz|l|litros?|liters?|kg|hp|kw|unidades?|units?|piezas?|pieces?)$/.test(n)) return false;
   const words = n.match(/[a-záéíóúüñ]{4,}/g) || [];
   if (!words.length || words.every((w) => /^(?:otro|otra|otros|otras|algo|cosa|cosas|esto|esos|esas|eso|este|esta|something|other|stuff|thing|things|xxxx*)$/.test(w))) return false;
   return true;
+}
+/**
+ * Control notes written for the people testing or reviewing ("No enviar caso comercial", "PRUEBA QA",
+ * "(test, do not send)"): they are not part of the case. A sentence or bracketed part made ONLY of such
+ * vocabulary is removed before anything is read from the message; a product that merely contains a
+ * word like "prueba" ("kit de prueba de pH") is untouched. The removed parts are returned.
+ */
+const CONTROL_PART =
+  /\b(?:no\s+(?:se\s+)?(?:enviar|env[ií]e[sn]?|env[ií]o|mandar|mandes|registrar|registres|crear|generar|cotizar|contactar|notificar)\s+(?:(?:el|un|una|ning[uú]n|ninguna|este|esta|como)\s+)?(?:caso|lead|solicitud|cotizaci[oó]n|correo|email|mensaje|nada|pedido|prospecto)(?:\s+(?:comercial|real|a\s+seal|a\s+ventas))?|(?:esto\s+es\s+|es\s+|solo\s+|s[oó]lo\s+|just\s+|only\s+)?(?:una\s+|a\s+)?(?:prueba|test|testing|qa)(?:\s+(?:qa|interna|de\s+qa|t[eé]cnica|only|run|de\s+control))*|caso\s+(?:de\s+)?prueba|no\s+es\s+(?:un\s+)?(?:caso|pedido|lead|cliente)\s+real|(?:do\s+not|don'?t)\s+(?:send|submit|create|register|email)(?:\s+(?:a|the|any))?(?:\s+(?:commercial|real))?(?:\s+(?:case|lead|request|order|email))?|not\s+a\s+real\s+(?:case|lead|order|client)|ignorar\s+(?:este|el)\s+(?:caso|mensaje))\b/gi;
+const STRONG_CONTROL =
+  /\s*\b(?:no\s+(?:se\s+)?(?:enviar|env[ií]e[sn]?|mandar|mandes|registrar|registres)\s+(?:(?:el|un|una|ning[uú]n|ninguna|este|esta|como)\s+)?(?:caso|lead|solicitud|prospecto)\s+(?:comercial|real|a\s+seal)|(?:do\s+not|don'?t)\s+(?:send|submit|register)\s+(?:(?:a|the|any)\s+)?(?:commercial|real)\s+(?:case|lead|request))\b[.!]?/gi;
+export function stripControl(text: string): { text: string; removed: string[] } {
+  const removed: string[] = [];
+  const isControl = (part: string) => {
+    const rest = part.replace(CONTROL_PART, " ").replace(/\b(?:por\s+favor|please|favor|gracias|thanks|nota|note|importante|important|aviso)\b/gi, " ").replace(/[\s\p{P}\p{S}]+/gu, " ").trim();
+    return CONTROL_PART.test(part) && (CONTROL_PART.lastIndex = 0, !/[a-záéíóúüñ\d]/i.test(rest));
+  };
+  let t = String(text || "");
+  // bracketed notes: "(prueba QA, no enviar caso comercial)"
+  t = t.replace(/[(\[]([^()\[\]]{2,120})[)\]]/g, (m, inner) => (isControl(inner) ? (removed.push(inner.trim()), " ") : m));
+  // sentences, comma / dash / colon separated parts: "PRUEBA QA – no enviar caso comercial: 4 compresores…".
+  // Separators of the parts that stay are kept, so the rest of the message reads exactly as written.
+  const tokens = t.split(/((?<=[.!?;])\s+|\s+[–—-]+\s+|(?<=\S)\s*:\s+|\s*\n+\s*|\s*,\s*)/);
+  const keep: boolean[] = tokens.map(() => true);
+  for (let i = 0; i < tokens.length; i += 2) {
+    const p = tokens[i];
+    CONTROL_PART.lastIndex = 0;
+    if (p.trim() && isControl(p)) {
+      removed.push(p.trim().replace(/[.;:!,]+$/, ""));
+      keep[i] = false;
+      // drop the separator before it (or after it, when it opens the message)
+      if (i > 0) keep[i - 1] = false;
+      else if (i + 1 < tokens.length) keep[i + 1] = false;
+    }
+  }
+  CONTROL_PART.lastIndex = 0;
+  // "no enviar caso comercial" / "do not send a commercial case" written inside a sentence, without
+  // punctuation around it: never product data, removed wherever it is
+  let joined = tokens.filter((_, i) => keep[i]).join("");
+  joined = joined.replace(STRONG_CONTROL, (m) => (removed.push(m.trim()), " "));
+  STRONG_CONTROL.lastIndex = 0;
+  if (!removed.length) return { text: String(text || ""), removed };
+  // the same note written twice is reported once
+  const seen = new Set<string>();
+  const unique = removed.filter((x) => {
+    const k = x.toLowerCase().replace(/\s+/g, " ");
+    return seen.has(k) ? false : (seen.add(k), true);
+  });
+  removed.length = 0;
+  removed.push(...unique);
+  const out = joined
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,;:.–—-]+/, "")
+    .trim();
+  return { text: out, removed };
+}
+
+/** The item words of a calculation ("lápices" in "500 lápices en cajas de 12"). */
+function calcItems(mathText: string): string[] {
+  return (String(mathText || "").toLowerCase().match(/[a-záéíóúüñ]{4,}/g) || []).filter(
+    (w) => !new RegExp(`^(?:${PACK_WORDS}|necesit\\w*|cu[aá]nt\\w*|vienen|viene|trae|traen|cada|para|unidades|unidad|piezas?|pares|total|tendr\\w*|sobra\\w*|faltan?|minimo|m[ií]nimo|pedido|pedir|quiero|tengo|precio|cuesta|cuestan|alcanza|need|how|many|each|with|pieces|units|order)$`).test(w),
+  );
+}
+/** The message names the earlier calculation (its item, its packs, or "ese cálculo", "lo anterior"…). */
+export function refersToCalculation(text: string, mathText: string): boolean {
+  const t = String(text || "").toLowerCase();
+  if (calcItems(mathText).some((w) => t.includes(w.slice(0, Math.max(4, w.length - 2))))) return true;
+  return new RegExp(`\\b(?:${PACK_WORDS})\\b|\\b(?:el|ese|este|mismo)\\s+c[aá]lculo|\\bla\\s+cuenta|\\blo\\s+anterior|\\ben\\s+ese\\s+caso|\\bcon\\s+es[eoa]s?\\b|\\b(?:the|that|same)\\s+(?:calculation|math)|\\bpor\\s+caja`, "i").test(t);
 }
 /** A conditional or comparison ("¿y si fueran 5?", "suponiendo 300 litros…") never changes the order. */
 export const HYPOTHETICAL = /(?:\by\s+si\b|\bsi\s+(?:fuera|fueran|fuese|fuesen|pido|pidiera|pidiese|compro|comprara|cambio|cambiara|subo|subiera|bajo|bajara|aumento|aumentara|tuviera|quisiera|llevo|llevara|el\s+presupuesto|la\s+cantidad|en\s+vez|en\s+lugar|ahora|son|es|tuviese)\b|\bsi\s+(?:[a-záéíóúñ]+\s+){0,3}(?:fuera|fueran|fuese|fuesen|tuviera|tuvieran|costara|costaran|viniera|vinieran|cambiara|cambiaran|pidiera|subiera|bajara)\b|\bsuponiendo\b|\bsupongamos\b|\bsup[oó]n(?:é|e|go|gamos|iendo)?\b|\bimagin(?:emos|a|á|ate|ese)\b|\bdigamos\b|\ben\s+caso\s+de\b|\blet'?s\s+say\b|\bhypothetically\b|\bhipot[eé]tic\w*|\bqu[eé]\s+pasa(?:r[ií]a)?\s+si\b|\bsolo\s+para\s+comparar\b|\bpara\s+comparar\b|\bsin\s+cambiar\s+(?:el|mi)\s+pedido\b|\bwhat\s+if\b|\bsuppose\b|\bif\s+i\s+(?:order|ordered|bought|buy|change|changed|wanted)\b|\bhow\s+much\s+would\b|\bcu[aá]nto\s+(?:ser[ií]a|costar[ií]a|saldr[ií]a|me\s+saldr[ií]a)n?\b)/i;
@@ -3226,6 +3301,11 @@ export function buildReply(r: ReplySpec): string {
       `Actualizaste el producto en el formulario: ahora es «${r.newProduct}». Sigo con ese producto; lo que hablamos antes se conserva arriba.`,
       `You updated the product in the form: it is now "${r.newProduct}". I'll continue with that product; what we discussed before is kept above.`,
     ) + staleLine(r);
+  if (r.controlOnly)
+    return Lx(
+      "Anotado. Desde este chat no se envía nada a SEAL: un caso solo llega a SEAL si tú presionas «Enviar a SEAL» en el resumen. No cambié ningún dato de tu caso.",
+      "Noted. Nothing is sent to SEAL from this chat: a case only reaches SEAL if you press \"Send to SEAL\" in the summary. I didn't change any data in your case.",
+    );
   const ctx: ChatCtx = { product: r.product };
   const parts: string[] = [];
   // fields of the current case updated: what changed, and the whole case as it is now saved
@@ -3276,6 +3356,13 @@ export function buildReply(r: ReplySpec): string {
             h.budgetClear ? Lx("quitar el presupuesto de compra", "remove the purchase budget") : "",
           ].filter(Boolean).join("; ")
         : "";
+      if (r.askContext) {
+        const it = r.askContext.item;
+        return Lx(
+          `¿Ese número es para el cálculo anterior${it ? ` (${it})` : ""} o para tu caso de «${productName(r.askContext.product)}»? No cambié nada; tu caso sigue así: ${now}. Si es para tu caso, escríbelo así: «la cantidad es 6». Si es para el cálculo, menciónalo${it ? ` (por ejemplo «¿y para 600 ${it}?»)` : ""}.`,
+          `Is that number for the earlier calculation${it ? ` (${it})` : ""} or for your case of "${productName(r.askContext.product)}"? I didn't change anything; your case stays: ${now}. If it is for your case, write: "the quantity is 6". If it is for the calculation, say so${it ? ` (for example "what about 600 ${it}?")` : ""}.`,
+        );
+      }
       if (r.fromMismatch) {
         const f = r.fromMismatch;
         const n = (x: number) => x.toLocaleString("en-US");
@@ -3467,7 +3554,7 @@ export function buildReply(r: ReplySpec): string {
  * change. The chat page stores it and renders buildReply(spec) in the language in use.
  */
 export function nextSpec(
-  text: string,
+  textIn: string,
   specs: ReplySpec[],
   currentProduct: string,
   currentQuantity: number,
@@ -3475,6 +3562,11 @@ export function nextSpec(
   // the case as saved now (form draft / case): quantity and purchase budget in force
   caseFacts: { quantity?: number; budget?: number; caseId?: string; rev?: number; pending?: PendingProposal | null } = {},
 ): ReplySpec {
+  // notes for testers ("No enviar caso comercial") are never read as part of the case
+  const control = stripControl(textIn);
+  const text = control.text;
+  if (control.removed.length && !text.trim())
+    return { text: textIn, product: caseProductIn || currentProduct, previous: caseProductIn || currentProduct, controlOnly: true };
   // the product of the CASE (stated by the client); a product only mentioned in a question
   // ("¿cuántas cajas de lápices…?") guides that answer, never corrections or the case
   const caseProduct = caseProductIn || [...specs].reverse().find((x) => x.newProduct)?.newProduct || currentProduct;
@@ -3565,7 +3657,11 @@ export function nextSpec(
   const bEarly = budgetChange(text);
   // "5 unidades" alone is the case's quantity; inside a calculation ("333 piezas a US$0.035",
   // "perdón, son 600 piezas" after a pack question) it belongs to that calculation
-  const nounOut = !!qRaw0?.noun && (!caseProduct || kinds.length > 0 || /(?:us\$|usd|\$|\bq\s?\d)/i.test(text) || !!specs[specs.length - 1]?.mathText);
+  // "N <the case's product>" ("son 6 compresores" with compressors in the case) is about the case even
+  // right after a calculation about something else (pencils): only another item belongs to that calculation
+  const headStem = head ? head.slice(0, Math.max(4, head.length - 2)) : "";
+  const namesCaseProduct = !!headStem && new RegExp(`\\b${headStem}`, "i").test(text);
+  const nounOut = !!qRaw0?.noun && (!caseProduct || kinds.length > 0 || /(?:us\$|usd|\$|\bq\s?\d)/i.test(text) || (!!specs[specs.length - 1]?.mathText && !namesCaseProduct));
   const qRaw = qRaw0?.relative || nounOut || (bEarly && qRaw0 && qRaw0.qty === bEarly.value) ? null : qRaw0;
   // "la cantidad a 3.5 / 0 / 20,000,000": not a valid order quantity, said instead of applied
   const qtyInvalid: ReplySpec["qtyInvalid"] = issue?.kind;
@@ -3574,11 +3670,22 @@ export function nextSpec(
   // "cambia a 300" names no field: with measures in the description it is asked, never guessed
   const askNumber = qRaw?.bare && caseProduct && new RegExp(MEASURE, "i").test(caseProduct) ? qRaw.qty : undefined;
   const qcEarly = qRaw && !qtySame && !qtyConflict && !askNumber ? qRaw : null;
-  const isQtyChange = !!qcEarly && (qcEarly.before === caseQty || (!qcEarly.before && !specs[specs.length - 1]?.mathText));
+  const isQtyChange = !!qcEarly && (qcEarly.before === caseQty || (!qcEarly.before && (!specs[specs.length - 1]?.mathText || namesCaseProduct)));
+  // Each message stands on its own: it continues an earlier calculation only when it says so (it names
+  // that calculation's item or packs, or "ese cálculo", "lo anterior"…). With a case in force, a bare
+  // number ("¿Y con 600?", "Y para 10,000,001?") could be either: it is asked, never answered from the
+  // older calculation (a question about compressors once got the answer of a pencils calculation).
+  let isolatedFrom = "";
   if (!isMath && !isQtyChange && !caseDirected && (!kinds.length || stockLine))
     for (const x of [...specs].reverse()) {
       if (!x.mathText) continue;
-      follow = followUpMath(text, x.mathText);
+      const cand = followUpMath(text, x.mathText);
+      if (cand && caseProduct && !namesCaseProduct && !refersToCalculation(text, x.mathText)) {
+        isolatedFrom = x.mathText;
+        break;
+      }
+      if (cand && namesCaseProduct && !refersToCalculation(text, x.mathText)) break;
+      follow = cand;
       if (follow) { lastMath = x.mathText; break; }
     }
   // the order written in two messages: "necesito 500 piezas" then "vienen 24 por caja",
@@ -3716,6 +3823,14 @@ export function nextSpec(
     (qc && validQuantity(qc.qty) && !hypo ? valueTokenIssue(text, qc.qty) : null) ||
     (newBudget && !hypo ? (() => { const b = valueTokenIssue(text, newBudget); return b ? { kind: "budgetAmbiguous" as const, raw: b.raw } : null; })() : null);
   const bad = issue || outOfRange || tokenIssue;
+  // a bare number after a calculation, with a case in force and nothing else understood: which one?
+  if (!bad && isolatedFrom && !spec.newQuantity && !spec.newBudget && !spec.attrFix && !spec.newProduct && !spec.budgetClear && /\d/.test(text))
+    return {
+      text, product: caseProduct || currentProduct, previous: caseProduct, fieldUpdate: true, hold: true,
+      askContext: { item: calcItems(isolatedFrom)[0] || "", product: caseProduct },
+      caseNow: { product: caseProduct, quantity: caseQty || undefined, budget: caseBudget || undefined },
+      earlierFood: spec.earlierFood,
+    };
   if (!bad && fromMismatch)
     return {
       text, product: caseProduct || currentProduct, previous: caseProduct, fieldUpdate: true, hold: true, fromMismatch,

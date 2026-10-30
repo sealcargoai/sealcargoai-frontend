@@ -12,7 +12,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.10.30-a";
+const EXPECT_VERSION = "2026.10.30-b";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
@@ -351,6 +351,49 @@ try {
       "B83 chat, formulario y resumen coinciden: 4 y US$5,000; 10,000,001 en ninguna parte",
       fq === "4" && fb === "5000" && lines.includes("Cantidad: 4") && lines.includes("Presupuesto de compra: US$5,000") && !/10,000,001/.test(dlg),
       JSON.stringify({ fq, fb, lines }),
+    );
+    await ctx.close();
+  }
+  {
+    // REGRESIÓN 30-b: pedido inicial con notas de control, los dos mensajes exactos, aislamiento de un cálculo, recarga
+    const { ctx, page } = await newPage();
+    await page.goto(`${BASE}/?qa=1`);
+    const q = page.locator("form input").first();
+    await q.fill("PRUEBA QA – No enviar caso comercial. Quiero importar 4 compresores industriales de tornillo de 220 V con un presupuesto de US$5,000. No enviar caso comercial.");
+    await q.press("Enter");
+    await page.waitForTimeout(300);
+    await page.fill("input[placeholder='Juan Pérez']", "PRUEBA QA");
+    await page.fill("input[placeholder='juan@empresa.com']", "qa-prueba@example.com");
+    await page.locator("input[placeholder='juan@empresa.com']").press("Enter");
+    await page.waitForURL(/\/chat/);
+    let s = caseOf(await state(page));
+    const greet = (await page.locator(".whitespace-pre-line").allInnerTexts()).join(" ");
+    check(
+      "B85 nota de control fuera del producto; cantidad 4 y US$5,000 tomados",
+      s.p === "compresores industriales de tornillo de 220 V" && s.q === "4" && s.b === "5000" && s.mb === "US$5,000" && s.sync && /como una nota/.test(greet) && !/No tomé/.test(greet),
+      JSON.stringify(s),
+    );
+    const r1 = await say(page, "Corrijo: serían 10,000,001 compresores; actualiza únicamente la cantidad y conserva lo demás.");
+    s = caseOf(await state(page));
+    check("B86 «Corrijo: serían 10,000,001…» rechazado; caso intacto", /10,000,000/.test(r1) && !/Actualizado/.test(r1) && s.q === "4" && s.b === "5000" && s.mq === "4" && s.sync, r1.slice(0, 120));
+    await say(page, "Necesito 500 lápices en cajas de 12, ¿cuántas cajas necesito?");
+    const r2 = await say(page, "Y para 10,000,001?");
+    const r3 = await say(page, "Son 600");
+    s = caseOf(await state(page));
+    check(
+      "B87 número suelto después de un cálculo: se pregunta, no se responde con el cálculo ni se cambia el caso",
+      /cálculo anterior/.test(r2) && /cálculo anterior/.test(r3) && !/\d+ cajas/.test(r2 + r3) && s.q === "4" && s.b === "5000",
+      (r2 + " | " + r3).slice(0, 160),
+    );
+    const r4 = await say(page, "No enviar caso comercial.");
+    await page.reload();
+    await page.waitForSelector("input[type=text]");
+    s = caseOf(await state(page));
+    const after = (await page.locator(".whitespace-pre-line").allInnerTexts()).join(" ");
+    check(
+      "B88 frase de control sola: no cambia nada; tras recargar el caso y el historial siguen iguales",
+      /no se envía nada a SEAL/.test(r4) && s.q === "4" && s.b === "5000" && s.p === "compresores industriales de tornillo de 220 V" && /Son 600/.test(after) && /como una nota/.test(after),
+      JSON.stringify(s),
     );
     await ctx.close();
   }

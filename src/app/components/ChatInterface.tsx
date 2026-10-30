@@ -45,7 +45,7 @@ export function ChatInterface() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
-  const { query, name: stateName, email, descriptionCleaned, request: stateRequest, requestIssues: stateIssues } = location.state || {};
+  const { query, name: stateName, email, descriptionCleaned, request: stateRequest, requestIssues: stateIssues, requestControl: stateControl } = location.state || {};
   const { t, L } = useLanguage();
   // The conversation of this case is kept while the client goes to the form and back
   // (a new case from the start screen clears it). Its intro keeps the request it began with.
@@ -54,7 +54,7 @@ export function ChatInterface() {
     try {
       const v = JSON.parse(sessionStorage.getItem(CHAT_KEY) || "null");
       return v && typeof v === "object" && Array.isArray(v.messages)
-        ? { query: typeof v.query === "string" ? v.query : undefined, name: typeof v.name === "string" ? v.name : undefined, request: typeof v.request === "string" ? v.request : undefined, issues: Array.isArray(v.issues) ? v.issues : undefined, messages: cleanMessages(v.messages) }
+        ? { query: typeof v.query === "string" ? v.query : undefined, name: typeof v.name === "string" ? v.name : undefined, request: typeof v.request === "string" ? v.request : undefined, issues: Array.isArray(v.issues) ? v.issues : undefined, control: Array.isArray(v.control) ? v.control : undefined, messages: cleanMessages(v.messages) }
         : null;
     } catch {
       return null;
@@ -67,6 +67,15 @@ export function ChatInterface() {
   const startRequest = (savedChat?.messages.length ? savedChat.request : undefined) || (typeof stateRequest === "string" ? stateRequest : "") || startQuery;
   type Issue = { field: "quantity" | "budget"; raw: string; why: string };
   const startIssues: Issue[] = ((savedChat?.messages.length ? savedChat.issues : undefined) || (Array.isArray(stateIssues) ? stateIssues : [])).filter((x: unknown): x is Issue => !!x && typeof x === "object" && typeof (x as Issue).raw === "string" && ((x as Issue).field === "quantity" || (x as Issue).field === "budget")).slice(0, 4);
+  // notes for testers found in the request ("No enviar caso comercial"): shown, never used as case data
+  const startControl: string[] = ((savedChat?.messages.length ? savedChat.control : undefined) || (Array.isArray(stateControl) ? stateControl : [])).filter((x: unknown): x is string => typeof x === "string").slice(0, 3);
+  const controlText = startControl.length
+    ? " " +
+      L(
+        `Tomé ${startControl.map((x) => `«${x}»`).join(", ")} como una nota, no como dato del producto. Desde este chat no se envía nada a SEAL.`,
+        `I took ${startControl.map((x) => `"${x}"`).join(", ")} as a note, not as product data. Nothing is sent to SEAL from this chat.`,
+      )
+    : "";
   const issueText = startIssues.length
     ? " " +
       startIssues
@@ -93,7 +102,7 @@ export function ChatInterface() {
         ? L(
             "Con tu consulta ya tengo el producto (y la cantidad y el presupuesto, si los indicaste). En el formulario los confirmamos junto con el volumen o el peso, si lo tienes; el destino es Guatemala. También puedes preguntarme aquí.",
             "With your request I already have the product (and the quantity and budget, if you gave them). In the form we confirm them along with the volume or weight, if you have it; the destination is Guatemala. You can also ask me here.",
-          ) + issueText
+          ) + issueText + controlText
         : L(
             "Para preparar una orientación más útil, dime qué producto quieres importar y cuántas unidades; el destino es Guatemala.",
             "To prepare more useful guidance, tell me what product you want to import and how many units; the destination is Guatemala.",
@@ -147,7 +156,7 @@ export function ChatInterface() {
   const messagesRef = useRef<Message[]>(messages);
   useEffect(() => {
     try {
-      sessionStorage.setItem(CHAT_KEY, JSON.stringify({ query: startQuery, request: startRequest, issues: startIssues, name, messages }));
+      sessionStorage.setItem(CHAT_KEY, JSON.stringify({ query: startQuery, request: startRequest, issues: startIssues, control: startControl, name, messages }));
     } catch {
       /* storage unavailable */
     }
