@@ -1,6 +1,6 @@
 # Cierre 29-b · SmartTrade AI (frontend)
 
-Rama `fix/cierre-29-b` sobre `candidata-28-o` (`cf8768c` = PR #1 29-a fusionado). Versión visible: `v2026.10.29-b · <commit>` (pie de página).
+Rama `fix/cierre-29-b` sobre `candidata-28-o` (`cf8768c` = PR #1 29-a fusionado). Versión visible: `v2026.10.30-a · <commit>` (pie de página; incluye la regresión de producción del 30).
 Backend: rama `fix/cierre-29-b` sobre `main` (`3a656f1`), versión `2026.10.29-b` en `/health`.
 
 > El paquete del 29 (`INFORME-SEAL-29.md`, parches `frontend-PR1-hardening.patch` y `backend-hardening.patch`) **no estaba disponible** en esta sesión.
@@ -28,6 +28,15 @@ Intención (`nextSpec`) → campos propuestos → **autorización** (prohibicion
 | (revisión) Formulario antiguo sobrescribía | El formulario escribía el borrador entero sin versión | `saveFormDraft(…, lastRev)`: compare-and-set; si el caso avanzó, el formulario recarga |
 | (revisión) StrictMode | Efecto de cambio de producto dentro del inicializador de `useState` | Cálculo puro en el inicializador; escritura idempotente en `useEffect` |
 | (revisión, 9 rondas adversariales) | Lectura por listas de frases | Regla general: **solo se aplica lo entendido por completo**; lo demás se consulta sin crear propuesta |
+
+## Regresión de producción 2026-10-30 (reportada sobre v2026.10.28-n)
+
+| Caso | Causa | Corrección | Pruebas |
+|---|---|---|---|
+| Con 4 compresores, «3.5 compresores… no cambies nada» → 4 → 5 | 28-n leía la cola del decimal y no respetaba «no cambies nada» | Ya corregido en 29-a/29-b (token completo, `HOLD`) | L `R36`; N `B81` |
+| «serían 10,000,001 compresores» aceptado y en el resumen | 28-n no validaba el máximo en esa ruta | Ya corregido (rango en todas las rutas, `writeCaseTx`, servidor) | L `R36`; N `B82`, `B83` |
+| Presupuesto US$5,000 del pedido inicial perdido | La página de inicio guardaba la frase entera como «producto»: la cantidad y el presupuesto nunca entraban al caso. Además, un presupuesto dicho junto con un producto nuevo en el chat se descartaba | `requestFacts()`: el pedido inicial se separa en producto, cantidad y presupuesto con las mismas reglas del chat (solo valores exactos y válidos; lo dudoso se informa y no se guarda). En el chat, el presupuesto dicho con el producto nuevo se conserva | L `R36`; N `B80`, `B83`, `B84` |
+| (encontrado en la prueba de navegador) El formulario rechazaba descripciones normales | `fieldError` aplicaba `plainNumber` (que quita espacios) a la descripción | La descripción se valida como texto | L `R37`; N `B83` |
 
 ## Entorno de prueba que impide envíos reales
 
