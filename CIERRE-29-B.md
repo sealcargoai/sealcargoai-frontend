@@ -106,6 +106,18 @@ Pruebas en producción con datos ficticios y los envíos al backend interceptado
 | La respuesta a «no enviar» decía que un caso solo llega con «Enviar a SEAL», pero «Pedir a SEAL que revise mi caso» también envía | Texto fijo en `buildReply` (controlOnly) | El texto nombra ambos botones | `R40.3` |
 | «Pedir a SEAL que revise mi caso» (búsqueda fallida) enviaba el caso con un clic, sin decir qué datos salen | Botón llamaba a `sendToSeal` directamente; sin guarda síncrona | Paso de confirmación que lista lo que recibe SEAL («Sí, enviar a SEAL» / «Cancelar») y guarda `useRef` contra doble clic | `B95`–`B97` |
 
+## Validación final sobre v2026.10.30-d (97721af) en producción → 2026.10.30-e
+
+Aviso de inicio probado en producción con el mecanismo de prueba existente (nombre/correo de prueba + `QA_LEADS_EMAIL` configurado): llegó marcado [PRUEBA] solo a las cuentas de prueba, sin crear caso. Defectos encontrados:
+
+| Defecto | Causa raíz | Corrección | Regresión |
+|---|---|---|---|
+| Tras «¿Ese número es para el cálculo anterior o para tu caso?», responder «es para mi caso» daba «Anotado…» sin aplicar nada | La respuesta a la pregunta no se relacionaba con el número preguntado | `contextAnswer` (chatCase): «para mi caso» → «la cantidad/el presupuesto es N» (validado igual); «para el cálculo» → «¿y para N …?» | `R41.1`, `B102` |
+| «Mejor pongámosle 650 botellas» tras un cálculo de botellas se respondía como cálculo | `refersToCalculation` tomaba la palabra que comparten cálculo y producto del caso como referencia al cálculo | `sharedItemOnly`: si solo la comparte (sin cajas, «ese cálculo»… ni forma de pregunta «¿y para…?»), se pregunta | `R41.2` |
+| «Mi presupuesto de compra ahora es de cinco mil dólares» y «Mejor pongámosle 650» no se aplicaban | «ahora» junto al verbo y el verbo «pongámos(le)» no estaban en la validación | «ahora es/son» se lee como «es/son»; `SETV` acepta «pongámos» | `R41.3`, `B103` |
+| Con más de 1,500 caracteres solo se veía «1,501/1,500» o «Máximo 1,500 caracteres.»; un texto pegado se cortaba sin aviso (`maxLength`) | Mensaje sin el excedente; `maxLength` truncaba en silencio | `overLimitMessage` («te pasaste por N caracteres»), sin `maxLength`; el avance sigue bloqueado | `R41.4`, `B99`, `B100` |
+| El error de búsqueda en pantalla quedaba en español al cambiar a inglés | El mensaje se guardaba ya traducido | El estado guarda `{es, en}` y se muestra en el idioma vigente | `B101` |
+
 ## Comandos
 
 ```

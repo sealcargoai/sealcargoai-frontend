@@ -5,7 +5,7 @@ import { quantityWord } from "../../utils/saleUnit";
 import { plainNumber } from "../../utils/plainNumber";
 import { useState, useEffect, useRef } from "react";
 import { formStart, saveFormDraft, caseVersion } from "../../utils/caseStore";
-import { fieldError, LIMITS } from "../../utils/formValidation";
+import { fieldError, LIMITS, overLimitMessage } from "../../utils/formValidation";
 import { descriptionIsDetailed, descriptionDetailMessage, DESCRIPTION_MIN_CHARS, cleanDescription } from "../../utils/descriptionCheck";
 import { useNavigate, useLocation } from "react-router";
 import {
@@ -75,7 +75,8 @@ export function ProductQualification() {
   const searchCtl = useRef<AbortController | null>(null);
   const left = useRef(false);
   useEffect(() => () => { left.current = true; searchCtl.current?.abort(); }, []);
-  const [error, setError] = useState("");
+  // 30-e: a message kept on screen is stored in both languages, so switching ES/EN translates it too
+  const [error, setError] = useState<string | { es: string; en: string }>("");
   const [formData, setFormData] = useState({
     // Free-text product description (prefilled with the chat query)
     productType: userQuery,
@@ -216,7 +217,7 @@ export function ProductQualification() {
 
     if (Object.values(errors).some(Boolean)) {
       setTouched({ productType: true, quantity: true, budget: true, volumeCbm: true, weightKg: true });
-      setError(L("Revisa los datos marcados en rojo antes de buscar.", "Check the fields marked in red before searching."));
+      setError({ es: "Revisa los datos marcados en rojo antes de buscar.", en: "Check the fields marked in red before searching." });
       return;
     }
 
@@ -339,27 +340,28 @@ export function ProductQualification() {
       setSearchFailed(true);
       // say what actually happened: timeout, no connection, a rejected request or a server error
       const e = err as Error & { status?: number };
-      const kept = L(" Tus datos siguen aquí y la búsqueda no se descontó.", " Your data is still here and the search was not counted.");
+      const kept = { es: " Tus datos siguen aquí y la búsqueda no se descontó.", en: " Your data is still here and the search was not counted." };
+      const both = (es: string, en: string) => ({ es: es + kept.es, en: en + kept.en });
       setError(
         e?.name === "AbortError"
-          ? L(
+          ? both(
               "La búsqueda tardó demasiado y se detuvo (a veces la plataforma de proveedores no responde a tiempo). Puedes intentarlo de nuevo, probar con una descripción un poco más corta, o pedir al equipo de SEAL que revise tu caso.",
               "The search took too long and was stopped (sometimes the supplier platform doesn't answer in time). You can try again, try a slightly shorter description, or ask the SEAL team to review your case.",
-            ) + kept
+            )
           : e instanceof TypeError
-            ? L(
+            ? both(
                 "No pudimos conectar con el servidor de SmartTrade (revisa tu conexión a internet). Intenta de nuevo en un momento o escribe al WhatsApp de SEAL +502 5996 4664.",
                 "We couldn't reach the SmartTrade server (check your internet connection). Try again in a moment or message SEAL on WhatsApp +502 5996 4664.",
-              ) + kept
+              )
             : e?.status && e.status >= 400 && e.status < 500
-              ? L(
+              ? both(
                   "El servidor no aceptó los datos de la búsqueda. Revisa la descripción y la cantidad; si el problema sigue, pide al equipo de SEAL que revise tu caso.",
                   "The server didn't accept the search data. Check the description and quantity; if it continues, ask the SEAL team to review your case.",
-                ) + kept
-              : L(
+                )
+              : both(
                   "El servidor tuvo un error al buscar proveedores en este intento. Puedes intentarlo de nuevo en unos minutos o pedir al equipo de SEAL que revise tu caso.",
                   "The server had an error searching suppliers on this attempt. You can try again in a few minutes or ask the SEAL team to review your case.",
-                ) + kept,
+                ),
       );
     } finally {
       clearTimeout(timer);
@@ -515,17 +517,22 @@ export function ProductQualification() {
                   onBlur={() => touch("productType")}
                   required
                   rows={8}
-                  maxLength={LIMITS.productMax}
                   placeholder={t("qualification.productPlaceholder")}
                   className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-y min-h-[180px] leading-relaxed"
                 />
                 <div className="flex justify-between gap-3 text-xs text-slate-500">
                   <span>{t("qualification.productHelp")} {L("(qué es, para qué se usa y, si aplica, capacidad o material)", "(what it is, what it's for and, if relevant, capacity or material)")}</span>
-                  <span className="shrink-0">
+                  <span className={`shrink-0 ${formData.productType.length > LIMITS.productMax ? "text-red-600 font-semibold" : ""}`}>
                     {formData.productType.length.toLocaleString("en-US")}/{LIMITS.productMax.toLocaleString("en-US")}
                   </span>
                 </div>
-                {showErr("productType")}
+                {formData.productType.length > LIMITS.productMax ? (
+                  <p className="text-xs text-red-600 mt-1" role="alert">
+                    <span>{overLimitMessage(formData.productType.length, LIMITS.productMax)}</span>
+                  </p>
+                ) : (
+                  showErr("productType")
+                )}
               </div>
             )}
 
@@ -823,7 +830,7 @@ export function ProductQualification() {
             {/* Error message */}
             {error && (
               <div className="mt-3 p-3 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800" role="alert">
-                <span>⚠️ {error}</span>
+                <span>⚠️ {typeof error === "string" ? error : L(error.es, error.en)}</span>
                 {searchFailed && (
                   <div className="mt-3 flex flex-col sm:flex-row gap-2">
                     <button

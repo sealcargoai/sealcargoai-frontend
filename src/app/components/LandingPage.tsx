@@ -12,6 +12,7 @@ import { rememberCase } from "../../utils/caseContext";
 import { requestFacts } from "../../utils/requestFacts";
 import { writeCaseTx } from "../../utils/caseStore";
 import { track } from "../../utils/funnel";
+import { overLimitMessage } from "../../utils/formValidation";
 
 const QUERY_MIN = DESCRIPTION_MIN_CHARS;
 const QUERY_MAX = 1500; // same limit as the product description in the next step
@@ -42,7 +43,7 @@ export function LandingPage() {
     e.preventDefault();
     const n = name.trim();
     const m = email.trim();
-    if (!queryOk) return setFormError(queryTrim.length > QUERY_MAX ? L(`Máximo ${QUERY_MAX.toLocaleString("en-US")} caracteres.`, `Maximum ${QUERY_MAX.toLocaleString("en-US")} characters.`) : descriptionDetailMessage());
+    if (!queryOk) return setFormError(queryTrim.length > QUERY_MAX ? overLimitMessage(queryTrim.length, QUERY_MAX) : descriptionDetailMessage());
     if (n.length < NAME_MIN) return setFormError(L("Escribe tu nombre completo.", "Enter your full name."));
     if (!EMAIL_RE.test(m)) return setFormError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
     if (startedRef.current) return;
@@ -154,7 +155,6 @@ export function LandingPage() {
                         type="text"
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        maxLength={QUERY_MAX}
                         placeholder={t("hero.placeholder")}
                         className="flex-1 min-w-0 px-1 sm:px-2 py-3 sm:py-5 text-sm sm:text-base md:text-lg outline-none bg-transparent placeholder:text-slate-400"
                       />
@@ -169,12 +169,14 @@ export function LandingPage() {
                   </div>
                   {query.length > 0 && (
                     <div className="flex justify-between gap-3 px-3 pt-2 text-xs text-slate-500">
-                      <span>
-                        {!descriptionIsDetailed(cleaned.text)
+                      <span className={queryTrim.length > QUERY_MAX ? "text-red-600 font-semibold" : ""} role={queryTrim.length > QUERY_MAX ? "alert" : undefined}>
+                        {queryTrim.length > QUERY_MAX
+                          ? overLimitMessage(queryTrim.length, QUERY_MAX)
+                          : !descriptionIsDetailed(cleaned.text)
                           ? L("Di qué es y para qué se usa (al menos 2 palabras)", "Say what it is and what it's for (at least 2 words)")
                           : L("Puedes detallar más en el siguiente paso", "You can add more detail in the next step")}
                       </span>
-                      <span className="shrink-0">
+                      <span className={`shrink-0 ${queryTrim.length > QUERY_MAX ? "text-red-600 font-semibold" : ""}`}>
                         {query.length.toLocaleString("en-US")}/{QUERY_MAX.toLocaleString("en-US")}
                       </span>
                     </div>
