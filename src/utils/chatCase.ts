@@ -43,7 +43,7 @@ export function applyChatMessage(text: string, earlier: ReplySpec[], ctx: { curr
   if (spec.newProduct && (otherProduct || !stated)) {
     // another product: the previous one's quantity, budget, supplier and estimate become history
     write = writeCaseTx(
-      { product: spec.newProduct, quantity: spec.newQuantity ?? null, budget: null },
+      { product: spec.newProduct, quantity: spec.newQuantity ?? null, budget: spec.newBudget ?? null },
       {
         expectRev: version.rev,
         alsoKnown: stated ? { product: stated, quantity: saved.quantity ? String(saved.quantity) : undefined, budget: saved.budget ? String(saved.budget) : undefined } : draftFacts(),

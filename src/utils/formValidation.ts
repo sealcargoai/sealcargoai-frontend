@@ -17,7 +17,9 @@ export const LIMITS = {
 
 /** Returns an error message for the field, or "" when valid. */
 export function fieldError(name: string, value: string): string {
-  const v = plainNumber(name, value);
+  // the product description is text: plainNumber removes spaces (for "1 000"), and on a description it
+  // glued the words together ("termosdeacero…"), so valid descriptions failed the detail check
+  const v = name === "productType" ? String(value ?? "").trim() : plainNumber(name, value);
   const n = Number(v);
   // "50.000" could be fifty or fifty thousand: ask instead of guessing
   if (name !== "quantity" && name !== "productType" && /^\d{1,3}(?:\.\d{3})+$/.test(v))

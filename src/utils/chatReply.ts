@@ -2930,7 +2930,7 @@ export function fullyUnderstood(text: string, change: { quantity?: number; budge
   const VERB = `(?:${SETV}|${RELV})(?:\\s+(?:[uú]nicamente|solo|s[oó]lo|only|just))?`;
   const UNIT = `(?:unidades|unidad|units?|piezas?|pieces?|equipos?|m[aá]quinas?|pcs${stem ? `|${stem}[a-záéíóúñ]*` : ""})`;
   const FQ = "(?:(?:(?:la|the)\\s+)?(?:(?:order|requested|purchase|total)\\s+)?(?:cantidad|quantity)(?:\\s+(?:del?\\s+pedido|total|solicitada|requerida|correcta|de\\s+compra|of\\s+the\\s+order|ordered))?|(?:el|mi|the|my)\\s+(?:pedido|orden|order))";
-  const FB = "(?:(?:el|mi|the|my)\\s+)?(?:(?:purchase|total)\\s+)?(?:presupuesto|budget)(?:\\s+(?:de\\s+compra|total|m[aá]ximo|disponible|for\\s+the\\s+purchase|purchase|of\\s+purchase))?";
+  const FB = "(?:(?:el|mi|un|nuestro|the|my|a|our)\\s+)?(?:(?:purchase|total)\\s+)?(?:presupuesto|budget)(?:\\s+(?:de\\s+compra|total|m[aá]ximo|disponible|for\\s+the\\s+purchase|purchase|of\\s+purchase))?";
   const SET = "(?:a|(?<!(?:sub|baj|aument|reduc|increas|decreas|rais|lower)\\w*\\s(?:\\w+\\s){0,4})en|por|to|es|ser[aá]|sea|son|ser[aá]n|queda|quedar[aá]|pasa\\s+a|sube\\s+a|baja\\s+a|:|=|is|will\\s+be|be|now|should\\s+be)";
   const okClause = (c: string): boolean => {
     const q = change.quantity ? num(change.quantity) : "";
@@ -3031,11 +3031,13 @@ export function fullyUnderstood(text: string, change: { quantity?: number; budge
     if (change.productHead && has(sen, change.productHead) && !valueHints.some((h) => h && h !== change.productHead && has(sen, h))) continue;
     // clauses: "cambia la cantidad a 6 y el presupuesto a 7000" → two clauses
     const clauses = sen
-      .split(/\s*,\s*|\s+(?:pero|but)\s+|\s+(?=(?:once|until|after|before|cuando|hasta|antes|primero|despu[eé]s)\b)|\s+(?:y|e|and)\s+(?=(?:no\s+|antes|primero|av[ií]s|esper|confirm|aprob|pending|si\s+|m[aá]nd|env[ií]|dec[ií]|dime|cotiz|send|tell|call|quote)|(?:(?:el|la|los|las|the|mi|my)\s+)?(?:cantidad|quantity|presupuesto|budget|tanque|tank|voltaje|voltage|capacidad|capacity|frecuencia|potencia|\d))/)
+      .split(/\s*,\s*|\s+(?=(?:con|with)\s+(?:(?:un|mi|el|a|my|the)\s+)?(?:presupuesto|budget)\b)|\s+(?:pero|but)\s+|\s+(?=(?:once|until|after|before|cuando|hasta|antes|primero|despu[eé]s)\b)|\s+(?:y|e|and)\s+(?=(?:no\s+|antes|primero|av[ií]s|esper|confirm|aprob|pending|si\s+|m[aá]nd|env[ií]|dec[ií]|dime|cotiz|send|tell|call|quote)|(?:(?:el|la|los|las|the|mi|my)\s+)?(?:cantidad|quantity|presupuesto|budget|tanque|tank|voltaje|voltage|capacidad|capacity|frecuencia|potencia|\d))/)
       // (a leading "y 7 unidades" in the first clause may mean 7 MORE: kept, so it does not match)
       .map((x, i) => x.trim().replace(i === 0 ? /^(?:(?:pero|but)\s+)+|(?:\s+(?:y|e|and|pero|but|o))+$/g : /^(?:(?:y|e|and|pero|but|o)\s+)+|(?:\s+(?:y|e|and|pero|but|o))+$/g, "").trim())
       .filter(Boolean);
     for (const cl of clauses) {
+      // the part that names the new product is read by the product parser
+      if (change.productHead && has(cl, change.productHead) && !valueHints.some((h) => h && h !== change.productHead && has(cl, h))) continue;
       const carries = valueHints.some((h) => h && has(cl, h));
       if (carries) {
         if (!okClause(cl)) return { ok: false, why: cl.slice(0, 60) };
@@ -3378,8 +3380,8 @@ export function buildReply(r: ReplySpec): string {
     parts.push(
       changed && r.explicitChange && !wrongAdvice
         ? Lx(
-            `Anotado el cambio de producto: ahora es «${r.newProduct}»${r.newQuantity ? `, cantidad ${r.newQuantity.toLocaleString("en-US")}` : ""} (antes «${productName(r.previous || "")}»). Lo uso para lo que sigue, para el formulario y para tu caso; lo anterior queda en el historial.`,
-            `Product change noted: it is now "${r.newProduct}"${r.newQuantity ? `, quantity ${r.newQuantity.toLocaleString("en-US")}` : ""} (before "${productName(r.previous || "")}"). I'll use it from here on, in the form and in your case; the earlier data stays as history.`,
+            `Anotado el cambio de producto: ahora es «${r.newProduct}»${r.newQuantity ? `, cantidad ${r.newQuantity.toLocaleString("en-US")}` : ""}${r.newBudget && r.newProduct ? `, presupuesto de compra ${fmtBudget(r.newBudget)}` : ""} (antes «${productName(r.previous || "")}»). Lo uso para lo que sigue, para el formulario y para tu caso; lo anterior queda en el historial.`,
+            `Product change noted: it is now "${r.newProduct}"${r.newQuantity ? `, quantity ${r.newQuantity.toLocaleString("en-US")}` : ""}${r.newBudget && r.newProduct ? `, purchase budget ${fmtBudget(r.newBudget)}` : ""} (before "${productName(r.previous || "")}"). I'll use it from here on, in the form and in your case; the earlier data stays as history.`,
           )
         : changed || wrongAdvice
         ? Lx(
@@ -3387,8 +3389,8 @@ export function buildReply(r: ReplySpec): string {
             `Thanks for clarifying: your product is "${r.newProduct}". Correcting what I said: ${wrongAdvice ? "what I said about food-contact materials doesn't apply to this product" : "what I answered with another product in mind doesn't apply"}; I'll use "${r.newProduct}" from here on and in the form.`,
           )
         : Lx(
-            `Anotado: tu producto es «${r.newProduct}»${r.newQuantity ? `, cantidad ${r.newQuantity.toLocaleString("en-US")}` : ""}; lo uso para lo que sigue y para el formulario.`,
-            `Noted: your product is "${r.newProduct}"${r.newQuantity ? `, quantity ${r.newQuantity.toLocaleString("en-US")}` : ""}; I'll use it from here on and in the form.`,
+            `Anotado: tu producto es «${r.newProduct}»${r.newQuantity ? `, cantidad ${r.newQuantity.toLocaleString("en-US")}` : ""}${r.newBudget && r.newProduct ? `, presupuesto de compra ${fmtBudget(r.newBudget)}` : ""}; lo uso para lo que sigue y para el formulario.`,
+            `Noted: your product is "${r.newProduct}"${r.newQuantity ? `, quantity ${r.newQuantity.toLocaleString("en-US")}` : ""}${r.newBudget && r.newProduct ? `, purchase budget ${fmtBudget(r.newBudget)}` : ""}; I'll use it from here on and in the form.`,
           ),
     );
   }
@@ -3628,7 +3630,11 @@ export function nextSpec(
   // the purchase budget ("solo actualiza el presupuesto a US$5,000") is money, never a quantity
   const bRaw = mathText || changedTo || questionOnly || kinds.includes("subtotal") || kinds.includes("pairs") || kinds.includes("math") ? null : budgetChange(text);
   const budgetAsk = bRaw?.currency === "GTQ" || undefined;
-  const newBudget = bRaw && !budgetAsk && bRaw.value !== caseBudget ? bRaw.value : undefined;
+  // a budget stated WITH a new product ("ahora quiero importar bombas, presupuesto US$3,000") is that
+  // product's budget: it was dropped before, so the form and the summary lost it
+  const bProd = changedTo && !hypo && !mathText ? budgetChange(text) : null;
+  const budgetOfNewProduct = bProd && bProd.currency === "USD" && !budgetIssue(low0) && !valueTokenIssue(text, bProd.value) ? bProd.value : undefined;
+  const newBudget = (bRaw && !budgetAsk && bRaw.value !== caseBudget ? bRaw.value : undefined) ?? budgetOfNewProduct;
   // a message that updates fields of the case names no new product (its nouns are the same product)
   const budgetClear = !mathText && !hypo && /\b(?:quit\w*|elimin\w*|borr\w*|remove|delete)\s+(?:el\s+|mi\s+|the\s+)?(?:presupuesto|budget)\b|\bsin\s+presupuesto\b|\bno\s+tengo\s+presupuesto\b/i.test(text) && !!caseBudget;
   const fieldMsg = !changedTo && !hypo && !mathText && !!(fix || qc0 || newBudget || budgetAsk || askNumber || qtyConflict || qtySame || restated || askRelative || qtyInvalid || budgetClear || (bRaw && keepRest));
