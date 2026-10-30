@@ -6,7 +6,11 @@
   "scripts": {
     "build": "vite build",
     "dev": "vite",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:acceptance": "vitest run tests/acceptance-matrix.test.ts",
+    "test:audit": "vitest run tests/audit-2026-10-29.test.ts",
+    "test:cierre": "vitest run tests/cierre-29-b.test.ts tests/chat-component-29-b.test.tsx",
+    "test:e2e": "node e2e/run-e2e.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -70,7 +74,10 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "4.1.12",
+    "@testing-library/dom": "^10.4.0",
+    "@testing-library/react": "^16.1.0",
     "@vitejs/plugin-react": "4.7.0",
+    "jsdom": "^25.0.1",
     "tailwindcss": "4.1.12",
     "vite": "^6.4.2",
     "vitest": "^3.2.4"

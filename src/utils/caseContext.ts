@@ -5,6 +5,7 @@
 import { getLang } from "./lang";
 import { track, pushDataLayer, isQaSession } from "./funnel";
 import { sameProduct } from "./chatReply";
+import { caseForSeal } from "./caseStore";
 
 const KEY = "seal_case";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -27,13 +28,30 @@ export interface CaseContext {
   caseRef?: string;
   // data of an earlier product of this same case, kept as history, never as current data
   earlier?: string[];
+  // what the stored estimate (supplier, price, total, assumptions) was computed for
+  scenarioFor?: { product: string; quantity?: number; budget?: number };
+  // which case this is and which saved version of it (utils/caseStore): mirrors the form draft
+  caseId?: string;
+  rev?: number;
 }
 
 const empty = (v: unknown) => v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length);
 
 export function caseContext(): CaseContext {
   try {
-    return JSON.parse(sessionStorage.getItem(KEY) || "{}") || {};
+    const v = JSON.parse(sessionStorage.getItem(KEY) || "{}");
+    // a damaged record (an array, a string, a number) is no case at all, never a partial one
+    if (!v || typeof v !== "object" || Array.isArray(v)) return {};
+    // fields of the wrong type are dropped (a quantity stored as an object is not a quantity)
+    const out: Record<string, unknown> = {};
+    for (const [k, x] of Object.entries(v as Record<string, unknown>)) {
+      if (k === "earlier" || k === "assumptions" || k === "warnings" || k === "chat") {
+        if (Array.isArray(x)) out[k] = x.filter((y) => typeof y === "string");
+      } else if (k === "scenarioFor") {
+        if (x && typeof x === "object" && !Array.isArray(x) && typeof (x as { product?: unknown }).product === "string") out[k] = x;
+      } else if (typeof x === "string" || (typeof x === "number" && Number.isFinite(x)) || typeof x === "boolean") out[k] = x;
+    }
+    return out as CaseContext;
   } catch {
     return {};
   }
@@ -58,7 +76,7 @@ export function rememberCase(part: CaseContext): void {
 }
 
 /** What belongs to the scenario on screen (supplier, price, estimate, its assumptions and warnings). */
-export const SCENARIO_KEYS: (keyof CaseContext)[] = ["supplierName", "supplierUrl", "price", "priceSource", "publishedPrice", "totalCostText", "assumptions", "warnings"];
+export const SCENARIO_KEYS: (keyof CaseContext)[] = ["supplierName", "supplierUrl", "price", "priceSource", "publishedPrice", "totalCostText", "assumptions", "warnings", "scenarioFor"];
 
 /**
  * The current screen is the source of truth for these keys: present values replace,
@@ -101,6 +119,39 @@ export function factsLine(f: ProductFacts): string {
  * the change, never sent as data of the new product. `alsoKnown` are facts this tab knows from
  * elsewhere (the form draft). Returns the previous product's facts when there was a real change.
  */
+/**
+ * The stored case after the product changes to `product` (pure: nothing is written). Used by
+ * switchCaseProduct and by the case transaction (utils/caseStore), so a product change and the
+ * fields written with it land together or not at all.
+ */
+export function switchedCase(curIn: CaseContext, product: string, alsoKnown: Partial<ProductFacts> = {}): { next: CaseContext; facts: ProductFacts | null; changed: boolean } {
+  const next = String(product || "").trim();
+  const cur: CaseContext = { ...curIn };
+  if (!next) return { next: cur, facts: null, changed: false };
+  const before = String(cur.product || cur.productDescription || alsoKnown.product || "").trim();
+  if (before && sameProduct(before, next)) {
+    // the same product, described again or with one characteristic corrected: the newest
+    // description is the one in force everywhere (no stale "220 V" next to a "440 V")
+    const changed = cur.product !== next || (!!cur.productDescription && cur.productDescription !== next);
+    cur.product = next;
+    if (cur.productDescription) cur.productDescription = next;
+    return { next: cur, facts: null, changed };
+  }
+  const sameAsDraft = !!alsoKnown.product && !!before && sameProduct(alsoKnown.product, before);
+  const facts: ProductFacts = {
+    product: before,
+    quantity: cur.quantity || (sameAsDraft ? alsoKnown.quantity : undefined),
+    budget: cur.budget || (sameAsDraft ? alsoKnown.budget : undefined),
+    supplierName: cur.supplierName,
+    price: cur.price,
+    totalCostText: cur.totalCostText,
+  };
+  for (const k of ["quantity", "budget", "productDescription", ...SCENARIO_KEYS] as (keyof CaseContext)[]) delete cur[k];
+  cur.product = next;
+  if (before) cur.earlier = [...(Array.isArray(cur.earlier) ? cur.earlier : []), factsLine(facts)].slice(-5);
+  return { next: cur, facts: before ? facts : null, changed: true };
+}
+
 export function switchCaseProduct(product: string, alsoKnown: Partial<ProductFacts> = {}): ProductFacts | null {
   const next = String(product || "").trim();
   if (!next) return null;
@@ -108,13 +159,8 @@ export function switchCaseProduct(product: string, alsoKnown: Partial<ProductFac
     const cur = caseContext();
     const before = String(cur.product || cur.productDescription || alsoKnown.product || "").trim();
     if (before && sameProduct(before, next)) {
-      // the same product, described again or with one characteristic corrected: the newest
-      // description is the one in force everywhere (no stale "220 V" next to a "440 V")
-      if (cur.product !== next || (cur.productDescription && cur.productDescription !== next)) {
-        cur.product = next;
-        if (cur.productDescription) cur.productDescription = next;
-        sessionStorage.setItem(KEY, JSON.stringify(cur));
-      }
+      const r = switchedCase(cur, next, alsoKnown);
+      if (r.changed) sessionStorage.setItem(KEY, JSON.stringify(r.next));
       return null;
     }
     const sameAsDraft = !!alsoKnown.product && !!before && sameProduct(alsoKnown.product, before);
@@ -165,12 +211,14 @@ export interface SealResult {
   notified?: boolean; // SEAL's inbox got it (false = registered only: SEAL sees it in the registry)
   caseUrl?: string; // signed page: what SEAL received and the case status
   test?: boolean; // the server identified it as a test record (not a commercial lead)
+  error?: string; // the server's reason for a rejection (e.g. "quantity_not_integer")
 }
 
 /** Sends the request to SEAL with the whole case (this screen's data wins over the stored one). */
 export async function sendToSeal(req: SealRequest): Promise<SealResult> {
-  const body: Record<string, unknown> = { ...caseContext() };
-  for (const [k, v] of Object.entries(req)) if (!empty(v)) body[k] = v;
+  // the stored case + this screen's data, with the product, quantity and budget IN FORCE
+  // (an estimate made for other values goes as history, never as current: utils/caseStore)
+  const body: Record<string, unknown> = caseForSeal(req);
   body.lang = getLang();
   try {
     const res = await fetch(`${API}/api/email/quote`, {
@@ -178,8 +226,8 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-    const j = res.ok ? await res.json().catch(() => ({})) : {};
-    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test};
+    const j = await res.json().catch(() => ({}));
+    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test, ...(!res.ok && typeof j.error === "string" ? { error: j.error.slice(0, 40) } : {}) };
     if (out.ok) {
       // the history of earlier products went with THIS case; a later case of another product
       // starts without it (SEAL must not read guantes/molinos as part of a termos request)

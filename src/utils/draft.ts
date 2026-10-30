@@ -13,6 +13,10 @@ export function clearDraft(): void {
     sessionStorage.removeItem("seal_case");
     // the product the client last set, in the chat or in the form
     sessionStorage.removeItem(PRODUCT_KEY);
+    // the case number sent in the previous case ("¿ya llegó mi solicitud?" must not answer with it)
+    sessionStorage.removeItem("seal_last_case");
+    // a change proposed in the previous case and never confirmed
+    sessionStorage.removeItem(PENDING_KEY);
   } catch {
     /* storage unavailable */
   }
@@ -20,7 +24,9 @@ export function clearDraft(): void {
 
 // The product in force, shared by the chat and the form: whichever the client
 // edited last wins, so going back and forth never brings an old product back.
-const PRODUCT_KEY = "seal_product";
+export const PRODUCT_KEY = "seal_product";
+// A change proposed in the chat and waiting for the client's confirmation (utils/caseStore)
+export const PENDING_KEY = "seal_pending";
 export function savedProduct(): string {
   try {
     return sessionStorage.getItem(PRODUCT_KEY) || "";

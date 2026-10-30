@@ -1,4 +1,5 @@
-import { sendToSeal, receiptText, rememberCase } from "../../utils/caseContext";
+import { sendToSeal, receiptText, rememberCase, caseContext } from "../../utils/caseContext";
+import { currentCase, scenarioMatches } from "../../utils/caseStore";
 import { useEffect, useState } from "react";
 import { cleanSupplier } from "../../utils/text";
 import { qtyFrom, resolveScenario, priceNoteFor, reportNotesFor } from "../../utils/scenario";
@@ -309,6 +310,7 @@ export function FinalCTA() {
     setSubmitting(true);
     try {
       const res = await sendToSeal({
+            requestType: "Solicitud de cotización formal (desde el informe)",
             name: quoteName,
             email: quoteEmail,
             phone: quotePhone,
@@ -467,6 +469,10 @@ export function FinalCTA() {
     }
   };
 
+  // the case in force may have changed after the estimate this report shows (utils/caseStore)
+  const inForce = currentCase();
+  const storedFor = caseContext().scenarioFor;
+  const staleReport = !!inForce.product && !!storedFor && !scenarioMatches(storedFor, inForce);
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-purple-50 to-blue-50">
       {/* Header */}
@@ -509,6 +515,14 @@ export function FinalCTA() {
       </nav>
 
       <div className="max-w-5xl mx-auto px-3 sm:px-6 py-8 sm:py-12">
+        {staleReport && (
+          <div data-testid="stale-estimate" className="mb-6 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            {L(
+              `Este informe es de una estimación anterior. Tu caso vigente dice ${inForce.quantity ? `${inForce.quantity.toLocaleString("en-US")} unidades` : "otra cantidad"}${inForce.budget ? `, presupuesto US$${inForce.budget.toLocaleString("en-US")}` : ""} de «${inForce.product.slice(0, 120)}». Vuelve al formulario y consulta de nuevo para recalcular; si envías tu caso a SEAL ahora, esta estimación va como anterior (no vigente).`,
+              `This report is from an earlier estimate. Your current case says ${inForce.quantity ? `${inForce.quantity.toLocaleString("en-US")} units` : "another quantity"}${inForce.budget ? `, budget US$${inForce.budget.toLocaleString("en-US")}` : ""} of "${inForce.product.slice(0, 120)}". Go back to the form and search again to recalculate; if you send your case to SEAL now, this estimate goes as a previous one (no longer current).`,
+            )}
+          </div>
+        )}
         {/* Success */}
         <div className="text-center mb-12">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
