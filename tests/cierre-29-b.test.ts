@@ -32,6 +32,7 @@ const { currentCase, caseForSeal, formStart, leadingNumber, caseVersion, saveFor
 const { DRAFT_KEY, PENDING_KEY, saveProduct, clearDraft } = await import("../src/utils/draft");
 const { sendToSeal, caseContext, setCaseScenario } = await import("../src/utils/caseContext");
 const { fieldError } = await import("../src/utils/formValidation");
+const { requestFacts } = await import("../src/utils/requestFacts");
 
 const C = "compresores industriales de tornillo, trifásicos 220 V, 60 Hz, tanque de 500 litros, libres de aceite";
 const withTank = (l: string) => C.replace("500 litros", l);
@@ -1141,5 +1142,83 @@ describe("R35 · ninth adversarial pass (29-b, 12,150-message grid)", () => {
   it("thanks / OK emojis do not block a clear order", async () => {
     startCase();
     await expectCase({ product: C, quantity: 7, budget: 5000 }, chat(["Cambia la cantidad a 7 🙏"]).reply);
+  });
+});
+
+// ── REGRESIÓN-PRODUCCIÓN 2026-10-30 · los tres casos reportados en v2026.10.28-n ──────────────────
+// 1) Con 4 compresores, «La compra será de 3.5 compresores. No cambies nada hasta confirmar…» → 4 → 5.
+// 2) «serían 10,000,001 compresores» aceptado y presente en el resumen para SEAL.
+// 3) Presupuesto US$5,000 indicado al inicio: no quedó en el formulario ni en el resumen.
+describe("R36 · regresión de producción (v2026.10.28-n): los tres casos reportados", () => {
+  const START = "Quiero importar 4 compresores industriales de tornillo de 220 V con un presupuesto de US$5,000";
+  const S1 = "La compra será de 3.5 compresores. No cambies nada hasta confirmar si aceptas cantidades fraccionarias.";
+  const S2 = "serían 10,000,001 compresores";
+  const P = "compresores industriales de tornillo de 220 V";
+  /** what the start page does with the request (LandingPage handleStartAnalysis) */
+  function startFromRequest(request: string) {
+    reset();
+    clearDraft();
+    const f = requestFacts(request);
+    expect(writeCaseTx({ product: f.product, quantity: f.quantity ?? null, budget: f.budget ?? null }).ok).toBe(true);
+    return f;
+  }
+  it("3) el presupuesto y la cantidad del pedido inicial quedan en el caso, el formulario y el resumen", async () => {
+    const f = startFromRequest(START);
+    expect(f).toEqual({ product: P, quantity: 4, budget: 5000, issues: [] });
+    await expectCase({ product: P, quantity: 4, budget: 5000 });
+  });
+  it("1) con 4 compresores, S1 no modifica nada (ni cantidad ni presupuesto)", async () => {
+    startFromRequest(START);
+    const r = chat([S1]).reply;
+    expect(r).not.toMatch(/→ 5|cantidad 5|Actualizado/);
+    expect(r).toMatch(/fraccionarias/);
+    await expectCase({ product: P, quantity: 4, budget: 5000 }, r);
+  });
+  it("2) «serían 10,000,001 compresores» no se acepta ni aparece en el resumen para SEAL", async () => {
+    startFromRequest(START);
+    const r = chat([S2]).reply;
+    expect(r).not.toMatch(/Actualizado/);
+    const s = await expectCase({ product: P, quantity: 4, budget: 5000 });
+    expect(JSON.stringify(s.body)).not.toMatch(/10,?000,?001/);
+    expect(JSON.stringify(caseForSeal({}))).not.toMatch(/10,?000,?001/);
+  });
+  it("secuencia completa como en producción: inicio → S1 → S2 → chat, formulario, resumen y payload coinciden (4, US$5,000)", async () => {
+    startFromRequest(START);
+    const specs: c.ReplySpec[] = [];
+    const { replies } = chat([S1, S2, "serán 10,000,001 compresores", "Cambia la cantidad a 3.5"], specs);
+    for (const r of replies) expect(r).not.toMatch(/Actualizado/);
+    await expectCase({ product: P, quantity: 4, budget: 5000 }, replies[replies.length - 1]);
+  });
+  it("variantes del pedido inicial: valores inválidos no entran al caso y se informan; el presupuesto válido sí", async () => {
+    for (const [req, exp, issue] of [
+      ["Quiero importar 3.5 compresores de tornillo con presupuesto de US$5,000", { product: "compresores de tornillo", budget: 5000 }, "quantity"],
+      ["Quiero importar 10,000,001 compresores de tornillo, presupuesto US$5,000", { product: "compresores de tornillo", budget: 5000 }, "quantity"],
+      ["Quiero importar 4 compresores de tornillo con presupuesto de unos 5000", { product: "compresores de tornillo", quantity: 4 }, "budget"],
+      ["Quiero importar 4 compresores de tornillo, presupuesto Q40,000", { product: "compresores de tornillo", quantity: 4 }, "budget"],
+      ["Compresores industriales de tornillo 220 V, 4 unidades, presupuesto US$5,000", { product: "Compresores industriales de tornillo 220 V", quantity: 4, budget: 5000 }, ""],
+      ["I want to import 200 stainless steel thermos 500 ml, budget US$1,500", { product: "stainless steel thermos 500 ml", quantity: 200, budget: 1500 }, ""],
+    ] as [string, Exp, string][]) {
+      const f = startFromRequest(req);
+      if (issue)
+        expect(
+          f.issues.map((x) => x.field),
+          req,
+        ).toContain(issue);
+      else expect(f.issues, req).toEqual([]);
+      await expectCase(exp);
+    }
+  });
+  it("un presupuesto dicho junto con un producto nuevo en el chat se conserva", async () => {
+    startCase();
+    await expectCase({ product: "bombas centrífugas de 5 HP", quantity: 10, budget: 3000 }, chat(["Ahora quiero importar 10 bombas centrífugas de 5 HP con un presupuesto de US$3,000"]).reply);
+  });
+});
+
+describe("R37 · formulario: una descripción normal del producto es válida (encontrado en la prueba de navegador 2026-10-30)", () => {
+  for (const d of ["termos de acero inoxidable para cafetería", "compresores industriales de tornillo de 220 V", "guantes de nitrilo talla M sin polvo"])
+    it(d, () => expect(fieldError("productType", d)).toBe(""));
+  it("las demasiado cortas siguen pidiendo detalle", () => {
+    expect(fieldError("productType", "abc")).not.toBe("");
+    expect(fieldError("productType", "aaaa bbbb")).not.toBe("");
   });
 });
