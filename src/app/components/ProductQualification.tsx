@@ -131,6 +131,9 @@ export function ProductQualification() {
   const [searchFailed, setSearchFailed] = useState(false);
   const [helpSent, setHelpSent] = useState<"" | "sending" | "sent" | "error">("");
   const [helpReceipt, setHelpReceipt] = useState("");
+  // 30-d: the case goes to SEAL only after the client confirms what is sent; one send per click burst
+  const [helpConfirm, setHelpConfirm] = useState(false);
+  const helpSending = useRef(false);
 
   // Seconds counter while searching (shown to the client)
   useEffect(() => {
@@ -142,6 +145,9 @@ export function ProductQualification() {
 
   // Ask SEAL to review the case when the search can't be completed
   const requestSealReview = async () => {
+    if (helpSending.current) return;
+    helpSending.current = true;
+    setHelpConfirm(false);
     setHelpSent("sending");
     try {
       const res = await sendToSeal({
@@ -162,6 +168,8 @@ export function ProductQualification() {
       setHelpSent(res.ok ? "sent" : "error");
     } catch {
       setHelpSent("error");
+    } finally {
+      helpSending.current = false;
     }
   };
   // Free searches: the server's count is the only one shown. Until it answers
@@ -233,6 +241,7 @@ export function ProductQualification() {
     setError("");
     setSearchFailed(false);
     setHelpSent("");
+    setHelpConfirm(false);
 
     const controller = new AbortController();
     searchCtl.current = controller;
@@ -827,10 +836,38 @@ export function ProductQualification() {
                       <span className="px-2 py-2 text-sm text-green-700">
                         ✅ {helpReceipt}
                       </span>
+                    ) : helpConfirm ? (
+                      <div className="p-3 rounded-lg bg-white border border-slate-300 text-slate-700 text-sm" role="group" aria-label={L("Confirmar envío a SEAL", "Confirm sending to SEAL")}>
+                        <p>
+                          <span>
+                            {L(
+                              "SEAL recibirá tu nombre, tu correo y los datos de este formulario (producto, cantidad, presupuesto y, si los diste, volumen o peso) para que un ejecutivo revise tu caso y te contacte. No se comparten con proveedores.",
+                              "SEAL will receive your name, your email and the data in this form (product, quantity, budget and, if you gave them, volume or weight) so an executive can review your case and contact you. They are not shared with suppliers.",
+                            )}
+                          </span>
+                        </p>
+                        <div className="mt-2 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={requestSealReview}
+                            disabled={helpSent === "sending" || !userEmail}
+                            className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold hover:bg-[#0a2f47] disabled:opacity-60"
+                          >
+                            <span>{L("Sí, enviar a SEAL", "Yes, send to SEAL")}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setHelpConfirm(false)}
+                            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm hover:bg-slate-50"
+                          >
+                            <span>{L("Cancelar", "Cancel")}</span>
+                          </button>
+                        </div>
+                      </div>
                     ) : (
                       <button
                         type="button"
-                        onClick={requestSealReview}
+                        onClick={() => setHelpConfirm(true)}
                         disabled={helpSent === "sending" || !userEmail}
                         className="px-4 py-2 rounded-lg border-2 border-[#0B3C5D] text-[#0B3C5D] text-sm font-semibold hover:bg-blue-50 disabled:opacity-60"
                       >

@@ -12,7 +12,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.10.30-c";
+const EXPECT_VERSION = "2026.10.30-d";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
@@ -469,6 +469,58 @@ try {
         s4.p === "compresores industriales de tornillo de 220 V" &&
         s4.sync,
       JSON.stringify([s1, s2, s3, s4].map((x) => [x.q, x.b])) + " " + (v2 + " | " + v4).slice(0, 120),
+    );
+    await ctx.close();
+  }
+  {
+    // 30-d · B95-B97: «Pedir a SEAL que revise mi caso» (search failed) asks for confirmation first;
+    // cancel sends nothing; a double click on «Sí, enviar a SEAL» sends ONE case. B98: chat corrections.
+    const { ctx, page } = await newPage("es");
+    await startCase(page, "4", "5000");
+    const r1 = await say(page, "me equivoqué, son 7 unidades");
+    const s1 = caseOf(await state(page));
+    const r2 = await say(page, "son 9 unidades. Me equivoqué");
+    const s2 = caseOf(await state(page));
+    check(
+      "B98 «me equivoqué, son 7» se toma; «son 9. Me equivoqué» no cambia nada",
+      s1.q === "7" && s1.mq === "7" && s2.q === "7" && s2.mq === "7" && s2.sync,
+      JSON.stringify([s1.q, s2.q]) + " " + (r1 + " | " + r2).slice(0, 120),
+    );
+    await page.evaluate(() =>
+      localStorage.setItem("sealcargo_user_data", JSON.stringify({ userId: "user_e2e", email: "qa-prueba@example.com", name: "PRUEBA QA", searchCount: 0, searches: [], limitReached: false })),
+    );
+    await page.goto(`${BASE}/qualify`);
+    await page.waitForSelector("text=Paso");
+    for (let i = 0; i < 3 && (await page.getByRole("button", { name: /Consultar referencias/ }).count()) === 0; i++) await page.getByRole("button", { name: /Siguiente Paso/ }).click();
+    await page.getByRole("button", { name: /Consultar referencias/ }).click();
+    await page.getByRole("button", { name: /Pedir a SEAL que revise mi caso/ }).waitFor({ timeout: 15000 });
+    const sent = () => page.evaluate(() => (window.__sealSandbox?.sent || []).filter((x) => x.url === "/api/email/quote").length);
+    await page.getByRole("button", { name: /Pedir a SEAL que revise mi caso/ }).click();
+    const box = await page.getByRole("group", { name: /Confirmar envío a SEAL/ }).innerText();
+    const n0 = await sent();
+    check(
+      "B95 «Pedir a SEAL…» no envía: muestra qué recibirá SEAL y pide confirmar",
+      n0 === 0 && /tu nombre, tu correo/.test(box) && /No se comparten con proveedores/.test(box),
+      `${n0} ${box.slice(0, 80)}`,
+    );
+    await page.getByRole("button", { name: /^Cancelar$/ }).click();
+    const n1 = await sent();
+    const back = await page.getByRole("button", { name: /Pedir a SEAL que revise mi caso/ }).count();
+    check("B96 cancelar no envía nada y vuelve al botón", n1 === 0 && back === 1, `${n1} ${back}`);
+    await page.getByRole("button", { name: /Pedir a SEAL que revise mi caso/ }).click();
+    await page.evaluate(() => {
+      const b = [...document.querySelectorAll("button")].find((x) => /Sí, enviar a SEAL/.test(x.innerText));
+      b.click();
+      b.click();
+    });
+    await page.waitForFunction(() => /SEAL-SANDBOX|recib|caso/i.test(document.body.innerText) && !/Enviando…/.test(document.body.innerText), null, { timeout: 10000 });
+    await page.waitForTimeout(500);
+    const n2 = await sent();
+    const body = await page.evaluate(() => (window.__sealSandbox?.sent || []).find((x) => x.url === "/api/email/quote")?.body || {});
+    check(
+      "B97 doble clic en «Sí, enviar a SEAL»: un solo caso, con cantidad 7 y US$5,000",
+      n2 === 1 && String(body.quantity) === "7" && /5,?000/.test(String(body.budget)),
+      `${n2} ${JSON.stringify({ q: body.quantity, b: body.budget })}`,
     );
     await ctx.close();
   }

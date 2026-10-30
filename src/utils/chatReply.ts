@@ -2716,6 +2716,8 @@ export function specForbidden(words: string[], fix: { from: string; to: string }
  * General by design: the list of phrasings people use is open, so what is not understood is asked.
  */
 /** "si es posible", "si podés", "if possible", "por favor": politeness, not a condition. */
+// A correction that OPENS the message and is followed by punctuation (see fullyUnderstood)
+export const LEAD_CORRECTION = /^\s*(?:(?:ah\s+no|perd[oó]n|disculp[ae]|sorry|oops)\s*[,.:;]?\s*)?(?:me\s+equivoqu[eé]|me\s+confund[ií]|i\s+was\s+wrong|my\s+mistake|my\s+bad|actually|correction)\s*[,.:;]\s*(?=\S)/;
 export const POLITE = /\b(?:si\s+(?:es\s+posible|se\s+puede|puedes|pod[eé]s|puede|pueden|no\s+es\s+molestia|me\s+haces\s+el\s+favor)|if\s+(?:possible|you\s+can|you\s+could)|por\s+favor|please|porfa|gracias|thanks?)\b/g;
 export function uncertainMarkers(text: string, resolvedSpans: string[] = [], hints: string[] = []): string[] {
   let t = ` ${normalizeNumbers(String(text || "").toLowerCase())} `;
@@ -2937,6 +2939,10 @@ function productOnly(name: string): string {
 export function fullyUnderstood(text: string, change: { quantity?: number; budget?: number; budgetClear?: boolean; fixTo?: string; fixFrom?: string; product?: string; head?: string; productHead?: string; current?: { quantity?: number; budget?: number } }, resolvedSpans: string[] = []): { ok: boolean; why?: string; note?: string } {
   let t = ` ${normalizeNumbers(String(text || "").toLowerCase())} `;
   for (const sp of resolvedSpans) if (sp.trim()) t = t.split(sp).join(" ");
+  // 30-d: a correction OPENING the message ("me equivoqué, son 750", "perdón, me equivoqué: el
+  // presupuesto es US$3,500", "actually, make it 650 units") only introduces the value that follows;
+  // the rest of the message is checked as usual. At the end ("son 750. Me equivoqué") it still retracts.
+  t = t.replace(LEAD_CORRECTION, " ");
   t = t
     .replace(POLITE, " ")
     .replace(/\b(?:hola|buen[oa]s(?:\s+(?:d[ií]as|tardes|noches))?|saludos|gracias|muchas\s+gracias|thanks|thank\s+you|porfa|xfa|please|por\s+favor)\b/g, " ")
@@ -3366,8 +3372,8 @@ export function buildReply(r: ReplySpec): string {
     ) + staleLine(r);
   if (r.controlOnly)
     return Lx(
-      "Anotado. Desde este chat no se envía nada a SEAL: un caso solo llega a SEAL si tú presionas «Enviar a SEAL» en el resumen. No cambié ningún dato de tu caso.",
-      "Noted. Nothing is sent to SEAL from this chat: a case only reaches SEAL if you press \"Send to SEAL\" in the summary. I didn't change any data in your case.",
+      "Anotado. Desde este chat no se envía nada a SEAL: un caso solo llega a SEAL si tú presionas un botón de envío, como «Enviar a SEAL» o «Pedir a SEAL que revise mi caso». No cambié ningún dato de tu caso.",
+      "Noted. Nothing is sent to SEAL from this chat: a case only reaches SEAL if you press a send button, such as \"Send to SEAL\" or \"Ask SEAL to review my case\". I didn't change any data in your case.",
     );
   const ctx: ChatCtx = { product: r.product };
   const parts: string[] = [];

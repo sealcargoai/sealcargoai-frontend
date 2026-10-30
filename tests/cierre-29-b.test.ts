@@ -1581,3 +1581,57 @@ describe("R39.3 · pedido inicial: números en palabras y «no enviar» suelto",
     await expectCase(BASE, r.reply);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// R40 · validación 30-d sobre v2026.10.30-c (a7e3e2a) en producción: defectos y sus vecinos
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+const P40 = "botellas de vidrio de 500 ml con tapa metálica para salsa picante";
+const B40: Exp = { product: P40, quantity: 500, budget: 3000 };
+
+describe("R40.1 · una corrección que abre el mensaje introduce el valor (antes: «negación o condición»)", () => {
+  for (const [msg, exp, lang] of [
+    ["me equivoqué, son 750 unidades", { quantity: 750 }, "es"],
+    ["Me equivoqué. Son 750 unidades", { quantity: 750 }, "es"],
+    ["perdón, me equivoqué: el presupuesto es US$3,500", { budget: 3500 }, "es"],
+    ["actually, make it 650 units", { quantity: 650 }, "en"],
+    ["correction: the quantity is 650", { quantity: 650 }, "en"],
+  ] as const)
+    it(msg, async () => {
+      startCase("500", "3000", P40, lang);
+      const r = chat([msg]);
+      await expectCase({ ...B40, ...exp }, r.reply);
+    });
+});
+
+describe("R40.2 · vecinos: la corrección no vuelve aceptable lo que no lo era", () => {
+  for (const msg of [
+    "son 750 unidades. Me equivoqué",
+    "la cantidad es 750, me equivoqué",
+    "me equivoqué, son 750 o 800 unidades",
+    "me equivoqué, no son 750",
+    "me equivoqué, son 3.5 unidades",
+    "me equivoqué: son 20000000 unidades",
+    "me equivoqué",
+    "me equivoqué, no cambies nada",
+  ])
+    it(msg, async () => {
+      startCase("500", "3000", P40);
+      const r = chat([msg]);
+      await expectCase(B40, r.reply);
+    });
+});
+
+describe("R40.3 · «no enviar»: la respuesta nombra todos los botones que envían un caso", () => {
+  it("es", () => {
+    startCase("500", "3000", P40);
+    const r = chat(["no enviar caso comercial"]);
+    expect(r.reply).toMatch(/«Enviar a SEAL»/);
+    expect(r.reply).toMatch(/«Pedir a SEAL que revise mi caso»/);
+  });
+  it("en", () => {
+    startCase("500", "3000", P40, "en");
+    const r = chat(["do not send the commercial case"]);
+    expect(r.reply).toMatch(/Nothing is sent to SEAL/);
+    expect(r.reply).toMatch(/"Ask SEAL to review my case"/);
+  });
+});
