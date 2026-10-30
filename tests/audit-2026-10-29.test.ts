@@ -272,7 +272,10 @@ describe("AUDIT-X · context never leaks between questions or cases", () => {
     startCase();
     const specs: c.ReplySpec[] = [];
     chat(["Necesito 500 lápices en cajas de 24, ¿cuántas cajas?"], specs);
-    expect(chat(["¿Y si fueran 600?"], specs).reply).toMatch(/25 cajas/);
+    // 30-b: with a case open, a bare number after a calculation is ambiguous (calculation or case?) and is
+    // asked, never answered from the calculation; naming the calculation's items is the explicit reference.
+    expect(chat(["¿Y si fueran 600?"], specs).reply).toMatch(/cálculo anterior/);
+    expect(chat(["¿Y si fueran 600 lápices?"], specs).reply).toMatch(/25 cajas/);
   });
   it("correction followed by a hypothetical: the hypothetical changes nothing", async () => {
     startCase("3");

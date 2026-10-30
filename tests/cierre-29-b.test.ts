@@ -1164,7 +1164,7 @@ describe("R36 · regresión de producción (v2026.10.28-n): los tres casos repor
   }
   it("3) el presupuesto y la cantidad del pedido inicial quedan en el caso, el formulario y el resumen", async () => {
     const f = startFromRequest(START);
-    expect(f).toEqual({ product: P, quantity: 4, budget: 5000, issues: [] });
+    expect(f).toEqual({ product: P, quantity: 4, budget: 5000, issues: [], control: [] });
     await expectCase({ product: P, quantity: 4, budget: 5000 });
   });
   it("1) con 4 compresores, S1 no modifica nada (ni cantidad ni presupuesto)", async () => {
@@ -1221,4 +1221,256 @@ describe("R37 · formulario: una descripción normal del producto es válida (en
     expect(fieldError("productType", "abc")).not.toBe("");
     expect(fieldError("productType", "aaaa bbbb")).not.toBe("");
   });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// R38 · permanent regression matrix (30-b): the cases reported on v2026.10.30-a and the families
+// around them. Every case checks the saved case, the form, the SEAL summary, the mirror and the
+// exact payload (mocked) — and the values the chat reply states.
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+const M1 = "La compra será de 3.5 compresores. No cambies nada hasta confirmar si aceptas cantidades fraccionarias.";
+const M2 = "Corrijo: serían 10,000,001 compresores; actualiza únicamente la cantidad y conserva lo demás.";
+const BASE: Exp = { product: C, quantity: 4, budget: 5000 };
+const ES_ONLY = /\b(?:the|your|quantity|budget|didn'?t|change|case)\b/i;
+const EN_ONLY = /\b(?:tu|cantidad|presupuesto|cambi[éeo]|caso|sigue)\b/i;
+
+describe("R38.1 · los dos mensajes reportados (exactos) no cambian nada", () => {
+  it("M1: 3.5 con «no cambies nada hasta confirmar» → nada cambia, se explica que no se aceptan fracciones", async () => {
+    startCase();
+    const r = chat([M1]);
+    expect(r.reply).toMatch(/fraccionari/);
+    expect(r.reply).not.toMatch(/cantidad (?:3|4)\.5|cantidad 3\b|cantidad 5\b/);
+    await expectCase(BASE, r.reply);
+    expect(readPending()).toBeNull();
+  });
+  it("M2: 10,000,001 «actualiza únicamente la cantidad» → rechazado, nada cambia", async () => {
+    startCase();
+    const r = chat([M2]);
+    expect(r.reply).toMatch(/10,000,000/);
+    await expectCase(BASE, r.reply);
+  });
+  it("M1 y luego M2 seguidos, y luego «sí»: nada se aplica", async () => {
+    startCase();
+    const specs: c.ReplySpec[] = [];
+    chat([M1, M2], specs);
+    await expectCase(BASE, chat(["sí"], specs).reply);
+  });
+  it("M2 después de un cálculo de lápices: se rechaza, no se responde con el cálculo", async () => {
+    startCase();
+    const specs: c.ReplySpec[] = [];
+    chat([MATH], specs);
+    const r = chat([M2], specs);
+    expect(r.reply).not.toMatch(/caja/);
+    await expectCase(BASE, r.reply);
+  });
+});
+
+describe("R38.2 · límites de cantidad: 1 y 10,000,000 válidos; 0, negativos, fracciones y >máximo rechazados", () => {
+  for (const [msg, q] of [
+    ["La cantidad es 1", 1],
+    ["Cambia la cantidad a 10,000,000", 10_000_000],
+    ["Corrijo: son 6 compresores", 6],
+  ] as const)
+    it(`válida: ${msg}`, async () => {
+      startCase();
+      await expectCase({ ...BASE, quantity: q }, chat([msg]).reply);
+    });
+  for (const msg of [
+    "La cantidad es 0",
+    "Cambia la cantidad a -3",
+    "La cantidad es 3.5",
+    "La cantidad es 2,5",
+    "Cambia la cantidad a 4.75",
+    "La cantidad es 10,000,001",
+    "Cambia la cantidad a 10000001",
+    "Corrijo: son 3.5 compresores",
+    "La cantidad es 1e7",
+  ])
+    it(`inválida: ${msg}`, async () => {
+      startCase();
+      const r = chat([msg]);
+      expect(r.reply).toMatch(/No cambié|no cambié/);
+      await expectCase(BASE, r.reply);
+    });
+  it("formulario: los mismos límites", () => {
+    for (const v of ["1", "10000000"]) expect(fieldError("quantity", v)).toBe("");
+    for (const v of ["0", "-3", "3.5", "2,5", "10000001"]) expect(fieldError("quantity", v)).not.toBe("");
+  });
+});
+
+describe("R38.3 · cambios parciales y encadenados (capacidad → cantidad → presupuesto)", () => {
+  it("cada paso cambia solo su campo", async () => {
+    startCase();
+    const specs: c.ReplySpec[] = [];
+    await expectCase({ ...BASE, product: withTank("300 litros") }, chat(["Cambia el tanque a 300 litros"], specs).reply);
+    await expectCase({ product: withTank("300 litros"), quantity: 6, budget: 5000 }, chat(["Cambia la cantidad a 6"], specs).reply);
+    await expectCase({ product: withTank("300 litros"), quantity: 6, budget: 7000 }, chat(["El presupuesto es US$7,000"], specs).reply);
+    // an invalid step in the middle of the chain changes nothing
+    await expectCase({ product: withTank("300 litros"), quantity: 6, budget: 7000 }, chat([M2], specs).reply);
+    await expectCase({ product: withTank("300 litros"), quantity: 6, budget: 7000 }, chat([M1], specs).reply);
+  });
+  it("orden inverso: presupuesto → cantidad → capacidad", async () => {
+    startCase();
+    const specs: c.ReplySpec[] = [];
+    await expectCase({ ...BASE, budget: 8000 }, chat(["Cambia el presupuesto a US$8,000"], specs).reply);
+    await expectCase({ ...BASE, budget: 8000, quantity: 2 }, chat(["La cantidad es 2"], specs).reply);
+    await expectCase({ product: withTank("300 litros"), quantity: 2, budget: 8000 }, chat(["Cambia la capacidad del tanque de 500 a 300 litros"], specs).reply);
+  });
+});
+
+describe("R38.4 · hipotético → cambio y cambio → hipotético", () => {
+  it("hipotético y luego cambio: solo el cambio se aplica", async () => {
+    startCase();
+    const specs: c.ReplySpec[] = [];
+    await expectCase(BASE, chat(["¿Y si fueran 8 compresores?"], specs).reply);
+    await expectCase({ ...BASE, quantity: 6 }, chat(["Cambia la cantidad a 6"], specs).reply);
+  });
+  it("cambio y luego hipotético: el hipotético no cambia nada", async () => {
+    startCase();
+    const specs: c.ReplySpec[] = [];
+    await expectCase({ ...BASE, quantity: 6 }, chat(["Cambia la cantidad a 6"], specs).reply);
+    await expectCase({ ...BASE, quantity: 6 }, chat(["¿Y si fueran 9 compresores?"], specs).reply);
+    await expectCase({ ...BASE, quantity: 6 }, chat(["Suponiendo un presupuesto de US$9,000, ¿alcanza?"], specs).reply);
+  });
+});
+
+describe("R38.5 · negaciones y frases de control", () => {
+  for (const msg of [
+    "No cambies la cantidad a 8",
+    "No quiero 8 compresores",
+    "No enviar caso comercial.",
+    "PRUEBA QA – no enviar caso comercial",
+    "(prueba QA, no enviar caso comercial)",
+    "Do not send a commercial case.",
+  ])
+    it(`nada cambia: ${msg}`, async () => {
+      startCase();
+      await expectCase(BASE, chat([msg]).reply);
+    });
+  it("una frase de control sola no se toma como producto ni como dato", () => {
+    startCase();
+    const r = chat(["No enviar caso comercial."]);
+    expect(r.last.controlOnly).toBe(true);
+    expect(r.reply).toMatch(/no se envía nada a SEAL/);
+    expect(r.reply).not.toMatch(/proveedor(?:es)? (?:verificad|confirmad)/);
+  });
+  it("la frase de control no impide un cambio explícito en el mismo mensaje", async () => {
+    startCase();
+    await expectCase({ ...BASE, quantity: 6 }, chat(["Prueba QA: cambia la cantidad a 6. No enviar caso comercial."]).reply);
+  });
+  it("con la frase de control, un valor inválido sigue rechazado", async () => {
+    startCase();
+    await expectCase(BASE, chat(["No enviar caso comercial. " + M2]).reply);
+  });
+  for (const req of [
+    "PRUEBA QA – No enviar caso comercial. Quiero importar 4 compresores industriales de tornillo de 220 V con un presupuesto de US$5,000.",
+    "Quiero importar 4 compresores industriales de tornillo de 220 V con un presupuesto de US$5,000. No enviar caso comercial.",
+    "Quiero importar 4 compresores industriales de tornillo de 220 V, no enviar caso comercial, con un presupuesto de US$5,000",
+    "Quiero importar 4 compresores industriales de tornillo de 220 V con un presupuesto de US$5,000 (prueba QA, no enviar caso comercial)",
+    "Quiero importar 4 compresores industriales de tornillo de 220 V con un presupuesto de US$5,000 No enviar caso comercial",
+    "PRUEBA QA - No enviar caso comercial: Quiero importar 4 compresores industriales de tornillo de 220 V con un presupuesto de US$5,000",
+  ])
+    it(`pedido inicial con nota de control: ${req.slice(0, 60)}…`, () => {
+      const f = requestFacts(req);
+      expect(f.product).toBe("compresores industriales de tornillo de 220 V");
+      expect(f.quantity).toBe(4);
+      expect(f.budget).toBe(5000);
+      expect(f.issues).toEqual([]);
+      expect(f.control.length).toBeGreaterThan(0);
+      expect(f.product).not.toMatch(/enviar|caso|comercial|prueba|qa/i);
+    });
+  it("un producto que contiene «prueba» no se recorta", () => {
+    expect(requestFacts("Quiero importar 10 kits de prueba de pH").product).toBe("kits de prueba de pH");
+  });
+});
+
+describe("R38.6 · aislamiento de contexto: un mensaje no hereda un cálculo anterior salvo referencia explícita", () => {
+  for (const msg of ["Son 600", "¿Y con 600?", "Y para 10,000,001?"])
+    it(`después de un cálculo, «${msg}» se pregunta, nada cambia`, async () => {
+      startCase();
+      const specs: c.ReplySpec[] = [];
+      chat([MATH], specs);
+      const r = chat([msg], specs);
+      expect(r.reply).toMatch(/cálculo anterior/);
+      expect(r.reply).not.toMatch(/\d+ cajas/);
+      await expectCase(BASE, r.reply);
+    });
+  it("«Corrijo: son 6 compresores» después del cálculo aplica la cantidad al caso, sin tocar producto ni presupuesto", async () => {
+    startCase();
+    const specs: c.ReplySpec[] = [];
+    chat([MATH], specs);
+    await expectCase({ ...BASE, quantity: 6 }, chat(["Corrijo: son 6 compresores"], specs).reply);
+  });
+  it("con referencia explícita al cálculo, el cálculo sí se usa", () => {
+    startCase();
+    const specs: c.ReplySpec[] = [];
+    chat([MATH], specs);
+    expect(chat(["¿Y para 600 lápices?"], specs).reply).toMatch(/50 cajas/);
+  });
+  it("los nombres de corrección nunca se vuelven el producto", () => {
+    for (const n of ["Corrijo: son 6 compresores", "son 6 compresores", "actualiza la cantidad", "No enviar caso comercial", "serían 10 compresores"]) expect(c.cleanProductName(n), n).toBe(false);
+    for (const n of ["sí, 4 compresores", "perdón, 6 compresores"]) expect(c.cleanProductName(n), n).toBe(false);
+    for (const n of ["compresores de tornillo 220 V", "nopales deshidratados", "sierras", "kits de prueba de pH"]) expect(c.cleanProductName(n), n).toBe(true);
+  });
+});
+
+describe("R38.7 · navegación chat ↔ formulario, recarga, borradores y resumen", () => {
+  it("cambio en el chat → formulario → cambio en el formulario → chat: todo coincide", async () => {
+    startCase();
+    const specs: c.ReplySpec[] = [];
+    chat(["Cambia la cantidad a 6"], specs);
+    const f = formStart("").formData;
+    expect(f.quantity).toBe("6");
+    const r = saveFormDraft({ ...f, budget: "7000" }, 2, null, caseVersion().rev);
+    expect(r.ok).toBe(true);
+    await expectCase({ ...BASE, quantity: 6, budget: 7000 });
+    // the chat after the form edit builds on the saved case
+    await expectCase({ ...BASE, quantity: 6, budget: 7000 }, chat([M2], specs).reply);
+  });
+  it("recarga: el caso guardado se relee igual y un mensaje inválido después no lo altera", async () => {
+    startCase();
+    chat(["Cambia la cantidad a 6"]);
+    const snapshot = JSON.stringify(store);
+    reset();
+    Object.assign(store, JSON.parse(snapshot));
+    repairCase();
+    await expectCase({ ...BASE, quantity: 6 });
+    await expectCase({ ...BASE, quantity: 6 }, chat([M1]).reply);
+  });
+  it("un borrador del formulario con rev vieja no pisa el cambio del chat", async () => {
+    startCase();
+    const rev0 = caseVersion().rev;
+    chat(["Cambia la cantidad a 6"]);
+    const r = saveFormDraft({ productType: C, quantity: "4", budget: "5000", destination: "GT", volumeCbm: "", weightKg: "" }, 2, null, rev0);
+    expect(r.ok).toBe(false);
+    await expectCase({ ...BASE, quantity: 6 });
+  });
+});
+
+describe("R38.8 · español / inglés sin mezclar", () => {
+  for (const [lang, msgs, other] of [
+    ["es", [M1, M2, "Cambia la cantidad a 6", "No enviar caso comercial.", "La cantidad es 0"], ES_ONLY],
+    [
+      "en",
+      [
+        "The purchase will be 3.5 compressors. Don't change anything until you confirm whether you accept fractional quantities.",
+        "Correction: it would be 10,000,001 compressors; update only the quantity and keep the rest.",
+        "Change the quantity to 6",
+        "Do not send a commercial case.",
+        "The quantity is 0",
+      ],
+      EN_ONLY,
+    ],
+  ] as const)
+    it(lang, async () => {
+      startCase("4", "5000", C, lang);
+      const specs: c.ReplySpec[] = [];
+      for (const m of msgs) {
+        const reply = chat([m], specs).reply;
+        // quoted user text and the product name are the client's own words: removed before the check
+        const own = reply.replace(/«[^»]*»|"[^"]*"/g, " ");
+        expect(own, `${lang}: ${m}`).not.toMatch(other);
+      }
+      await expectCase({ ...BASE, quantity: 6 });
+    });
 });
