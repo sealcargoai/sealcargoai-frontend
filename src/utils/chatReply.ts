@@ -2943,6 +2943,8 @@ export function fullyUnderstood(text: string, change: { quantity?: number; budge
   // presupuesto es US$3,500", "actually, make it 650 units") only introduces the value that follows;
   // the rest of the message is checked as usual. At the end ("son 750. Me equivoqué") it still retracts.
   t = t.replace(LEAD_CORRECTION, " ");
+  // 30-e: "ahora" next to the verb only dates the statement ("mi presupuesto ahora es de 5,000")
+  t = t.replace(/\bahora\s+(es|son|ser[aá]n?|queda)\b/g, "$1").replace(/\b(es|son|ser[aá]n?|queda)\s+ahora\b/g, "$1");
   t = t
     .replace(POLITE, " ")
     .replace(/\b(?:hola|buen[oa]s(?:\s+(?:d[ií]as|tardes|noches))?|saludos|gracias|muchas\s+gracias|thanks|thank\s+you|porfa|xfa|please|por\s+favor)\b/g, " ")
@@ -2965,7 +2967,7 @@ export function fullyUnderstood(text: string, change: { quantity?: number; budge
   // verbs that SET a value, and verbs that MOVE it ("sube", "reduce", "increase"): a moving verb sets
   // a value only with "a"/"to" ("sube el presupuesto a 7000"); "sube 3 unidades", "aumenta el
   // presupuesto en 2000" are increments — asked, never saved as the new total
-  const SETV = `(?:(?:c[aá]mbi|actualiz|actualic|actual[ií]z|modific|modifiqu|modif[ií]c|ajust|aj[uú]st|d[eé]j)(?:a|á|e|en|ar|í|ir|ás|as|és|es|ís)${CL}|p(?:[oó]n|on[eé]s?|[oó]ng(?:a|an)|oner)${CL}|corr(?:ige|eg[ií]|ija|ijan|egir|ijo)${CL}|change|set|update|modify|make|adjust|put)(?![a-záéíóúüñ])`;
+  const SETV = `(?:(?:c[aá]mbi|actualiz|actualic|actual[ií]z|modific|modifiqu|modif[ií]c|ajust|aj[uú]st|d[eé]j)(?:a|á|e|en|ar|í|ir|ás|as|és|es|ís)${CL}|p(?:[oó]n|on[eé]s?|[oó]ng(?:a|an)|oner|ong[aá]mos)${CL}|corr(?:ige|eg[ií]|ija|ijan|egir|ijo)${CL}|change|set|update|modify|make|adjust|put)(?![a-záéíóúüñ])`;
   const RELV = `(?:(?:aument|aum[eé]nt|b[aá]j|s[uú]b)(?:a|á|e|en|ar|í|ir|ás|as|és|es|ís)${CL}|reduc(?:e|í|ir)${CL}|reduzc(?:a|an)|increase|decrease|lower|raise|bump)(?![a-záéíóúüñ])(?=.*\\s(?:a|to)\\s+(?:us\\s?\\$|usd|\\$)?\\s*\\d)`;
   const VERB = `(?:${SETV}|${RELV})(?:\\s+(?:[uú]nicamente|solo|s[oó]lo|only|just))?`;
   const UNIT = `(?:unidades|unidad|units?|piezas?|pieces?|equipos?|m[aá]quinas?|pcs${stem ? `|${stem}[a-záéíóúñ]*` : ""})`;
@@ -3202,6 +3204,19 @@ export function refersToCalculation(text: string, mathText: string): boolean {
   const t = String(text || "").toLowerCase();
   if (calcItems(mathText).some((w) => t.includes(w.slice(0, Math.max(4, w.length - 2))))) return true;
   return new RegExp(`\\b(?:${PACK_WORDS})\\b|\\b(?:el|ese|este|mismo)\\s+c[aá]lculo|\\bla\\s+cuenta|\\blo\\s+anterior|\\ben\\s+ese\\s+caso|\\bcon\\s+es[eoa]s?\\b|\\b(?:the|that|same)\\s+(?:calculation|math)|\\bpor\\s+caja`, "i").test(t);
+}
+/** 30-e: the message reaches the calculation ONLY through an item word the case product also has
+ * ("650 botellas" after a bottles calculation, with a case of bottles), with no explicit reference to
+ * the calculation (its packs, "ese cálculo", "lo anterior"…) and not phrased as a follow-up question
+ * ("¿y para 600 botellas?"): it could be either one, so it is asked. */
+export function sharedItemOnly(text: string, mathText: string, caseProduct: string): boolean {
+  const t = String(text || "").toLowerCase();
+  const prod = String(caseProduct || "").toLowerCase();
+  if (!prod) return false;
+  if (/^\s*¿?\s*(?:y|e|and|what\s+about)\b/i.test(t) || /\?\s*$/.test(t)) return false;
+  if (new RegExp(`\\b(?:${PACK_WORDS})\\b|\\b(?:el|ese|este|mismo)\\s+c[aá]lculo|\\bla\\s+cuenta|\\blo\\s+anterior|\\ben\\s+ese\\s+caso|\\bcon\\s+es[eoa]s?\\b|\\b(?:the|that|same)\\s+(?:calculation|math)|\\bpor\\s+caja`, "i").test(t)) return false;
+  const named = calcItems(mathText).filter((w) => t.includes(w.slice(0, Math.max(4, w.length - 2))));
+  return named.length > 0 && named.every((w) => prod.includes(w.slice(0, Math.max(4, w.length - 2))));
 }
 /** A conditional or comparison ("¿y si fueran 5?", "suponiendo 300 litros…") never changes the order. */
 export const HYPOTHETICAL = /(?:\by\s+si\b|\bsi\s+(?:fuera|fueran|fuese|fuesen|pido|pidiera|pidiese|compro|comprara|cambio|cambiara|subo|subiera|bajo|bajara|aumento|aumentara|tuviera|quisiera|llevo|llevara|el\s+presupuesto|la\s+cantidad|en\s+vez|en\s+lugar|ahora|son|es|tuviese)\b|\bsi\s+(?:[a-záéíóúñ]+\s+){0,3}(?:fuera|fueran|fuese|fuesen|tuviera|tuvieran|costara|costaran|viniera|vinieran|cambiara|cambiaran|pidiera|subiera|bajara)\b|\bsuponiendo\b|\bsupongamos\b|\bsup[oó]n(?:é|e|go|gamos|iendo)?\b|\bimagin(?:emos|a|á|ate|ese)\b|\bdigamos\b|\ben\s+caso\s+de\b|\blet'?s\s+say\b|\bhypothetically\b|\bhipot[eé]tic\w*|\bqu[eé]\s+pasa(?:r[ií]a)?\s+si\b|\bsolo\s+para\s+comparar\b|\bpara\s+comparar\b|\bsin\s+cambiar\s+(?:el|mi)\s+pedido\b|\bwhat\s+if\b|\bsuppose\b|\bif\s+i\s+(?:order|ordered|bought|buy|change|changed|wanted)\b|\bhow\s+much\s+would\b|\bcu[aá]nto\s+(?:ser[ií]a|costar[ií]a|saldr[ií]a|me\s+saldr[ií]a)n?\b)/i;
@@ -3760,6 +3775,10 @@ export function nextSpec(
         break;
       }
       if (cand && namesCaseProduct && !refersToCalculation(text, x.mathText)) break;
+      if (cand && caseProduct && sharedItemOnly(text, x.mathText, caseProduct)) {
+        isolatedFrom = x.mathText;
+        break;
+      }
       follow = cand;
       if (follow) { lastMath = x.mathText; break; }
     }
