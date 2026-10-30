@@ -1635,3 +1635,98 @@ describe("R40.3 · «no enviar»: la respuesta nombra todos los botones que env�
     expect(r.reply).toMatch(/"Ask SEAL to review my case"/);
   });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+// R41 · validación final sobre v2026.10.30-d (97721af) en producción: defectos y sus vecinos
+// ─────────────────────────────────────────────────────────────────────────────────────────────────
+const B41: Exp = { product: P40, quantity: 600, budget: 4500 };
+const CALC41 = "Si compro 500 botellas en cajas de 12, ¿cuántas cajas serían?";
+
+describe("R41.1 · la respuesta a «¿es para el cálculo o para tu caso?» se entiende", () => {
+  it("«Son 700» → pregunta; «es para mi caso» → cantidad 700 (antes: «Anotado…» sin cambio)", async () => {
+    startCase("600", "4500", P40);
+    const r = chat([CALC41, "Son 700"]);
+    expect(r.reply).toMatch(/cálculo anterior/);
+    await expectCase(B41, r.reply);
+    const r2 = chat(["es para mi caso"], r.specs);
+    expect(r2.reply).toMatch(/cantidad 600 → 700/);
+    await expectCase({ ...B41, quantity: 700 }, r2.reply);
+  });
+  it("«¿Y para 10,000,001?» → pregunta; «para mi caso» → se rechaza por el máximo, nada cambia", async () => {
+    startCase("600", "4500", P40);
+    const r = chat([CALC41, "¿Y para 10,000,001?", "para mi caso"]);
+    expect(r.reply).toMatch(/máxima es 10,000,000/);
+    await expectCase(B41, r.reply);
+  });
+  it("«Son 700» → «para el cálculo» → se calcula y el caso no cambia", async () => {
+    startCase("600", "4500", P40);
+    const r = chat([CALC41, "Son 700", "para el cálculo"]);
+    expect(r.reply).toMatch(/59 cajas/);
+    await expectCase(B41);
+  });
+  it("sin pregunta previa, «es para mi caso» no inventa un número", async () => {
+    startCase("600", "4500", P40);
+    const r = chat(["es para mi caso"]);
+    await expectCase(B41, r.reply);
+  });
+});
+
+describe("R41.2 · contexto de cálculo: un número con la palabra que comparten cálculo y caso se pregunta", () => {
+  it("producto que no empieza con «botellas» (como en producción): «Mejor pongámosle 650 botellas» → pregunta, no calcula ni cambia", async () => {
+    const PP = `PRUEBA ficticia: ${P40}`;
+    startCase("600", "4500", PP);
+    const r = chat([CALC41, "Mejor pongámosle 650 botellas"]);
+    expect(r.reply).toMatch(/cálculo anterior/);
+    expect(r.reply).not.toMatch(/cajas:/);
+    await expectCase({ ...B41, product: PP }, r.reply);
+  });
+  it("producto «botellas…» y verbo de cambio: es el caso → cantidad 650 (no el cálculo)", async () => {
+    startCase("600", "4500", P40);
+    const r = chat([CALC41, "Mejor pongámosle 650 botellas"]);
+    expect(r.reply).not.toMatch(/cajas:/);
+    await expectCase({ ...B41, quantity: 650 }, r.reply);
+  });
+  it("«¿y para 650 botellas?» sigue siendo el cálculo", async () => {
+    startCase("600", "4500", P40);
+    const r = chat([CALC41, "¿y para 650 botellas?"]);
+    expect(r.reply).toMatch(/55 cajas/);
+    await expectCase(B41);
+  });
+});
+
+describe("R41.3 · redacción natural inequívoca", () => {
+  for (const [msg, exp] of [
+    ["Mi presupuesto de compra ahora es de cinco mil dólares", { budget: 5000 }],
+    ["Mejor pongámosle 650 botellas", { quantity: 650 }],
+    ["El presupuesto ahora es US$5,200", { budget: 5200 }],
+  ] as const)
+    it(msg, async () => {
+      startCase("600", "4500", P40);
+      await expectCase({ ...B41, ...exp }, chat([msg]).reply);
+    });
+  for (const msg of ["¿y si ahora fueran 650 botellas?", "si ahora es de cinco mil dólares, avísame", "Mejor pongámosle 650 o 700 botellas"])
+    it(`sigue sin cambiar: ${msg}`, async () => {
+      startCase("600", "4500", P40);
+      await expectCase(B41, chat([msg]).reply);
+    });
+});
+
+describe("R41.4 · límite de 1,500 caracteres: se dice cuánto sobra", () => {
+  const desc = (n: number) => "botellas de vidrio de 500 ml con tapa metálica para salsa picante. ".repeat(40).slice(0, n);
+  it("1,501 → «te pasaste por 1 carácter»", () => {
+    reset();
+    expect(fieldError("productType", desc(1501))).toMatch(/te pasaste por 1 carácter/);
+  });
+  it("1,600 → «te pasaste por 100 caracteres»", () => {
+    reset();
+    expect(fieldError("productType", desc(1600))).toMatch(/te pasaste por 100 caracteres/);
+  });
+  it("1,500 justo → sin error de longitud", () => {
+    reset();
+    expect(fieldError("productType", desc(1500).trimEnd() + "x")).not.toMatch(/Máximo/);
+  });
+  it("inglés", () => {
+    reset("en");
+    expect(fieldError("productType", desc(1600))).toMatch(/100 characters over/);
+  });
+});
