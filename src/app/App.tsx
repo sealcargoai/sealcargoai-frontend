@@ -8,7 +8,7 @@ import { SANDBOX } from "../utils/sandbox";
 
 // Shown small in the corner so testers can tell which version they are seeing.
 // Update it with each published change.
-export const APP_VERSION = "2026.10.30-e";
+export const APP_VERSION = "2026.10.30-f";
 // The commit this build was made from (Vercel sets it at build time; "local" otherwise), shown with
 // the version so a test can always tell which code it ran against.
 declare const __APP_COMMIT__: string;

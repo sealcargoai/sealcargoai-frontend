@@ -82,6 +82,25 @@ export function formatQ(usdAmount: number, exchangeRate: number, decimals = 0): 
   })}`;
 }
 
+/** 30-f: a line amount in quetzales rounded to centavos, the way it is printed in the PDF and Excel. */
+export function qCents(usdAmount: number, exchangeRate: number): number {
+  return Math.round((usdAmount * exchangeRate + Number.EPSILON) * 100) / 100;
+}
+/** 30-f: the total of the printed lines (each already in centavos), so the rows add up to the total. */
+export function linesTotalQ(costs: { lines?: { key: string; amount: number }[]; freightPending?: boolean; totalCost: number }, exchangeRate: number): number {
+  if (!costs.lines || !costs.lines.length) return qCents(costs.totalCost, exchangeRate);
+  const sum = costs.lines.filter((l) => !(l.key === "freight" && costs.freightPending)).reduce((a, l) => a + qCents(l.amount, exchangeRate), 0);
+  return Math.round((sum + Number.EPSILON) * 100) / 100;
+}
+const qText = (q: number) => `Q${q.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+/** 30-f: a line in quetzales with centavos, printed from qCents (the same value the total adds). */
+export function formatQCents(usdAmount: number, exchangeRate: number): string {
+  return qText(qCents(usdAmount, exchangeRate));
+}
+export function formatQTotal(costs: { lines?: { key: string; amount: number }[]; freightPending?: boolean; totalCost: number }, exchangeRate: number): string {
+  return qText(linesTotalQ(costs, exchangeRate));
+}
+
 export function formatUSD(usdAmount: number, decimals = 0): string {
   // Small unit prices (US$0.035) keep their decimals instead of showing US$0.00
   const small = decimals > 0 && usdAmount > 0 && usdAmount < 1;

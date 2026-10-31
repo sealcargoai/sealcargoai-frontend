@@ -3,7 +3,7 @@ import { differencesHeading, differencesFootnote } from "./differences";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
-import { estimateNote, scenarioVariables, formatUSD, formatUnitUSD, formatUnitQ, formatQ } from "./costCalculator";
+import { estimateNote, scenarioVariables, formatUSD, formatUnitUSD, formatUnitQ, formatQ, qCents, linesTotalQ } from "./costCalculator";
 
 // ─── SEAL Company Info ────────────────────────────────────────────────────────
 export const SEAL_COMPANY = {
@@ -337,7 +337,7 @@ export async function generateBeautifulExcel(
         ? `${((RATE_BY_KEY[l.key] as number) * 100).toFixed(0)}%${l.key === "duties" ? Lx(" ref.", " ref.") : ""}`
         : "—",
     // cents, not float noise (53944.600000000006) when the cell is copied
-    amount: Math.round(l.amount * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100,
+    amount: qCents(l.amount, data.costs.exchangeRate || DEFAULT_FX),
     pending: l.key === "freight" && !!data.costs.freightPending,
     isRate: RATE_BY_KEY[l.key] !== undefined,
     rateKey: l.key,
@@ -452,7 +452,8 @@ export async function generateBeautifulExcel(
     : Lx("TOTAL ESTIMADO EN GUATEMALA", "ESTIMATED TOTAL IN GUATEMALA");
   totalDetailCell.value = `${data.quantity.toLocaleString("en-US")} ${unitWordFor(data.costs.saleUnit, data.quantity)}`;
   totalRateCell.value = "—";
-  totalAmountCell.value = Math.round(data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX) * 100) / 100;
+  // 30-f: the sum of the printed rows (a SUM of column D gives the same total)
+  totalAmountCell.value = linesTotalQ(data.costs, data.costs.exchangeRate || DEFAULT_FX);
   totalAmountCell.numFmt = qFmt(totalAmountCell.value as number);
   totalPctCell.value = "100%";
 

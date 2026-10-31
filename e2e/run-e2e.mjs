@@ -12,7 +12,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.10.30-e";
+const EXPECT_VERSION = "2026.10.30-f";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
