@@ -1,6 +1,6 @@
 # Cierre 02-11 — auditoría integral (frontend)
 
-Versión: `2026.11.02-a`. Base: `aad9829` (producción al 2 de noviembre de 2026).
+Versión: `2026.11.02-b` (02-a + D12). Base: `aad9829` (producción al 2 de noviembre de 2026).
 Backend correspondiente: `sealcargoai-backend`, misma versión (ver su `CIERRE-02-11.md`).
 
 ## Defectos corregidos (causa raíz)
@@ -17,10 +17,11 @@ Backend correspondiente: `sealcargoai-backend`, misma versión (ver su `CIERRE-0
 | D8 | «no cambies la cantidad, el presupuesto es US$7,000» no cambiaba el presupuesto («Como pediste, no cambié el presupuesto») | El objeto de la prohibición seguía después de la coma | El objeto termina donde otra cláusula da valor a otro campo |
 | D9 | `/suppliers` en una pestaña nueva decía «La plataforma no devolvió datos» y ofrecía enviar un caso sin producto | Sin búsqueda se usaba el estado de «plataforma bloqueada» | Estado «No hay una búsqueda abierta en esta pestaña» con acceso al formulario, sin envío |
 | D10 | El diálogo de contacto decía «No necesitas buscar proveedores» después de una búsqueda | Texto único | Esa frase solo en inicio y chat |
+| D12 | En producción (02-a), el chat abierto sin caso respondía «no respondo preguntas abiertas» a «48» tras un cálculo | La regla de número suelto exigía un producto en el caso | Sin producto se pregunta qué representa el número y se ofrece el cálculo; nada se registra |
 | D11 | La prueba e2e de sandbox fallaba de forma intermitente (ronda 3 del primer candidato) | `server.kill()` detenía solo `npx`; el servidor `vite preview` quedaba vivo y otro arranque podía chocar con su puerto | Grupo de procesos propio, cierre del grupo completo y espera a que ESTE servidor responda |
 
 ## Pruebas
 
-- `tests/cierre-02-11.test.ts` (25 casos; 24 fallan sobre `aad9829`).
+- `tests/cierre-02-11.test.ts` (26 casos; 25 fallan sobre `aad9829`).
 - Suite completa `npx vitest run`, tipos estrictos, build, `node e2e/run-e2e.mjs` (sandbox).
 - Recorrido en navegador con backend local (correo simulado, búsqueda ficticia): ver informe de entrega.
