@@ -2545,6 +2545,8 @@ export interface ReplySpec {
   askContext?: { item: string; product: string };
   /** 02-11: a bare number with no field and no measure in the product: quantity or budget? (asked) */
   askBare?: number;
+  /** 02-11b: a bare number before any product is known (and the earlier calculation's item, if any) */
+  askNoProduct?: { n: number; calc: string };
   detailNote?: string; // "cada una con tanque de 500 litros": a detail of each unit that the case description doesn't have (not added)
   controlOnly?: boolean; // the message was only a note for testers ("no enviar caso comercial") // a bare number after a calculation: the calculation or the case?
   unsure?: string[]; // a change with a negation, condition, deferral or question not understood: proposed, not applied
@@ -3427,6 +3429,14 @@ export function buildReply(r: ReplySpec): string {
       `Actualizaste el producto en el formulario: ahora es «${r.newProduct}». Sigo con ese producto; lo que hablamos antes se conserva arriba.`,
       `You updated the product in the form: it is now "${r.newProduct}". I'll continue with that product; what we discussed before is kept above.`,
     ) + staleLine(r);
+  if (r.askNoProduct) {
+    const { n, calc } = r.askNoProduct;
+    const f = n.toLocaleString("en-US");
+    return Lx(
+      `¿Qué representa «${f}»? Si es la cantidad que quieres importar, dime también el producto, por ejemplo «${f} compresores de tornillo».${calc ? ` Si es para el cálculo anterior, escríbelo así: «¿y para ${f} ${calc}?».` : ""} No registré ningún dato.`,
+      `What does "${f}" stand for? If it's the quantity you want to import, tell me the product too, for example "${f} screw compressors".${calc ? ` If it's for the earlier calculation, write: "what about ${f} ${calc}?".` : ""} I didn't record any data.`,
+    );
+  }
   if (r.controlOnly)
     return Lx(
       "Anotado. Desde este chat no se envía nada a SEAL: un caso solo llega a SEAL si tú presionas un botón de envío, como «Enviar a SEAL» o «Pedir a SEAL que revise mi caso». No cambié ningún dato de tu caso.",
@@ -3803,6 +3813,12 @@ export function nextSpec(
   // 02-11: a number on its own ("48", "1,000") names no field: it is asked, never guessed or ignored.
   // Right after a calculation (or after asking about one) it may belong to that calculation or to the case.
   const bareNum = text.match(/^\s*¿?\s*(\d{1,3}(?:,\d{3})+|\d+)\s*[?.!]?\s*$/);
+  // 02-11b: with no product yet (the chat opened without a case) a bare number is asked too, never
+  // answered with the generic «no respondo preguntas abiertas»
+  if (bareNum && !caseProduct && !hypo && !holdMsg) {
+    const calc = [...specs].reverse().find((x) => x.mathText);
+    return { text, product: currentProduct, askNoProduct: { n: Number(bareNum[1].replace(/,/g, "")), calc: calc && (prevSpec?.mathText || prevSpec?.askNoProduct) ? calcLabel(calc.mathText!) || Lx("unidades", "units") : "" } };
+  }
   if (bareNum && caseProduct && !hypo && !holdMsg) {
     const n = Number(bareNum[1].replace(/,/g, ""));
     const calc = [...specs].reverse().find((x) => x.mathText);
