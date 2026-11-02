@@ -246,3 +246,24 @@ describe("D8 · una prohibición no se extiende al campo que la frase siguiente 
     expect([...c.prohibitions("no cambies la cantidad, ni el presupuesto").fields].sort()).toEqual(["budget", "quantity"]);
   });
 });
+
+describe("D12 · sin producto todavía, un número suelto también se pregunta (antes: «no respondo preguntas abiertas»)", () => {
+  it("chat abierto sin caso: «¿cuánto es 10 x 650?», cálculo y «48»", () => {
+    for (const k of Object.keys(store)) delete store[k];
+    doc.documentElement.lang = "es";
+    const specs: c.ReplySpec[] = [];
+    const say = (t: string) => {
+      const spec = applyChatMessage(t, specs, { currentProduct: "", currentQuantity: 0 });
+      specs.push(JSON.parse(JSON.stringify(spec)));
+      return c.buildReply(spec);
+    };
+    expect(say("¿cuánto es 10 x 650?")).toContain("10 × 650 = 6,500");
+    say("son 4 cajas de 12, ¿cuántas unidades son?");
+    const r = say("48");
+    expect(r).toMatch(/¿Qué representa «48»\?/);
+    expect(r).toContain("«¿y para 48 cajas?»");
+    expect(r).not.toMatch(/preguntas abiertas/);
+    expect(say("72")).toMatch(/¿Qué representa «72»\?/);
+    expect(currentCase().quantity).toBeFalsy();
+  });
+});
