@@ -12,16 +12,29 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.10.30-f";
+const EXPECT_VERSION = "2026.11.02-a";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
   const commit = execSync("git rev-parse --short=7 HEAD").toString().trim();
   execSync("npx vite build --outDir dist-sandbox", { stdio: "inherit", env: { ...process.env, APP_SANDBOX: "1", APP_COMMIT: commit, VITE_API_URL: "https://api.sandbox.invalid" } });
   const port = 4600 + Math.floor(Math.random() * 300);
-  server = spawn("npx", ["vite", "preview", "--outDir", "dist-sandbox", "--port", String(port), "--strictPort", "--host", "127.0.0.1"], { stdio: ["ignore", "pipe", "pipe"] });
+  // 02-11: its own process group, so the whole group (npx and the vite server it starts) is stopped
+  // at the end: a leftover server on a reused port made later runs fail intermittently
+  server = spawn("npx", ["vite", "preview", "--outDir", "dist-sandbox", "--port", String(port), "--strictPort", "--host", "127.0.0.1"], { stdio: ["ignore", "pipe", "pipe"], detached: true });
   BASE = `http://127.0.0.1:${port}`;
-  await new Promise((r) => setTimeout(r, 2500));
+  // wait until THIS server answers (not a fixed pause)
+  let up = false;
+  for (let i = 0; i < 60 && !up; i++) {
+    await new Promise((r) => setTimeout(r, 250));
+    up =
+      server.exitCode === null &&
+      (await fetch(BASE + "/").then(
+        (r) => r.ok,
+        () => false,
+      ));
+  }
+  if (!up) throw new Error(`preview server did not start on ${BASE}`);
 }
 const origin = new URL(BASE).origin;
 const C = "compresores industriales de tornillo, trifásicos 220 V, 60 Hz, tanque de 500 litros, libres de aceite";
@@ -102,7 +115,7 @@ try {
   {
     const { ctx, page } = await newPage();
     await page.goto(`${BASE}/?qa=1`);
-    const footer = await page.locator("text=/v2026\\.10\\.\\d+-[a-z]/").first().innerText();
+    const footer = await page.locator("text=/v\\d{4}\\.\\d\\d\\.\\d+-[a-z]/").first().innerText();
     check("B01 version and commit visible", footer.includes(EXPECT_VERSION) && /·\s*[0-9a-f]{7}|·\s*local/.test(footer), footer);
     check("B02 sandbox banner visible", await page.locator("text=ENTORNO DE PRUEBA").count(), "");
     check("B03 no Google Tag Manager in the sandbox page", !(await page.content()).includes("googletagmanager.com/gtm.js"), "");
@@ -608,7 +621,13 @@ try {
   results.push({ id: "runner", ok: false, detail: String((e && e.stack) || e).slice(0, 400) });
 } finally {
   await browser?.close();
-  server?.kill();
+  if (server) {
+    try {
+      process.kill(-server.pid, "SIGTERM");
+    } catch {
+      server.kill();
+    }
+  }
 }
 const lines = results.map((r) => `${r.ok ? "PASS" : "FAIL"} ${r.id}${r.detail ? ` — ${r.detail}` : ""}`);
 console.log(lines.join("\n"));
