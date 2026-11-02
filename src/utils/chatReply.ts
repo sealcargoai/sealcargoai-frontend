@@ -2328,6 +2328,34 @@ export function replyKinds(text: string): string[] {
   return ["contact", ...kinds.filter((k) => k !== "general" && k !== "mathUnclear" && (k !== "supplier" || reliability))];
 }
 
+
+// ── Plain arithmetic: «¿cuánto es 10 x 650?», «how much is 4 times 250?» (02-11) ──────────────
+// Only a question that asks for the result of two numbers and one operator; nothing in the case
+// changes. Sizes («10x12 cm»), pack questions and prices are left to their own rules.
+const ARITH_RE = /(?:cu[aá]nto|how\s+much|what'?s|what\s+is|calcul\w*)[^\d]{0,20}?(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(x|×|\*|multiplicado\s+por|por|times|\/|÷|dividido\s+(?:entre|por)|divided\s+by|entre|\+|m[aá]s|plus|−|-|menos|minus)\s*(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:\.\d+)?)\s*(?:[?.!]\s*)*$/i;
+export function plainArithmetic(text: string): { a: number; op: "×" | "÷" | "+" | "−"; b: number; result: number | null } | null {
+  const m = String(text || "").trim().match(ARITH_RE);
+  if (!m) return null;
+  // the words before the question may only be a request to change nothing («no cambies nada, solo pregunto:»)
+  const before = String(text).slice(0, m.index).replace(/[¿?¡!.,;:]/g, " ").trim();
+  if (/\d|us\$|\$|q\s?\d/i.test(before)) return null;
+  const num = (x: string) => Number(x.replace(/,/g, ""));
+  const a = num(m[1]);
+  const b = num(m[3]);
+  const w = m[2].toLowerCase();
+  const op = /^(?:x|×|\*|multiplicado|por|times)/.test(w) ? "×" : /^(?:\/|÷|dividido|divided|entre)/.test(w) ? "÷" : /^(?:\+|m[aá]s|plus)/.test(w) ? "+" : "−";
+  const raw = op === "×" ? a * b : op === "÷" ? (b === 0 ? null : a / b) : op === "+" ? a + b : a - b;
+  const result = raw === null ? null : Math.round(raw * 10000) / 10000;
+  return { a, op, b, result };
+}
+function arithmeticReply(text: string): string {
+  const r = plainArithmetic(text);
+  if (!r) return "";
+  const f = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+  if (r.result === null) return Lx(`${f(r.a)} ÷ 0 no tiene resultado (no se puede dividir entre cero). No cambié nada en tu caso.`, `${f(r.a)} ÷ 0 has no result (you can't divide by zero). I didn't change anything in your case.`);
+  return Lx(`${f(r.a)} ${r.op} ${f(r.b)} = ${f(r.result)}. Es solo el cálculo: no cambié nada en tu caso.`, `${f(r.a)} ${r.op} ${f(r.b)} = ${f(r.result)}. That's just the calculation: I didn't change anything in your case.`);
+}
+
 function baseKinds(text: string): string[] {
   // a product subtotal is answered, not sent to the general reply
   // (a pack calculation in the same message wins: its quantities are the ones that count)
@@ -2339,6 +2367,8 @@ function baseKinds(text: string): string[] {
 function baseKindsInner(text: string): string[] {
   const t = text.toLowerCase();
   const kinds: string[] = [];
+  // 02-11: a plain arithmetic question («¿cuánto es 10 x 650?») is answered as such (it used to get the cost paragraph)
+  if (plainArithmetic(text)) return ["arith"];
   // a question about whether single pieces make pairs is answered on its own
   if (pairDoubt(text)) return ["pairs"];
   // a calculation is answered, and so is anything else the message asks
@@ -2513,6 +2543,8 @@ export interface ReplySpec {
   forbidden?: CaseField[]; // fields the client said not to change ("do not update the quantity to 8")
   fromMismatch?: { said: number; inCase: number; to: number }; // "de 7 a 8" with 4 in the case
   askContext?: { item: string; product: string };
+  /** 02-11: a bare number with no field and no measure in the product: quantity or budget? (asked) */
+  askBare?: number;
   detailNote?: string; // "cada una con tanque de 500 litros": a detail of each unit that the case description doesn't have (not added)
   controlOnly?: boolean; // the message was only a note for testers ("no enviar caso comercial") // a bare number after a calculation: the calculation or the case?
   unsure?: string[]; // a change with a negation, condition, deferral or question not understood: proposed, not applied
@@ -2641,7 +2673,9 @@ export function prohibitions(text: string): { all: boolean; fields: Set<CaseFiel
     // "sin cambiar el resto" / "without changing anything else": keeps the others, forbids nothing named
     if (/^\s*(?:sin|without)\b/.test(lead) && !/(?:ar|er|ir|ing)$/.test(m[1])) continue;
     // the object ends where another instruction starts ("…, pero cambia el presupuesto")
-    const obj = m[2].split(/\b(?:pero|but|sino|y\s+(?:s[ií]\s+)?(?:cambi|actualiz|pon|ajust|modific)\w*|and\s+(?:do\s+)?(?:change|update|set|make)|,\s*(?:cambi|actualiz|pon|ajust|modific|change|update|set)\w*)\b/)[0];
+    // 02-11: also where a new clause gives another field its value («no cambies la cantidad, el
+    // presupuesto es US$7,000»): that field was being forbidden too
+    const obj = m[2].split(/\b(?:pero|but|sino|y\s+(?:s[ií]\s+)?(?:cambi|actualiz|pon|ajust|modific)\w*|and\s+(?:do\s+)?(?:change|update|set|make)|,\s*(?:cambi|actualiz|pon|ajust|modific|change|update|set)\w*)\b|[,;]\s*(?:y\s+|and\s+)?(?:el|la|los|las|the|my|mi)\s+[a-záéíóúñ]+(?:\s+de\s+compra)?\s+(?:es|son|ser[aá]|queda|pasa\s+a|is|are|will\s+be)\b/)[0];
     if (/\b(?:nada\s+m[aá]s|ning[uú]n\s+otro|ninguna\s+otra|lo\s+dem[aá]s|el\s+resto|las?\s+dem[aá]s|los\s+dem[aá]s|anything\s+else|nothing\s+else|the\s+rest|other\s+(?:fields|data|values))\b/.test(obj)) {
       out.spans.push(m[0].slice(0, m[0].length - m[2].length) + obj);
       continue;
@@ -3194,6 +3228,14 @@ export function stripControl(text: string): { text: string; removed: string[] } 
 }
 
 /** The item words of a calculation ("lápices" in "500 lápices en cajas de 12"). */
+/** 02-11: what the earlier calculation counts («lápices»), else its packs («cajas»), so the question
+ * «¿para el cálculo o para tu caso?» can offer an exact follow-up («¿y para 48 cajas?»). */
+function calcLabel(mathText: string): string {
+  const item = calcItems(mathText)[0];
+  if (item) return item;
+  const pk = packMath(mathText, true)?.pack as unknown;
+  return Array.isArray(pk) && typeof pk[2] === "string" ? Lx(pk[2], String(pk[4] || pk[2])) : "";
+}
 function calcItems(mathText: string): string[] {
   return (String(mathText || "").toLowerCase().match(/[a-záéíóúüñ]{4,}/g) || []).filter(
     (w) => !new RegExp(`^(?:${PACK_WORDS}|necesit\\w*|cu[aá]nt\\w*|vienen|viene|trae|traen|cada|para|unidades|unidad|piezas?|pares|total|tendr\\w*|sobra\\w*|faltan?|minimo|m[ií]nimo|pedido|pedir|quiero|tengo|precio|cuesta|cuestan|alcanza|need|how|many|each|with|pieces|units|order)$`).test(w),
@@ -3442,9 +3484,12 @@ export function buildReply(r: ReplySpec): string {
         : "";
       if (r.askContext) {
         const it = r.askContext.item;
+        // the number the client wrote, in the example (it used to say «la cantidad es 6» for any number)
+        const askN = (r.text.match(/(?:us\s?\$|usd\s*|\$)?\s*\d[\d,.]*/i)?.[0] || "").trim();
+        const askMoney = /us\s?\$|usd|\$/i.test(askN);
         return Lx(
-          `¿Ese número es para el cálculo anterior${it ? ` (${it})` : ""} o para tu caso de «${productName(r.askContext.product)}»? No cambié nada; tu caso sigue así: ${now}. Si es para tu caso, escríbelo así: «la cantidad es 6». Si es para el cálculo, menciónalo${it ? ` (por ejemplo «¿y para 600 ${it}?»)` : ""}.`,
-          `Is that number for the earlier calculation${it ? ` (${it})` : ""} or for your case of "${productName(r.askContext.product)}"? I didn't change anything; your case stays: ${now}. If it is for your case, write: "the quantity is 6". If it is for the calculation, say so${it ? ` (for example "what about 600 ${it}?")` : ""}.`,
+          `¿Ese número es para el cálculo anterior${it ? ` (${it})` : ""} o para tu caso de «${productName(r.askContext.product)}»? No cambié nada; tu caso sigue así: ${now}. Si es para tu caso, respóndeme «para mi caso» o escríbelo así: «${askMoney ? `el presupuesto es ${askN}` : `la cantidad es ${askN}`}». Si es para el cálculo, respóndeme «para el cálculo»${it ? ` o escríbelo así: «¿y para ${askN} ${it}?»` : ""}.`,
+          `Is that number for the earlier calculation${it ? ` (${it})` : ""} or for your case of "${productName(r.askContext.product)}"? I didn't change anything; your case stays: ${now}. If it is for your case, reply "for my case" or write: "${askMoney ? `the budget is ${askN}` : `the quantity is ${askN}`}". If it is for the calculation, reply "for the calculation"${it ? ` or write: "what about ${askN} ${it}?"` : ""}.`,
         );
       }
       if (r.fromMismatch) {
@@ -3453,6 +3498,15 @@ export function buildReply(r: ReplySpec): string {
         return Lx(
           `Dices que la cantidad pasa de ${n(f.said)} a ${n(f.to)}, pero tu caso tiene ${n(f.inCase)}, así que no cambié nada. Tu caso sigue así: ${now}. Si quieres ${n(f.to)}, escríbelo así: «la cantidad es ${f.to}».`,
           `You say the quantity goes from ${n(f.said)} to ${n(f.to)}, but your case has ${n(f.inCase)}, so I didn't change anything. Your case stays: ${now}. If you want ${n(f.to)}, write: "the quantity is ${f.to}".`,
+        );
+      }
+      // 02-11: when the only doubt is a part that wasn't understood, say that (not «una negación o una condición»)
+      const unparsed = (r.unsure || []).filter((u) => u.startsWith("unparsed:")).map((u) => u.slice(9).trim()).filter(Boolean);
+      if (r.unsure?.length && !h && unparsed.length === r.unsure.length) {
+        const span = unparsed[0].length > 80 ? `${unparsed[0].slice(0, 77).trim()}…` : unparsed[0];
+        return Lx(
+          `No entendí con seguridad «${span}», así que no cambié nada. Tu caso sigue así: ${now}. Si quieres cambiar algo, escríbelo directamente, por ejemplo «la cantidad es 8» o «el presupuesto es US$6,000».`,
+          `I didn't understand "${span}" with certainty, so I didn't change anything. Your case stays: ${now}. If you want to change something, say it directly, for example "the quantity is 8" or "the budget is US$6,000".`,
         );
       }
       if (r.unsure?.length && !h)
@@ -3475,15 +3529,22 @@ export function buildReply(r: ReplySpec): string {
         const list = names.join(Lx(" ni ", " or "));
         return Lx(`Como pediste, no cambié ${list}. Tu caso sigue así: ${now}.`, `As you asked, I didn't change ${list}. Your case stays: ${now}.`);
       }
+      // «no cambies nada, solo pregunto: ¿cuánto es 10 x 650?»: the question is answered too
+      const arith = plainArithmetic(r.text) ? `\n\n${arithmeticReply(r.text).replace(/\s*(?:Es solo el cálculo: no cambié nada en tu caso|That's just the calculation: I didn't change anything in your case)\.$/, "")}` : "";
       return Lx(
         `Entendido: no cambié nada. Tu caso sigue así: ${now}.${prop ? ` Cuando quieras aplicar el cambio (${prop}), respóndeme «sí, aplícalo».` : ""}`,
         `Understood: I didn't change anything. Your case stays: ${now}.${prop ? ` When you want to apply the change (${prop}), reply "yes, apply it".` : ""}`,
-      );
+      ) + arith;
     }
     if (r.askNumber)
       return Lx(
         `¿«${r.askNumber.toLocaleString("en-US")}» es la nueva cantidad de unidades o el valor de una característica (por ejemplo, la capacidad del tanque o el voltaje)? Escríbelo así: «la cantidad es ${r.askNumber}» o «el tanque es de ${r.askNumber} litros». No cambié nada; tu caso sigue así: ${now}.`,
         `Is "${r.askNumber.toLocaleString("en-US")}" the new number of units or the value of a characteristic (for example the tank capacity or the voltage)? Write it like this: "the quantity is ${r.askNumber}" or "the tank is ${r.askNumber} liters". I didn't change anything; your case stays: ${now}.`,
+      );
+    if (r.askBare)
+      return Lx(
+        `¿«${r.askBare.toLocaleString("en-US")}» es la nueva cantidad de unidades o el presupuesto de compra? Escríbelo así: «la cantidad es ${r.askBare}» o «el presupuesto es US$${r.askBare.toLocaleString("en-US")}». No cambié nada; tu caso sigue así: ${now}.`,
+        `Is "${r.askBare.toLocaleString("en-US")}" the new number of units or the purchase budget? Write it like this: "the quantity is ${r.askBare}" or "the budget is US$${r.askBare.toLocaleString("en-US")}". I didn't change anything; your case stays: ${now}.`,
       );
     if (r.askRelative && !r.attrFix && !r.newBudget)
       return r.askRelative.from && r.askRelative.to >= 1
@@ -3626,7 +3687,7 @@ export function buildReply(r: ReplySpec): string {
   if (kinds.includes("math") && mathMoney(q)) kinds = kinds.filter((k) => k !== "cost");
   kinds.forEach((k, i) => {
     let t =
-      k === "equivalence" ? oddEquivalenceReply(explain(q).odd!) : k === "math" ? ((mm) => mathReply(forMath(q)) + (mm ? `\n${mm.trim()}` : ""))(mathMoney(q)) : k === "subtotal" ? subtotalReply(q) : k === "requestStatus" ? requestStatusReply(r.sentCase) : k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
+      k === "equivalence" ? oddEquivalenceReply(explain(q).odd!) : k === "math" ? ((mm) => mathReply(forMath(q)) + (mm ? `\n${mm.trim()}` : ""))(mathMoney(q)) : k === "subtotal" ? subtotalReply(q) : k === "arith" ? arithmeticReply(q) : k === "requestStatus" ? requestStatusReply(r.sentCase) : k === "contact" ? contactReply(q) : k === "certificate" ? certificateReply(q, ctx) : k === "math" ? mathReply(q) : k === "pairs" ? pairDoubtReply(q) : (FIXED[k] ?? FIXED.general)();
     if (i === 0 && !parts.length) t = t.replace(/^Tampoco puedo/, "No puedo").replace(/^I also can't/, "I can't");
     // after the way to SEAL, no second path to the form: one next step
     if (kinds[0] === "contact" && k !== "contact")
@@ -3685,7 +3746,7 @@ export function nextSpec(
   const ban = hypo ? { all: false, fields: new Set<CaseField>(), spans: [] as string[], specWords: [] as string[] } : prohibitions(text);
   // a quantity that is not a whole number from 1 to 10,000,000 is never applied (nor rounded)
   const lowRaw = String(text || "").toLowerCase();
-  const issue0 = !hypo && !isMath ? notationIssue(lowRaw, head) || quantityIssue(low0, head) || budgetIssue(low0) : null;
+  const issue0 = !hypo && !isMath && !kinds.includes("arith") ? notationIssue(lowRaw, head) || quantityIssue(low0, head) || budgetIssue(low0) : null;
   // "no cambies nada, solo dime si aceptan 3.5": the decimal is the quantity being asked about
   const holdDecimal = !issue0 && HOLD.test(low0) && !hypo ? low0.match(/(?<![\d.,$])(\d+[.,]\d+)(?![\d.,])/) : null;
   const issue: QuantityIssue | null = issue0 || (holdDecimal && !UNIT_NEXT.test(low0.slice((holdDecimal.index ?? 0) + holdDecimal[0].length)) ? { kind: "decimal", raw: holdDecimal[1] } : null);
@@ -3739,7 +3800,26 @@ export function nextSpec(
   }
   // "¿El tanque de 300 litros sirve?", "¿Tienen tanque de 300 litros?": a QUESTION about a value,
   // with no request to change it, never changes the case (it used to replace 500 L by 300 L)
-  const questionOnly = /[¿?]/.test(text) && !CHANGE_REQUEST.test(low0);
+  // 02-11: a number on its own ("48", "1,000") names no field: it is asked, never guessed or ignored.
+  // Right after a calculation (or after asking about one) it may belong to that calculation or to the case.
+  const bareNum = text.match(/^\s*¿?\s*(\d{1,3}(?:,\d{3})+|\d+)\s*[?.!]?\s*$/);
+  if (bareNum && caseProduct && !hypo && !holdMsg) {
+    const n = Number(bareNum[1].replace(/,/g, ""));
+    const calc = [...specs].reverse().find((x) => x.mathText);
+    if (calc && (prevSpec?.mathText || prevSpec?.askContext))
+      return {
+        text, product: caseProduct || currentProduct, previous: caseProduct, fieldUpdate: true, hold: true,
+        askContext: { item: calcLabel(calc.mathText!), product: caseProduct },
+        caseNow: { product: caseProduct, quantity: caseQty || undefined, budget: caseBudget || undefined },
+      };
+    if (n >= 1)
+      return {
+        text, product: caseProduct || currentProduct, previous: caseProduct, fieldUpdate: true,
+        ...(new RegExp(MEASURE, "i").test(caseProduct) ? { askNumber: n } : { askBare: n }),
+        caseNow: { product: caseProduct, quantity: caseQty || undefined, budget: caseBudget || undefined },
+      };
+  }
+  const questionOnly = (/[¿?]/.test(text) || kinds.includes("arith")) && !CHANGE_REQUEST.test(low0);
   const qRaw0 = questionOnly ? null : quantityChange(text, head);
   // "agrega 2 más": the new total is confirmed with the client, never applied silently
   const askRelative = qRaw0?.relative && !hypo ? { delta: qRaw0.relative, from: caseQty, to: caseQty + qRaw0.relative } : undefined;
@@ -3921,7 +4001,7 @@ export function nextSpec(
   if (!bad && isolatedFrom && !spec.newQuantity && !spec.newBudget && !spec.attrFix && !spec.newProduct && !spec.budgetClear && /\d/.test(text))
     return {
       text, product: caseProduct || currentProduct, previous: caseProduct, fieldUpdate: true, hold: true,
-      askContext: { item: calcItems(isolatedFrom)[0] || "", product: caseProduct },
+      askContext: { item: calcLabel(isolatedFrom), product: caseProduct },
       caseNow: { product: caseProduct, quantity: caseQty || undefined, budget: caseBudget || undefined },
       earlierFood: spec.earlierFood,
     };
@@ -3965,6 +4045,17 @@ export function nextSpec(
       spec.fieldUpdate = true;
       spec.product = spec.newProduct || caseProduct || currentProduct;
       spec.caseNow = { product: spec.attrFix && spec.newProduct ? spec.newProduct : caseProduct, quantity: spec.newQuantity || caseQty || undefined, budget: spec.budgetClear ? undefined : spec.newBudget || caseBudget || undefined };
+    }
+    // 02-11: a message that only forbids fields («no cambies la cantidad ni el presupuesto») is
+    // acknowledged as such (it used to get «Anotado… ese dato no cambia ninguno de ellos»)
+    const asksNothing = !(spec.newQuantity || spec.newBudget || spec.budgetClear || spec.attrFix || spec.newProduct || spec.askNumber || spec.askRelative || spec.qtyConflict || spec.budgetAsk || spec.mathText);
+    if (!forbidden.length && ban.fields.size && !ban.all && asksNothing && !kinds.length && caseProduct) {
+      const named = (["quantity", "budget", "product", "spec"] as CaseField[]).filter((f) => ban.fields.has(f));
+      return {
+        text, product: caseProduct || currentProduct, previous: caseProduct, fieldUpdate: true, hold: true, forbidden: named,
+        caseNow: { product: caseProduct, quantity: caseQty || undefined, budget: caseBudget || undefined },
+        earlierFood: spec.earlierFood,
+      };
     }
   }
   // a change whose message also carries a negation, condition, deferral or question this parser did

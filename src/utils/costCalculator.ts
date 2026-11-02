@@ -48,8 +48,8 @@ export const DEFAULT_RATES: Rates = {
 // Shown wherever a cost appears: this tool estimates, SEAL quotes
 export function estimateNote(): string {
   return Lx(
-    "Estimación referencial, no es una cotización. Un ejecutivo de SEAL te confirma el costo antes del embarque.",
-    "Reference estimate, not a quote. A SEAL executive confirms the cost before shipment.",
+    "Estimación referencial, no es una cotización ni un costo final. Si lo deseas, un ejecutivo de SEAL puede revisarla contigo antes del embarque.",
+    "Reference estimate, not a quote or a final cost. If you wish, a SEAL executive can review it with you before shipment.",
   );
 }
 
@@ -91,6 +91,43 @@ export function linesTotalQ(costs: { lines?: { key: string; amount: number }[]; 
   if (!costs.lines || !costs.lines.length) return qCents(costs.totalCost, exchangeRate);
   const sum = costs.lines.filter((l) => !(l.key === "freight" && costs.freightPending)).reduce((a, l) => a + qCents(l.amount, exchangeRate), 0);
   return Math.round((sum + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * 02-11: the share of each printed line in the total, with `decimals` digits, adding up to exactly
+ * 100 (largest remainder). Every place that shows shares (cost page, legend, PDF, Excel) uses it, so
+ * the same line never shows 62% in one place and 61% in another, and the shares never add to 101%.
+ * `null` entries (freight still to be quoted) have no share.
+ */
+export function shareValues(amounts: (number | null)[], decimals = 1): (number | null)[] {
+  const scale = 10 ** decimals;
+  const vals = amounts.map((a) => (a === null || !(a > 0) ? 0 : a));
+  const total = vals.reduce((x, y) => x + y, 0);
+  if (!(total > 0)) return amounts.map((a) => (a === null ? null : 0));
+  const raw = vals.map((v) => (v / total) * 100 * scale);
+  const base = raw.map((r) => Math.floor(r + 1e-9));
+  let left = 100 * scale - base.reduce((x, y) => x + y, 0);
+  raw
+    .map((r, i) => ({ i, rem: r - base[i] }))
+    .filter(({ i }) => vals[i] > 0)
+    .sort((a, b) => b.rem - a.rem || vals[b.i] - vals[a.i])
+    .forEach(({ i }) => {
+      if (left > 0) {
+        base[i] += 1;
+        left -= 1;
+      }
+    });
+  return amounts.map((a, i) => (a === null ? null : base[i] / scale));
+}
+/** The shares of the cost lines as printed (centavos), keyed like costs.lines; freight to be quoted → null. */
+export function lineShares(costs: { lines?: { key: string; amount: number }[]; freightPending?: boolean }, exchangeRate: number, decimals = 1): (number | null)[] {
+  return shareValues((costs.lines || []).map((l) => (l.key === "freight" && costs.freightPending ? null : qCents(l.amount, exchangeRate))), decimals);
+}
+/** «61.6%», «<0.1%» for a positive line too small to round up, «—» without a share. */
+export function shareText(share: number | null, amount: number, decimals = 1, none = "—"): string {
+  if (share === null || !Number.isFinite(share)) return none;
+  if (share === 0 && amount > 0) return `<${decimals ? (0.1).toFixed(decimals) : "1"}%`;
+  return `${share.toFixed(decimals)}%`;
 }
 const qText = (q: number) => `Q${q.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** 30-f: a line in quetzales with centavos, printed from qCents (the same value the total adds). */
@@ -199,6 +236,9 @@ export interface CostResult {
 }
 
 
+// 02-11: where the freight figure comes from, said on the line itself (it is not a carrier quote)
+const FREIGHT_ORIGIN = () => Lx(" • tarifa referencial de SEAL, no es cotización de naviera", " • SEAL reference rate, not a carrier quote");
+
 export function calculateFreight(
   volumeCbm: number,
   weightKg: number,
@@ -216,7 +256,7 @@ export function calculateFreight(
     return {
       amount: perCbm * cbm,
       mode: "LCL",
-      detail: `${Lx("Carga consolidada", "Consolidated cargo")} • ${cbm.toFixed(2)} m³ × ${formatQ(perCbm, rates.exchangeRate)}/m³ • ${rates.transitDays} ${Lx("días", "days")}`,
+      detail: `${Lx("Carga consolidada", "Consolidated cargo")} • ${cbm.toFixed(2)} m³ × ${formatQ(perCbm, rates.exchangeRate)}/m³ • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
       chargeableCbm: cbm,
     };
   }
@@ -226,7 +266,7 @@ export function calculateFreight(
     return {
       amount: rates.container20,
       mode: "FCL",
-      detail: `${Lx("1 contenedor de 20'", "1 × 20' container")} (${chargeable.toFixed(1)} m³) • ${rates.transitDays} ${Lx("días", "days")}`,
+      detail: `${Lx("1 contenedor de 20'", "1 × 20' container")} (${chargeable.toFixed(1)} m³) • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
       chargeableCbm: chargeable,
     };
   }
@@ -234,7 +274,7 @@ export function calculateFreight(
   return {
     amount: n40 * rates.container40,
     mode: "FCL",
-    detail: `${Lx(`${n40} contenedor${n40 > 1 ? "es" : ""} de 40'`, `${n40} × 40' container${n40 > 1 ? "s" : ""}`)} (${chargeable.toFixed(1)} m³) • ${rates.transitDays} ${Lx("días", "days")}`,
+    detail: `${Lx(`${n40} contenedor${n40 > 1 ? "es" : ""} de 40'`, `${n40} × 40' container${n40 > 1 ? "s" : ""}`)} (${chargeable.toFixed(1)} m³) • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
     chargeableCbm: chargeable,
   };
 }

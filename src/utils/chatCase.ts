@@ -24,6 +24,9 @@ export function contextAnswer(text: string, asked: string, item = ""): string | 
   const money = /us\s?\$|usd|\$|d[oó]lar|dollar|presupuesto|budget/i.test(asked);
   if (/^(?:s[ií],?\s*)?(?:es\s+|son\s+|era\s+|eran\s+)?(?:para|de|del)\s+(?:mi|el|tu)\s+caso$|^(?:it'?s\s+)?(?:for\s+)?(?:my|the)\s+case$/.test(t))
     return money ? `el presupuesto es ${n}` : `la cantidad es ${n}`;
+  // 02-11: «sí» / «no» don't answer «¿para el cálculo o para tu caso?»: the same question is asked again
+  // (it used to fall to the generic «no respondo preguntas abiertas»)
+  if (/^(?:s[ií]|no|ok|okay|dale|claro|yes|yeah|yep|nope)$/.test(t)) return String(asked || "").trim() || null;
   if (/^(?:es\s+|era\s+)?(?:para|de|del)\s+(?:el\s+)?c[aá]lculo(?:\s+anterior)?$|^(?:it'?s\s+)?(?:for\s+)?the\s+(?:earlier\s+)?calculation$/.test(t) && !money)
     return `¿y para ${n}${item ? ` ${item}` : ""}?`;
   return null;

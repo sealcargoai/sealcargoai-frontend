@@ -8,7 +8,7 @@ import jsPDF from "jspdf";
 import { differencesHeading, differencesFootnote } from "./differences";
 import autoTable from "jspdf-autotable";
 import { drawCompanyInfoBox, drawCompanyFooter } from "./reportExports";
-import { formatQ, formatQCents, formatQTotal, formatUSD, formatUnitUSD, formatUnitQ, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
+import { lineShares, shareText, formatQ, formatQCents, formatQTotal, formatUSD, formatUnitUSD, formatUnitQ, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
@@ -186,16 +186,18 @@ function drawCostPdf(d: CostPdfInput, tight: boolean): any {
   doc.setTextColor(11, 60, 93);
   text(Lx("Escenario estimado de costos", "Estimated cost scenario"), 14, y);
   y += 3;
+  // 02-11: the same shares as the page and the Excel (they add up to 100%)
+  const pdfShares = lineShares(d.costs, fx);
   autoTable(doc, {
     startY: y,
     head: [[Lx("Concepto", "Item"), Lx("Detalle", "Detail"), Lx("Monto (Q)", "Amount (Q)"), "%"]],
-    body: d.costs.lines.map((l) => {
+    body: d.costs.lines.map((l, i) => {
       const pending = l.key === "freight" && d.costs.freightPending;
       return [
         l.label,
         pending ? Lx("Por cotizar", "To be quoted") : l.detail,
         pending ? Lx("Por cotizar", "To be quoted") : formatQCents(l.amount, fx),
-        pending || !(d.costs.totalCost > 0) ? "-" : `${((l.amount / d.costs.totalCost) * 100).toFixed(1)}%`,
+        pending || !(d.costs.totalCost > 0) ? "-" : shareText(pdfShares[i], l.amount, 1, "-"),
       ];
     }),
     foot: [[

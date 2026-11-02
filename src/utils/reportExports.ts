@@ -3,7 +3,7 @@ import { differencesHeading, differencesFootnote } from "./differences";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
-import { estimateNote, scenarioVariables, formatUSD, formatUnitUSD, formatUnitQ, formatQ, qCents, linesTotalQ } from "./costCalculator";
+import { estimateNote, scenarioVariables, formatUSD, formatUnitUSD, formatUnitQ, formatQ, qCents, linesTotalQ, lineShares, shareText } from "./costCalculator";
 
 // ─── SEAL Company Info ────────────────────────────────────────────────────────
 export const SEAL_COMPANY = {
@@ -325,7 +325,10 @@ export async function generateBeautifulExcel(
     vat: data.vatRate,
     insurance: data.insuranceRate,
   };
-  const dataRows = (data.costs.lines || []).map((l) => ({
+  // 02-11: the same shares as the page and the PDF (they add up to 100%)
+  const xlsShares = lineShares(data.costs, data.costs.exchangeRate || DEFAULT_FX);
+  const dataRows = (data.costs.lines || []).map((l, li) => ({
+    share: xlsShares[li],
     concept: l.label,
     detail:
       l.key === "freight" && data.costs.freightPending ? Lx("Por cotizar", "To be quoted") : l.detail,
@@ -401,9 +404,7 @@ export async function generateBeautifulExcel(
     };
 
     // Share of the total (the applied rate has its own column)
-    const totalQ = data.costs.totalCost * (data.costs.exchangeRate || DEFAULT_FX);
-    const share = !row.pending && totalQ > 0 ? (row.amount / totalQ) * 100 : NaN;
-    const percentDisplay = Number.isFinite(share) ? (share > 0 && share < 0.1 ? "<0.1%" : `${share.toFixed(1)}%`) : "—";
+    const percentDisplay = row.pending ? "—" : shareText(row.share, row.amount, 1);
     percentCell.value = percentDisplay;
     percentCell.font = { name: "Arial", size: 10, color: { argb: "FF64748B" } };
     percentCell.alignment = { vertical: "middle", horizontal: "center" };
