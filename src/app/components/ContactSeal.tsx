@@ -194,8 +194,9 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
               <form onSubmit={submit} className="space-y-3" noValidate>
                 <p className="text-sm text-slate-600">
                   {L(
-                    "Un ejecutivo de SEAL revisa tu caso y te contacta. No necesitas buscar proveedores si ya tienes uno.",
-                    "A SEAL executive reviews your case and contacts you. You don't need to search for suppliers if you already have one.",
+                    // after a search, "no necesitas buscar proveedores" contradicts what the client just did
+                    `Un ejecutivo de SEAL revisa tu caso y te contacta.${source === "landing" || source === "chat" ? " No necesitas buscar proveedores si ya tienes uno." : ""}`,
+                    `A SEAL executive reviews your case and contacts you.${source === "landing" || source === "chat" ? " You don't need to search for suppliers if you already have one." : ""}`,
                   )}
                 </p>
                 <input className={input} value={name} onChange={(e) => setName(e.target.value)} placeholder={L("Nombre", "Name")} aria-label={L("Nombre", "Name")} autoComplete="name" maxLength={120} />

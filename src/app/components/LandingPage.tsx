@@ -177,7 +177,8 @@ export function LandingPage() {
                           : L("Puedes detallar más en el siguiente paso", "You can add more detail in the next step")}
                       </span>
                       <span className={`shrink-0 ${queryTrim.length > QUERY_MAX ? "text-red-600 font-semibold" : ""}`}>
-                        {query.length.toLocaleString("en-US")}/{QUERY_MAX.toLocaleString("en-US")}
+                        {/* 02-11: the counter counts what is sent (trimmed), like the limit and its message */}
+                        {queryTrim.length.toLocaleString("en-US")}/{QUERY_MAX.toLocaleString("en-US")}
                       </span>
                     </div>
                   )}

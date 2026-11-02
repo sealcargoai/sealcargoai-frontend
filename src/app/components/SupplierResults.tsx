@@ -247,6 +247,7 @@ function MorePlatforms({
 function NoResults({
   keyword,
   noRelevant = false,
+  noSearch = false,
   totalAnalyzed,
   filteredOut,
   productDescription,
@@ -256,6 +257,8 @@ function NoResults({
 }: {
   keyword: string;
   noRelevant?: boolean;
+  /** 02-11: this tab has no search (opened from a link, a new tab or after the session ended) */
+  noSearch?: boolean;
   totalAnalyzed: number;
   filteredOut: { name: string; reason: string }[];
   productDescription: string;
@@ -317,14 +320,21 @@ function NoResults({
             <Package className="w-7 h-7 text-[#0B3C5D]" />
           </div>
           <h1 className="text-3xl font-bold text-[#0B3C5D] mb-3">
-            {noRelevant
+            {noSearch
+              ? Lx("No hay una búsqueda abierta en esta pestaña", "There is no open search in this tab")
+              : noRelevant
               ? Lx("No encontramos opciones suficientemente relacionadas con tu producto", "We didn't find options closely related to your product")
               : allFiltered
                 ? Lx("Ningún proveedor pasó nuestros filtros", "No supplier passed our filters")
                 : Lx("No pudimos obtener resultados en este momento", "We couldn't get results right now")}
           </h1>
           <p className="text-slate-600 mb-6">
-            {noRelevant
+            {noSearch
+              ? Lx(
+                  "Los resultados de una búsqueda se muestran solo en la pestaña donde la hiciste, así que aquí no hay datos de ninguna búsqueda (no es un error de la plataforma de proveedores). Para ver referencias, completa el formulario con tu producto.",
+                  "Search results are shown only in the tab where you ran the search, so there is no search data here (it is not an error of the supplier platform). To see references, complete the form with your product.",
+                )
+              : noRelevant
               ? Lx(
                   "Los resultados de la plataforma no coincidían con lo que describiste, así que preferimos no mostrarlos. Agrega más detalles (tipo exacto de producto, uso, capacidad, material) y busca de nuevo, o pide a SEAL que haga la búsqueda por ti.",
                   "The platform results didn't match what you described, so we prefer not to show them. Add more details (exact product type, use, capacity, material) and search again, or ask SEAL to do the search for you.",
@@ -356,7 +366,17 @@ function NoResults({
             </details>
           )}
 
-          {sent ? (
+          {noSearch ? (
+            // without a product there is nothing for an assisted search: the way forward is the form
+            <div className="flex flex-col sm:flex-row gap-3">
+              <a href="/qualify" className="flex-1 px-6 py-3 rounded-lg bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white text-center font-semibold">
+                {Lx("Ir al formulario", "Go to the form")}
+              </a>
+              <a href="/" className="px-6 py-3 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 text-center">
+                {Lx("Comenzar desde el inicio", "Start from the beginning")}
+              </a>
+            </div>
+          ) : sent ? (
             <div className="bg-green-50 border border-green-200 rounded-xl p-6 text-green-800">
               <div className="font-semibold mb-1 flex items-center gap-2">
                 <CheckCircle className="w-5 h-5" /> {Lx("Solicitud recibida", "Request received")}
@@ -860,6 +880,7 @@ export function SupplierResults() {
       <NoResults
         keyword={apiData?.searchKeyword ?? ""}
         noRelevant={!!apiData?.noRelevantMatches}
+        noSearch={!apiData}
         totalAnalyzed={apiData?.totalAnalyzed ?? 0}
         filteredOut={filteredOutList}
         productDescription={location.state?.productDescription ?? ""}
@@ -926,7 +947,7 @@ export function SupplierResults() {
             <ContactSeal source="resultados" variant="link" className="text-emerald-800" label={Lx("Hablar con SEAL", "Talk to SEAL")} />
           </p>
           <p className="text-slate-600">
-            {displaySuppliers.length} {plural(displaySuppliers.length, "proveedor mejor clasificado", "proveedores mejor clasificados", "top-ranked supplier", "top-ranked suppliers")} •{" "}
+            {displaySuppliers.length} {plural(displaySuppliers.length, "coincidencia de búsqueda para investigar", "coincidencias de búsqueda para investigar", "search match to look into", "search matches to look into")} •{" "}
             {filteredTotal} {plural(filteredTotal, "filtrado", "filtrados", "filtered out", "filtered out")}
             <button
               onClick={() => setShowFiltered(!showFiltered)}

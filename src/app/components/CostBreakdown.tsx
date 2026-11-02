@@ -54,6 +54,10 @@ import {
   formatUSD, formatUnitUSD, formatUnitQ,
   estimateNote,
   scenarioVariables,
+  lineShares,
+  shareValues,
+  shareText,
+  qCents,
   type CostResult,
 } from "../../utils/costCalculator";
 
@@ -390,9 +394,13 @@ export function CostBreakdown() {
   if (!inForce.product) setCaseScenario(caseNow, ["productDescription", "quantity", "budget"]);
 
   // ── Chart data ────────────────────────────────────────────────────────────
+  // 02-11: one set of shares for the whole page, the PDF and the Excel (whole % in the legend,
+  // one decimal in the table), each adding up to 100 — the legend used to show 62% for the 61% product
+  const tableShares = lineShares(costs, costs.exchangeRate, 1);
+  const legendShares = lineShares(costs, costs.exchangeRate, 0);
   const costData = costs.lines
-    .filter((l) => l.amount > 0)
-    .map((l) => ({ name: l.label.replace("*", ""), value: l.amount, color: l.color }))
+    .map((l, i) => ({ name: l.label.replace("*", ""), value: l.amount, color: l.color, share: legendShares[i] }))
+    .filter((d) => d.value > 0 && d.share !== null)
     .sort((a, b) => b.value - a.value); // largest to smallest
 
   // "¿En qué se va tu dinero?": the real calculator lines grouped in 4 blocks
@@ -407,13 +415,9 @@ export function CostBreakdown() {
   // Whole "of each US$100" shares that add up to exactly 100 (largest remainder)
   {
     const raw = moneyGroups.map((g) => (costs.totalCost > 0 ? (g.amount / costs.totalCost) * 100 : 0));
-    const base = raw.map(Math.floor);
-    let left = costs.totalCost > 0 ? 100 - base.reduce((x, y) => x + y, 0) : 0;
-    raw
-      .map((r, i) => ({ i, rem: r - base[i] }))
-      .sort((x, y) => y.rem - x.rem)
-      .forEach(({ i }) => { if (left > 0) { base[i] += 1; left -= 1; } });
-    moneyGroups.forEach((g, i) => Object.assign(g, { pct: raw[i], share: base[i] }));
+    // the same rounding as every other share on the page (utils/costCalculator shareValues)
+    const base = shareValues(moneyGroups.map((g) => qCents(g.amount, costs.exchangeRate)), 0);
+    moneyGroups.forEach((g, i) => Object.assign(g, { pct: raw[i], share: base[i] ?? 0 }));
   }
   moneyGroups.sort((a, b) => b.amount - a.amount); // largest to smallest
 
@@ -436,7 +440,7 @@ export function CostBreakdown() {
     displayPercent:
       (l.key === "freight" && costs.freightPending) || !(costs.totalCost > 0)
         ? "—"
-        : `${((l.amount / costs.totalCost) * 100).toFixed(1)}%`,
+        : shareText(tableShares[costs.lines.indexOf(l)], l.amount, 1),
     pending: l.key === "freight" && costs.freightPending,
   }));
 
@@ -696,7 +700,6 @@ export function CostBreakdown() {
             </div>
             <ul className="mt-4 space-y-2">
               {costData.map((d) => {
-                const pct = costs.totalCost > 0 ? (d.value / costs.totalCost) * 100 : 0;
                 return (
                   <li key={d.name} className="flex items-center gap-2 text-sm">
                     <span
@@ -705,7 +708,7 @@ export function CostBreakdown() {
                     />
                     <span className="text-slate-700 flex-1 min-w-0 truncate">{d.name}</span>
                     <span className="text-slate-500 tabular-nums w-12 text-right shrink-0">
-                      {pct < 1 ? "<1" : Math.round(pct)}%
+                      {shareText(d.share, d.value, 0)}
                     </span>
                     <span className="font-medium text-slate-800 tabular-nums min-w-[6rem] text-right whitespace-nowrap shrink-0">
                       {Q(d.value)}
@@ -726,7 +729,7 @@ export function CostBreakdown() {
               {L("¿En qué se va tu dinero?", "Where does your money go?")}
             </h2>
             <p className="text-sm text-slate-500 mb-5">
-              {L("Porcentaje del costo total estimado", "Share of the estimated total cost")}
+              {costs.freightPending ? L("Porcentaje del costo estimado, sin flete", "Share of the estimated cost, without freight") : L("Porcentaje del costo total estimado", "Share of the estimated total cost")}
             </p>
             <div className="space-y-5">
               {moneyGroups.map((g) => {
@@ -902,7 +905,7 @@ export function CostBreakdown() {
                 <span>
                   {L("Con los supuestos usados, DAI e IVA suman", "With the assumptions used, DAI and IVA add up to")}{" "}
                   <b>{Q(costs.importDuties + costs.taxes)}</b>{" "}
-                  ({(((costs.importDuties + costs.taxes) / costs.totalCost) * 100).toFixed(0)}%{" "}
+                  ({(moneyGroups.find((g) => g.key === "taxes") as { share?: number } | undefined)?.share ?? 0}%{" "}
                   {L("del total estimado", "of the estimated total")}).
                 </span>
               </li>

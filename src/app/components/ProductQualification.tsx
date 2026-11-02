@@ -522,13 +522,14 @@ export function ProductQualification() {
                 />
                 <div className="flex justify-between gap-3 text-xs text-slate-500">
                   <span>{t("qualification.productHelp")} {L("(qué es, para qué se usa y, si aplica, capacidad o material)", "(what it is, what it's for and, if relevant, capacity or material)")}</span>
-                  <span className={`shrink-0 ${formData.productType.length > LIMITS.productMax ? "text-red-600 font-semibold" : ""}`}>
-                    {formData.productType.length.toLocaleString("en-US")}/{LIMITS.productMax.toLocaleString("en-US")}
+                  {/* 02-11: counter, alert and validation count the same text (trimmed, as it is sent) */}
+                  <span className={`shrink-0 ${formData.productType.trim().length > LIMITS.productMax ? "text-red-600 font-semibold" : ""}`}>
+                    {formData.productType.trim().length.toLocaleString("en-US")}/{LIMITS.productMax.toLocaleString("en-US")}
                   </span>
                 </div>
-                {formData.productType.length > LIMITS.productMax ? (
+                {formData.productType.trim().length > LIMITS.productMax ? (
                   <p className="text-xs text-red-600 mt-1" role="alert">
-                    <span>{overLimitMessage(formData.productType.length, LIMITS.productMax)}</span>
+                    <span>{overLimitMessage(formData.productType.trim().length, LIMITS.productMax)}</span>
                   </p>
                 ) : (
                   showErr("productType")
