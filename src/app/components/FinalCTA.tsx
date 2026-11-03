@@ -1,3 +1,4 @@
+import { startVerification, confirmVerification } from "../../utils/verifiedEmail";
 import { sendToSeal, receiptText, rememberCase, caseContext } from "../../utils/caseContext";
 import { currentCase, scenarioMatches } from "../../utils/caseStore";
 import { useEffect, useState } from "react";
@@ -259,7 +260,10 @@ export function FinalCTA() {
 
   // Email form
   const [emailRecipient, setEmailRecipient] = useState("");
-  const [emailRecipientName, setEmailRecipientName] = useState("");
+  // 02-11k: the report goes only to the client's own email, after a code sent to it
+  const [emailStep, setEmailStep] = useState<"email" | "code">("email");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailNote, setEmailNote] = useState("");
 
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
 
@@ -352,7 +356,8 @@ export function FinalCTA() {
         return;
       }
       if (!res.ok) throw new Error("Failed");
-      alert(`${t("final.quoteSuccess")}\n\n${receiptText(res, L)}`);
+      // 02-11k: a repeat without its case token changed nothing: no «sent» message
+      alert(res.unchanged ? receiptText(res, L) : `${t("final.quoteSuccess")}\n\n${receiptText(res, L)}`);
       setShowQuoteModal(false);
       setQuoteName("");
       setQuoteEmail("");
@@ -395,10 +400,53 @@ export function FinalCTA() {
   );
 
   // ── Action: Email Report ──────────────────────────────────────────────────
+  // 02-11k: step 1 asks the server to email a code; step 2 checks it and sends the report to that same
+  // address with the single-use grant. The PDF is made here with the client's data: the email says so.
+  const closeEmailModal = () => {
+    setShowEmailModal(false);
+    setEmailStep("email");
+    setEmailCode("");
+    setEmailNote("");
+  };
   const handleEmailReport = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (emailStep === "email") {
+      setSubmitting(true);
+      try {
+        const r = await startVerification(emailRecipient, Lx("es", "en") as "es" | "en");
+        if (r === "sent") {
+          setEmailStep("code");
+          setEmailCode("");
+          setEmailNote(
+            Lx(
+              "Si ese correo puede recibir mensajes, te llegará un código de 6 dígitos en unos minutos (revisa también spam). Vence en 15 minutos.",
+              "If that address can receive email, a 6-digit code will arrive in a few minutes (check spam too). It expires in 15 minutes.",
+            ),
+          );
+        } else if (r === "limit")
+          setEmailNote(Lx("Se pidieron demasiados códigos para este correo o desde esta conexión. Espera una hora o descarga el PDF.", "Too many codes were requested for this email or from this connection. Wait an hour or download the PDF."));
+        else if (r === "not_supported")
+          setEmailNote(Lx("Escribe el correo sin tildes, eñes ni caracteres especiales, por ejemplo nombre@empresa.com.", "Write the email without accents or special characters, for example name@company.com."));
+        else if (r === "invalid") setEmailNote(Lx("Revisa el correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check the email: it must be complete, for example name@company.com."));
+        else setEmailNote(Lx("No pudimos enviar el código ahora. Intenta de nuevo en unos minutos o descarga el PDF.", "We couldn't send the code now. Try again in a few minutes or download the PDF."));
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
     setSubmitting(true);
     try {
+      const v = await confirmVerification(emailRecipient, emailCode);
+      if (!v.ok) {
+        setEmailNote(
+          v.reason === "format"
+            ? Lx("Escribe los 6 dígitos del código, sin letras.", "Type the 6 digits of the code, no letters.")
+            : v.reason === "wrong"
+              ? Lx("El código no es correcto o ya venció. Revísalo o pide uno nuevo.", "The code is wrong or expired. Check it or ask for a new one.")
+              : Lx("No pudimos comprobar el código ahora. Intenta de nuevo en unos minutos.", "We couldn't check the code now. Try again in a few minutes."),
+        );
+        return;
+      }
       const pdfBase64 = await generateReportPDF({
         notes: reportNotes,
         differences: reportDiffs,
@@ -420,24 +468,9 @@ export function FinalCTA() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            recipientEmail: emailRecipient,
-            // who ran the search (the server only sends reports for them)
-            requesterEmail: (() => {
-              try {
-                return JSON.parse(localStorage.getItem("sealcargo_user_data") || "{}").email || "";
-              } catch {
-                return "";
-              }
-            })(),
-            // the token the search returned for that email (the server checks it)
-            reportToken: (() => {
-              try {
-                return JSON.parse(localStorage.getItem("seal_report_token") || "{}").token || "";
-              } catch {
-                return "";
-              }
-            })(),
-            recipientName: emailRecipientName,
+            // the verified address is the only recipient (the server refuses any other)
+            requesterEmail: emailRecipient.trim(),
+            reportGrant: v.reportGrant,
             pdfBase64,
             supplierName,
             totalCost: costs.totalCost,
@@ -452,7 +485,7 @@ export function FinalCTA() {
       if (refusal === "qa_recipient") {
         // 02-11e: a QA account tried to send its report outside QA: nothing was sent to anyone
         alert(Lx("Envío de prueba bloqueado: una cuenta de QA solo puede enviar informes a cuentas de QA autorizadas, así que no se envió ningún correo.", "Test send blocked: a QA account can only send reports to authorized QA accounts, so no email was sent."));
-        setShowEmailModal(false);
+        closeEmailModal();
         return;
       }
       if (res.status === 400) {
@@ -461,14 +494,21 @@ export function FinalCTA() {
         if (m.downloadPdf) {
           const ok = await downloadReportNow();
           alert(ok ? m.message : Lx("No pudimos adjuntar el PDF al correo, así que no se envió. ", "We couldn't attach the PDF to the email, so it wasn't sent. ") + notDownloaded);
-          setShowEmailModal(false);
+          closeEmailModal();
         } else alert(m.message);
         return;
       }
       if (res.status === 503) {
         // 02-11c: a QA account while the QA inbox is not configured: nothing was sent to anyone
         alert(Lx("Envío de prueba bloqueado: el buzón de QA no está configurado en el servidor, así que no se envió ningún correo.", "Test send blocked: the QA inbox is not configured on the server, so no email was sent."));
-        setShowEmailModal(false);
+        closeEmailModal();
+        return;
+      }
+      if (res.status === 403 && (refusalError === "report_not_allowed" || refusalError === "recipient_must_be_requester")) {
+        // the verification expired or was already used: nothing was sent; ask for a new code
+        setEmailStep("email");
+        setEmailCode("");
+        setEmailNote(Lx("La verificación venció o ya se usó, así que no se envió nada. Pide un código nuevo.", "The verification expired or was already used, so nothing was sent. Ask for a new code."));
         return;
       }
       if (res.status === 403 || res.status === 429) {
@@ -482,7 +522,7 @@ export function FinalCTA() {
               )
             : Lx("No pudimos enviarlo por correo desde aquí. ", "We couldn't email it from here. ") + notDownloaded,
         );
-        setShowEmailModal(false);
+        closeEmailModal();
         return;
       }
       if (!res.ok) throw new Error("Failed");
@@ -501,9 +541,8 @@ export function FinalCTA() {
       } else {
         alert(t("final.emailSuccess"));
       }
-      setShowEmailModal(false);
+      closeEmailModal();
       setEmailRecipient("");
-      setEmailRecipientName("");
     } catch (err) {
       // Never leave the user empty-handed: give them the PDF right away
       const ok = await downloadReportNow();
@@ -856,7 +895,16 @@ export function FinalCTA() {
                 {t("final.downloadExcel")}
               </button>
               <button
-                onClick={() => setShowEmailModal(true)}
+                onClick={() => {
+                  // the email of this session as a starting point (the code still proves it)
+                  if (!emailRecipient)
+                    try {
+                      setEmailRecipient(String(JSON.parse(localStorage.getItem("sealcargo_user_data") || "{}").email || ""));
+                    } catch {
+                      /* storage unavailable */
+                    }
+                  setShowEmailModal(true);
+                }}
                 className="w-full py-3 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors flex items-center justify-center gap-2"
               >
                 <Mail className="w-4 h-4" />
@@ -992,7 +1040,7 @@ export function FinalCTA() {
                 {t("final.emailModalTitle")}
               </h2>
               <button
-                onClick={() => setShowEmailModal(false)}
+                onClick={() => closeEmailModal()}
                 className="text-slate-400 hover:text-slate-600"
               >
                 <X className="w-6 h-6" />
@@ -1004,23 +1052,57 @@ export function FinalCTA() {
             </p>
 
             <form onSubmit={handleEmailReport} className="space-y-4">
-              <input
-                type="text"
-                placeholder={t("final.emailYourName")}
-                value={emailRecipientName}
-                onChange={(e) => setEmailRecipientName(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
-              />
+              <p className="text-xs text-slate-500">
+                {L(
+                  "Solo se envía a tu propio correo, después de confirmar un código. El PDF se genera en este navegador con los datos que ingresaste: es una orientación preliminar, no una cotización ni una verificación de SEAL.",
+                  "It is sent only to your own email, after you confirm a code. The PDF is made in this browser with the data you entered: it is preliminary guidance, not a quote or a SEAL verification.",
+                )}
+              </p>
               <input
                 type="email"
                 pattern="[^@\s]+@[^@\s]+\.[A-Za-z]{2,}"
                 title={L("Correo completo, por ejemplo nombre@empresa.com", "Complete email, for example name@company.com")}
                 required
+                readOnly={emailStep === "code"}
+                aria-label={L("Tu correo", "Your email")}
                 placeholder={t("final.emailYourEmail")}
                 value={emailRecipient}
                 onChange={(e) => setEmailRecipient(e.target.value)}
-                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
               />
+              {emailStep === "code" && (
+                <>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    pattern="\s*\d{6}\s*"
+                    maxLength={8}
+                    required
+                    aria-label={L("Código de 6 dígitos", "6-digit code")}
+                    placeholder={L("Código de 6 dígitos", "6-digit code")}
+                    value={emailCode}
+                    onChange={(e) => setEmailCode(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg border border-slate-300 tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEmailStep("email");
+                      setEmailCode("");
+                      setEmailNote("");
+                    }}
+                    className="text-sm text-[#0B3C5D] underline"
+                  >
+                    {L("Cambiar correo o pedir otro código", "Change email or ask for another code")}
+                  </button>
+                </>
+              )}
+              {emailNote && (
+                <p role="status" aria-live="polite" className="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3" data-testid="email-note">
+                  {emailNote}
+                </p>
+              )}
 
               <button
                 type="submit"
@@ -1028,7 +1110,7 @@ export function FinalCTA() {
                 className="w-full py-3 bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white rounded-lg hover:from-blue-700 hover:to-[#0a2f47] transition-all font-semibold disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 <Mail className="w-5 h-5" />
-                {submitting ? t("final.emailSending") : t("final.emailSubmit")}
+                {submitting ? t("final.emailSending") : emailStep === "email" ? L("Enviarme un código", "Send me a code") : t("final.emailSubmit")}
               </button>
             </form>
           </div>

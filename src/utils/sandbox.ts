@@ -32,6 +32,9 @@ export function sandboxResponse(url: string, method: string, body: unknown, stat
   const m = method.toUpperCase();
   if (/^\/api\/email\//.test(path)) {
     state.sent.push({ url: path, body, at: Date.now() });
+    // 02-11k: the code step answers here too (no code is mailed in the sandbox)
+    if (path === "/api/email/verify/start") return json({ sent: true });
+    if (path === "/api/email/verify/confirm") return json({ verified: true, session: "sandbox-session", reportGrant: "sandbox-grant", sessionSeconds: 600, grantSeconds: 600 });
     if (path === "/api/email/quote") return json({ success: true, id: `SEAL-SANDBOX-${String(state.sent.length).padStart(6, "0")}`, duplicate: false, notified: true, test: true });
     return json({ success: true, delivered: false });
   }

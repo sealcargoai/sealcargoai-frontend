@@ -188,19 +188,19 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
             </div>
             {result ? (
               <div role="status" data-testid="seal-receipt" className="space-y-3">
-                <p className="text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg p-3">{receiptText(result, L)}</p>
+                <p className={`text-sm rounded-lg p-3 border ${result.unchanged ? "text-amber-900 bg-amber-50 border-amber-200" : "text-emerald-900 bg-emerald-50 border-emerald-200"}`}>{receiptText(result, L)}</p>
                 {result.caseUrl && (
                   <a href={result.caseUrl} target="_blank" rel="noopener noreferrer" className="block text-sm font-semibold text-[#0B3C5D] underline">
                     {L("Ver lo que recibió SEAL y el estado de mi caso", "See what SEAL received and my case status (page in Spanish)")}
                   </a>
                 )}
                 <a
-                  href={`https://wa.me/50259964664?text=${encodeURIComponent(L(`Hola, mi número de caso es ${result.id}.`, `Hello, my case number is ${result.id}.`))}`}
+                  href={`https://wa.me/50259964664?text=${encodeURIComponent(result.id ? L(`Hola, mi número de caso es ${result.id}.`, `Hello, my case number is ${result.id}.`) : L("Hola, quiero agregar datos a mi solicitud. Mi número de caso es: ", "Hello, I want to add details to my request. My case number is: "))}`}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="inline-block text-sm font-semibold text-emerald-800 underline"
                 >
-                  {L("Escribir por WhatsApp con mi número de caso", "Message on WhatsApp with my case number")}
+                  {result.id ? L("Escribir por WhatsApp con mi número de caso", "Message on WhatsApp with my case number") : L("Agregar datos por WhatsApp", "Add details on WhatsApp")}
                 </a>
                 <button type="button" onClick={() => setOpen(false)} className="block w-full mt-2 px-4 py-2.5 rounded-lg bg-[#0B3C5D] text-white text-sm font-semibold">
                   {L("Listo", "Done")}

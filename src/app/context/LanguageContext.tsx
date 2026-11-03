@@ -212,7 +212,7 @@ const translations = {
     // Email Modal
     "final.emailModalTitle": "Enviar informe por correo",
     "final.emailModalDesc":
-      "Te enviaremos el informe completo en PDF a tu correo.",
+      "Te enviaremos un código a tu correo para confirmar que es tuyo y luego el informe en PDF.",
     "final.emailYourName": "Tu nombre",
     "final.emailYourEmail": "tu@correo.com *",
     "final.emailSubmit": "Enviar Informe",
@@ -371,7 +371,7 @@ const translations = {
     "final.quoteSuccess": "Request sent! Our team will contact you soon.",
     "final.quoteError": "⚠️ Could not send. Please try again or contact us directly.",
     "final.emailModalTitle": "Email the report",
-    "final.emailModalDesc": "We will send the full PDF report to your email.",
+    "final.emailModalDesc": "We will email you a code to confirm the address is yours, then send you the PDF.",
     "final.emailYourName": "Your name",
     "final.emailYourEmail": "your@email.com *",
     "final.emailSubmit": "Send report",

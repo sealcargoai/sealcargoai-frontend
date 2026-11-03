@@ -208,7 +208,7 @@ export interface SealResult {
   status: number;
   id?: string; // case number (SEAL-YYYYMMDD-XXXXXX)
   duplicate?: boolean; // it was already an open case: updated, not duplicated
-  contactPending?: boolean; // 02-11j: a different phone/company came with the repeat and was not applied
+  unchanged?: boolean; // 02-11k: an open case with the same email and product exists; without its case token nothing was changed
   notified?: boolean; // SEAL's inbox got it (false = registered only: SEAL sees it in the registry)
   caseUrl?: string; // signed page: what SEAL received and the case status
   test?: boolean; // the server identified it as a test record (not a commercial lead)
@@ -221,6 +221,10 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
   // (an estimate made for other values goes as history, never as current: utils/caseStore)
   const body: Record<string, unknown> = caseForSeal(req);
   body.lang = getLang();
+  // 02-11k: proof of control of the client's own open cases (the signed token of each case link this
+  // browser received): only with it may a repeat update a case instead of leaving it unchanged
+  const auth = caseAuthList();
+  if (auth.length) body.caseAuth = auth;
   try {
     const res = await fetch(`${API}/api/email/quote`, {
       method: "POST",
@@ -228,8 +232,10 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
       body: JSON.stringify(body),
     });
     const j = await res.json().catch(() => ({}));
-    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, contactPending: !!j.contactPending, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test, ...(!res.ok && typeof j.error === "string" ? { error: j.error.slice(0, 40) } : {}) };
-    if (out.ok) {
+    const unchanged = res.ok && !!j.unchanged;
+    const out: SealResult = { ok: res.ok && (!!j.id || unchanged), status: res.status, id: unchanged ? undefined : j.id, duplicate: !!j.duplicate, unchanged, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test, ...(!res.ok && typeof j.error === "string" ? { error: j.error.slice(0, 40) } : {}) };
+    if (out.ok && out.caseUrl && out.id && !out.duplicate) rememberCaseAuth(out.id, out.caseUrl);
+    if (out.ok && !unchanged) {
       // the history of earlier products went with THIS case; a later case of another product
       // starts without it (SEAL must not read guantes/molinos as part of a termos request)
       try {
@@ -260,16 +266,41 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
   }
 }
 
+// ── Case tokens (02-11k) ──────────────────────────────────────────────────────
+const AUTH_KEY = "seal_case_auth";
+const AUTH_RE = /^SEAL-[A-Z0-9-]{1,40}:[A-Za-z0-9_-]{16,64}$/;
+/** The «ID:token» of the cases this browser created (newest first, at most 5). */
+export function caseAuthList(): string[] {
+  try {
+    const v = JSON.parse(localStorage.getItem(AUTH_KEY) || "[]");
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && AUTH_RE.test(x)).slice(0, 5) : [];
+  } catch {
+    return [];
+  }
+}
+/** Keeps the token of a new case's signed link (the «t» parameter) to update that case later. */
+export function rememberCaseAuth(id: string, caseUrl: string): void {
+  try {
+    const t = new URL(caseUrl).searchParams.get("t") || "";
+    const entry = `${id}:${t}`;
+    if (!AUTH_RE.test(entry)) return;
+    const next = [entry, ...caseAuthList().filter((x) => !x.startsWith(`${id}:`))].slice(0, 5);
+    localStorage.setItem(AUTH_KEY, JSON.stringify(next));
+  } catch {
+    /* storage unavailable: the client can still update by WhatsApp */
+  }
+}
+
 /** The line the client sees after sending (case number, duplicate or not notified). */
 export function receiptText(r: SealResult, L: (es: string, en: string) => string): string {
-  if (!r.id) return "";
-  // 02-11j: a repeat with a different phone/company does not change the case's contact (anyone who knows
-  // the email and product could otherwise): the client is told to confirm it with the case number
-  if (r.duplicate && r.contactPending)
+  // 02-11k: a repeat sent without the case link's token changes nothing and gets no case number (anyone who
+  // knows an email and a product could send it): the message names no case and no address
+  if (r.unchanged)
     return L(
-      `Ya teníamos tu caso ${r.id}: lo actualizamos sin duplicarlo. Por seguridad, el teléfono o la empresa nuevos no se cambian automáticamente; confírmalos por WhatsApp +502 5996 4664 con tu número de caso.`,
-      `We already had your case ${r.id}: we updated it without duplicating it. For security, a new phone or company is not changed automatically; confirm it on WhatsApp +502 5996 4664 with your case number.`,
+      "No se creó un caso nuevo ni se cambió ninguno: si ya habías enviado esta misma solicitud, los datos nuevos no se aplicaron desde aquí. Para agregarlos, envíalos desde el navegador donde creaste la solicitud o escríbenos por WhatsApp +502 5996 4664 con tu número de caso.",
+      "No new case was created and none was changed: if you had already sent this same request, the new details were not applied from here. To add them, send them from the browser where you created the request, or message us on WhatsApp +502 5996 4664 with your case number.",
     );
+  if (!r.id) return "";
   if (r.duplicate)
     return L(
       `Ya teníamos tu caso ${r.id}: lo actualizamos con esta información, sin duplicarlo. SEAL te contactará.`,

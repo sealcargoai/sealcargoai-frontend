@@ -139,10 +139,12 @@ describe("textos en el idioma del cliente", () => {
   });
 });
 
-describe("caso repetido con contacto distinto", () => {
-  it("el cliente sabe que el teléfono o la empresa nuevos no se aplicaron", async () => {
+describe("caso repetido (02-11k: sin el token del caso no cambia nada)", () => {
+  it("sin token: mensaje sin número de caso ni direcciones; con token: actualizado", async () => {
     const { receiptText } = await import("../src/utils/caseContext");
-    expect(receiptText({ ok: true, status: 200, id: "SEAL-1", duplicate: true, contactPending: true, notified: true }, es)).toMatch(/no se cambian automáticamente; confírmalos por WhatsApp/);
+    const u = receiptText({ ok: true, status: 200, duplicate: true, unchanged: true, notified: true }, es);
+    expect(u).toMatch(/No se creó un caso nuevo ni se cambió ninguno/);
+    expect(u).not.toMatch(/SEAL-|@/);
     expect(receiptText({ ok: true, status: 200, id: "SEAL-1", duplicate: true, notified: true }, es)).toMatch(/lo actualizamos con esta información/);
   });
 });

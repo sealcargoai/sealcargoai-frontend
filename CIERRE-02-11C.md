@@ -74,3 +74,15 @@ Versión `2026.11.02-j`. Pruebas de comportamiento en `tests/auditoria-02-11j.te
 - `round2` daba NaN con montos menores que 1e-6 (por la notación exponencial). Ahora devuelve 0 bajo medio centavo y deja igual los valores de 1e15 en adelante.
 - La línea de flete LCL es exactamente «m³ mostrados × tarifa mostrada» (3.30 × Q1,551.27 = Q5,119.19).
 - El mensaje de caso repetido avisa cuando el teléfono o la empresa nuevos no se aplicaron (`contactPending`).
+
+## 02-11k — verificación del correo y token del caso (frontend)
+
+Versión `2026.11.02-k`. Pruebas: `tests/verificacion-02-11k.test.ts`. El detalle del servidor está en `CIERRE-02-11C.md` del backend.
+
+- **Informe por correo.** Ahora va en dos pasos: el correo propio, luego un código de 6 dígitos y, al final, el envío con `reportGrant`. Se eliminaron el destinatario libre, el nombre libre y `seal_report_token`. El modal dice que el PDF se genera en el navegador y es una orientación preliminar. Si la autorización venció o ya se usó, se pide un código nuevo.
+- **Búsquedas.** Envían `verifiedSession` si hay una sesión verificada de ese correo. Solo cambia los límites de una cuenta QA.
+- **Casos.** Al crearse, el caso guarda «ID:token» de su enlace firmado (máx. 5, `localStorage`) y lo manda en `caseAuth`. Un repetido sin token se muestra como «recibido» sin número, sin enlace y sin conversión, e indica WhatsApp para agregar datos. Se eliminó `contactPending`.
+- **Revisión independiente:**
+  - Un repetido sin token ya no muestra «Solicitud enviada». Dice que no se creó ni cambió ningún caso y ofrece WhatsApp, sin un número de caso vacío.
+  - `/quota` envía la sesión QA en un encabezado, no en la URL.
+  - Se borra `seal_report_token`.
