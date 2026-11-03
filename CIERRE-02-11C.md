@@ -86,3 +86,29 @@ Versión `2026.11.02-k`. Pruebas: `tests/verificacion-02-11k.test.ts`. El detall
   - Un repetido sin token ya no muestra «Solicitud enviada». Dice que no se creó ni cambió ningún caso y ofrece WhatsApp, sin un número de caso vacío.
   - `/quota` envía la sesión QA en un encabezado, no en la URL.
   - Se borra `seal_report_token`.
+
+## 02-11l — rendimiento y mensajes de verificación (frontend)
+
+Versión `2026.11.03-l`. Pruebas en `tests/rendimiento-02-11l.test.ts` (6; con el código anterior fallan 4). Las otras 2 cuidan que no se reintroduzca lo que ya estaba bien: exportaciones diferidas y ExcelJS sin `eval` con la dependencia nueva.
+
+| Causa raíz | Cambio | Antes → después |
+|---|---|---|
+| El logo era un PNG de 1536×1024 (2.2 MB) importado en 7 pantallas, incluida la portada, y se mostraba a 85 px de alto como máximo | WebP de 480×320 con calidad 90. Diferencia media por canal frente al original al tamaño mostrado: 0.2–0.35 sobre 255 | 2,201.62 kB → 24.25 kB |
+| Chat y formulario iban en el paquete inicial | Rutas diferidas con precarga cuando la portada queda libre | `index` 620.60 kB (gzip 200.97) → 576.31 kB (gzip 187.90) |
+| ExcelJS 3.10 traía un polyfill con `eval` | ExcelJS 4.4.0, que ya no lo trae; el aviso de `eval` desapareció del build | `reportExports` 1,081.30 kB (gzip 273.08) → 951.85 kB (gzip 275.03) |
+
+**Mediciones en navegador (portada servida localmente, bytes sin comprimir):**
+- **Total al cargar:** 2,968 KB → 843 KB.
+- **Imágenes:** 2,226 KB → 100 KB.
+- **JS:** el índice baja de 606 a 563 KB, más 42 KB de chat y formulario precargados.
+
+ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), y siguen así.
+
+**Pendiente:**
+- `reportExports` (ExcelJS, 952 kB) sigue arriba de 500 kB y el build lo advierte. Solo se descarga al exportar, y no se subió el límite para esconder el aviso.
+- El índice sigue en 576 kB. La mayor parte es `utils/chatReply.ts` (340 KB de código fuente), que la portada usa para interpretar la consulta. Bajarlo exige separar ese módulo; queda propuesto.
+
+**Mensajes nuevos (ES/EN):**
+- Espera indicada por el servidor («Espera 30 segundos…»), con la aclaración de que los códigos ya recibidos siguen sirviendo.
+- Botón «Ya tengo un código».
+- Aviso «La verificación de correo no está disponible… no se envió nada».

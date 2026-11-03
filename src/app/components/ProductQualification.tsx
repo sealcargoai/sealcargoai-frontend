@@ -18,7 +18,8 @@ import {
   ArrowLeft,
   ArrowRight,
 } from "lucide-react";
-import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
+// 02-11l: 480×320 WebP (24 KB) instead of the 1536×1024 PNG (2.2 MB); shown at most 85 px tall
+import logo from "../../imports/seal-logo.webp";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { Lx, unitsWord } from "../../utils/lang";

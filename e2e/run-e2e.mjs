@@ -12,7 +12,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.11.02-k";
+const EXPECT_VERSION = "2026.11.03-l";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
@@ -228,7 +228,8 @@ try {
       C,
     );
     await page.reload();
-    const ok = await page.locator("input[type=text]").count();
+    // 02-11l: the chat is a separate chunk now; wait for it to render (never more than 10 s)
+    const ok = await page.locator("input[type=text]").first().waitFor({ timeout: 10000 }).then(() => 1, () => 0);
     const r = ok ? await say(page, "Cambia la cantidad a 6") : "";
     check("B40 D5 damaged reply: chat opens and works", ok && /4 → 6/.test(r), r.slice(0, 60));
     await ctx.close();

@@ -1,0 +1,68 @@
+// 02-11l — rendimiento: imagen del logo, rutas diferidas, exportaciones bajo demanda, ExcelJS sin eval;
+// y mensajes de la verificación (espera indicada por el servidor, almacén no disponible).
+import { describe, it, expect, beforeEach, vi } from "vitest";
+import { readFileSync, statSync, readdirSync } from "node:fs";
+
+const store: Record<string, string> = {};
+(globalThis as Record<string, unknown>).localStorage = { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => void (store[k] = v), removeItem: (k: string) => void delete store[k] };
+const read = (p: string) => readFileSync(new URL(p, import.meta.url), "utf8");
+const srcFiles = (dir: string): string[] =>
+  readdirSync(new URL(dir, import.meta.url), { withFileTypes: true }).flatMap((d) => (d.isDirectory() ? srcFiles(`${dir}${d.name}/`) : /\.(tsx?|css)$/.test(d.name) ? [`${dir}${d.name}`] : []));
+
+describe("imagen del logo", () => {
+  it("ninguna pantalla importa el PNG de 2.2 MB; el WebP pesa menos de 40 KB", () => {
+    const all = srcFiles("../src/").map(read).join("\n");
+    expect(all).not.toMatch(/ChatGPT_Image_Apr_27/);
+    expect(all).toMatch(/imports\/seal-logo\.webp/);
+    expect(statSync(new URL("../src/imports/seal-logo.webp", import.meta.url)).size).toBeLessThan(40_000);
+  });
+});
+
+describe("paquete inicial", () => {
+  const routes = read("../src/app/routes.tsx");
+  it("chat y formulario se cargan diferidos (y se precargan cuando la portada está libre)", () => {
+    expect(routes).not.toMatch(/^import .*(ChatInterface|ProductQualification)/m);
+    expect(routes).toMatch(/path: "chat", lazy: \(\) => import\("\.\/components\/ChatInterface"\)/);
+    expect(routes).toMatch(/path: "qualify", lazy: \(\) => import\("\.\/components\/ProductQualification"\)/);
+    expect(routes).toMatch(/requestIdleCallback/);
+  });
+  it("ExcelJS y jsPDF solo entran por import() dinámico, nunca por import estático de una pantalla", () => {
+    for (const f of srcFiles("../src/").filter((x) => !/reportExports|costPdf|lazyExports/.test(x))) {
+      const s = read(f);
+      expect(s, f).not.toMatch(/from\s+["'](?:exceljs|jspdf|jspdf-autotable)["']/);
+      expect(s, f).not.toMatch(/from\s+["'][./]*(?:utils\/)?(?:reportExports|costPdf)["']/);
+    }
+    expect(read("../src/utils/lazyExports.ts")).toMatch(/import\("\.\/reportExports"\)/);
+  });
+  it("ExcelJS 4.x: su distribución de navegador ya no trae eval", () => {
+    const pkg = JSON.parse(read("../node_modules/exceljs/package.json"));
+    expect(Number(pkg.version.split(".")[0])).toBeGreaterThanOrEqual(4);
+    expect(read("../node_modules/exceljs/dist/exceljs.min.js")).not.toMatch(/\beval\(/);
+  });
+});
+
+describe("verificación: respuestas del servidor (02-11l)", () => {
+  beforeEach(() => {
+    for (const k of Object.keys(store)) delete store[k];
+  });
+  it("429 con espera progresiva → «limit» y los segundos indicados; 503 → «unavailable»", async () => {
+    const v = await import("../src/utils/verifiedEmail");
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ error: "verify_limit", retryAfterSeconds: 30 }), { status: 429 }));
+    expect(await v.startVerification("a@cliente-ficticio.test", "es")).toBe("limit");
+    expect(v.lastRetryAfterSeconds).toBe(30);
+    vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ error: "verify_unavailable" }), { status: 503 }));
+    expect(await v.startVerification("a@cliente-ficticio.test", "es")).toBe("unavailable");
+    expect(await v.confirmVerification("a@cliente-ficticio.test", "123456")).toEqual({ ok: false, reason: "unavailable" });
+  });
+  it("la pantalla del informe: espera indicada, «Ya tengo un código» y almacén caído sin enviar nada", () => {
+    const s = read("../src/app/components/FinalCTA.tsx");
+    expect(s).toMatch(/Ya tengo un código/);
+    expect(s).toMatch(/lastRetryAfterSeconds/);
+    expect(s).toMatch(/res\.status === 503 && refusalError === "verify_unavailable"/);
+    expect(s).toMatch(/no está disponible en este momento y no se envió nada/);
+    expect(s).toMatch(/is unavailable right now and nothing was sent/);
+    // the unused authorization is kept for a retry (no new code needed when nothing was sent)
+    expect(s).toMatch(/setPendingGrant\(\{ email: emailRecipient\.trim\(\), grant: v\.reportGrant \}\)/);
+    expect(s).toMatch(/const reuse = pendingGrant && pendingGrant\.email === emailRecipient\.trim\(\)/);
+  });
+});
