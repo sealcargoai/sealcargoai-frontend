@@ -1,3 +1,4 @@
+import { verifiedSessionFor } from "../../utils/verifiedEmail";
 import { sendToSeal, receiptText, setCaseScenario, SCENARIO_KEYS, switchCaseProduct } from "../../utils/caseContext";
 import { sameProduct } from "../../utils/chatReply";
 import { inferCategory } from "../../utils/category";
@@ -185,7 +186,12 @@ export function ProductQualification() {
     let cancelled = false;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 8000);
-    fetch(`${API}/api/suppliers/quota?email=${encodeURIComponent(userEmail || "")}`, { cache: "no-store", signal: controller.signal })
+    fetch(`${API}/api/suppliers/quota?email=${encodeURIComponent(userEmail || "")}`, {
+      cache: "no-store",
+      signal: controller.signal,
+      // 02-11k: a verified QA session goes in a header, never in the URL
+      ...(verifiedSessionFor(userEmail || "") ? { headers: { "X-Verified-Session": verifiedSessionFor(userEmail || "") } } : {}),
+    })
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
       .then((q) => {
         if (cancelled || typeof q?.remaining !== "number") throw new Error("bad quota");
@@ -262,6 +268,8 @@ export function ProductQualification() {
             material: "",
             userQuery: productDescription,
             userEmail,
+            // 02-11k: a verified session of THIS email (only a QA account's limits depend on it)
+            ...(verifiedSessionFor(userEmail) ? { verifiedSession: verifiedSessionFor(userEmail) } : {}),
           }),
         },
       );
@@ -310,14 +318,6 @@ export function ProductQualification() {
         !suppliers?.noRelevantMatches &&
         (suppliers?.topSuppliers?.length ?? 0) > 0;
       if (userEmail && counted) recordSearch(userEmail, userName, productCategory, productDescription);
-      // the server's proof that this browser ran the search: needed to email the report
-      if (typeof suppliers?.reportToken === "string" && userEmail) {
-        try {
-          localStorage.setItem("seal_report_token", JSON.stringify({ email: String(userEmail).toLowerCase(), token: suppliers.reportToken }));
-        } catch {
-          /* storage unavailable: the report can still be downloaded */
-        }
-      }
       // the server says how many are left after this search
       if (typeof suppliers?.remainingSearches === "number") {
         setRemainingSearches(suppliers.remainingSearches);
