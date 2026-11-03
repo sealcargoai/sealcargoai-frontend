@@ -31,3 +31,13 @@ El servidor rechaza con 400 `email_not_supported` los correos con tildes, eñes,
 `utils/emailFormat.ts` (`emailProblem`) aplica la misma regla en el inicio y en «Hablar con SEAL» (formulario `noValidate`), con el mensaje «Escribe el correo sin tildes, eñes ni caracteres especiales…». Los demás campos `type="email"` ya los rechaza el navegador: Chromium marca inválidos `Ka@…`, `k​a@…`, `josé@…` y `ana@pruéba.test`.
 
 Pruebas: `tests/identidad-02-11h.test.ts`.
+
+## 02-11i — coherencia con la identidad QA exacta del servidor
+
+Versión `2026.11.02-i`. Backend `2026.11.02-i`: la clasificación QA es por identidad exacta, así que un alias `+` no listado sigue el flujo comercial.
+
+Defecto relacionado corregido: si la búsqueda se rechazaba por el correo (`email_not_supported`, por ejemplo un correo con tildes guardado en el navegador antes de 02-11h), la página decía «Revisa la descripción y la cantidad», que no era la causa. Ahora lee el código del 400 y muestra «Tu correo tiene tildes, eñes o caracteres especiales… Vuelve al inicio y escríbelo sin ellos». La búsqueda no se descuenta.
+
+La página no decide quién es QA: lo hace solo el servidor, con su lista. `?qa=1` solo marca la sesión para las métricas.
+
+Pruebas: `tests/qa-identidad-02-11i.test.ts`.

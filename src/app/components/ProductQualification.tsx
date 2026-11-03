@@ -283,8 +283,10 @@ export function ProductQualification() {
       }
 
       if (!response.ok) {
-        const e = new Error(`HTTP ${response.status}`) as Error & { status?: number };
+        const e = new Error(`HTTP ${response.status}`) as Error & { status?: number; code?: string };
         e.status = response.status;
+        // 02-11i: the server says WHICH data it refused (e.g. an email with accents saved before 02-11h)
+        if (response.status === 400) e.code = String((await response.json().catch(() => ({})))?.error || "");
         throw e;
       }
 
@@ -339,7 +341,7 @@ export function ProductQualification() {
       // Stay here: the data stays in the form and the search is not counted
       setSearchFailed(true);
       // say what actually happened: timeout, no connection, a rejected request or a server error
-      const e = err as Error & { status?: number };
+      const e = err as Error & { status?: number; code?: string };
       const kept = { es: " Tus datos siguen aquí y la búsqueda no se descontó.", en: " Your data is still here and the search was not counted." };
       const both = (es: string, en: string) => ({ es: es + kept.es, en: en + kept.en });
       setError(
@@ -353,6 +355,12 @@ export function ProductQualification() {
                 "No pudimos conectar con el servidor de SmartTrade (revisa tu conexión a internet). Intenta de nuevo en un momento o escribe al WhatsApp de SEAL +502 5996 4664.",
                 "We couldn't reach the SmartTrade server (check your internet connection). Try again in a moment or message SEAL on WhatsApp +502 5996 4664.",
               )
+            : e?.code === "email_not_supported"
+              ? both(
+                  // the email (not the description) was refused: it was saved with accents or special characters
+                  "Tu correo tiene tildes, eñes o caracteres especiales que el sistema no acepta. Vuelve al inicio y escríbelo sin ellos, por ejemplo nombre@empresa.com.",
+                  "Your email has accents or special characters the system doesn't accept. Go back to the start and write it without them, for example name@company.com.",
+                )
             : e?.status && e.status >= 400 && e.status < 500
               ? both(
                   "El servidor no aceptó los datos de la búsqueda. Revisa la descripción y la cantidad; si el problema sigue, pide al equipo de SEAL que revise tu caso.",
