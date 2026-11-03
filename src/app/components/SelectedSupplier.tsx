@@ -569,6 +569,7 @@ export function trustDetail(d: string): string {
       .replace(/^Trade Assurance$/, "Protección de pedidos");
   }
   return d
+    .replace(ES_VERIFIED, EN_VERIFIED)
     .replace("Proveedor verificado (auditoría de tercero)", EN_VERIFIED)
     .replace("Miembro Gold (membresía, sin auditoría en planta)", "Gold Supplier (membership, no on-site audit)")
     .replace("Sin protección de pedidos", "No Trade Assurance")

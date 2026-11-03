@@ -29,15 +29,16 @@ export function pushDataLayer(data: Record<string, unknown>): void {
   }
 }
 
-// Same rule as the server: test words in the name or email (PRUEBA, test, demo, example.com…)
-const TEST_RE = /\b(prueba|test|testing|ficticio|ficticia|demo|fake|ejemplo)\b|@(example|test|prueba|mailinator)\./i;
-/** This browser is running a QA session (its events are counted apart, never as commercial data). */
+/**
+ * This browser is running a QA session (its events are counted apart, never as commercial data).
+ * 02-11c: only an explicit signal (?qa=1 opened in this tab); words in the name or the email
+ * ("Demo", "prueba", example.com…) never make a real visitor a test. Whether a REQUEST is a test is
+ * decided by the server alone (its QA allow-list) and comes back as `test` in its answer.
+ */
 export function isQaSession(): boolean {
   try {
     if (/[?&]qa=1\b/.test(window.location.search)) sessionStorage.setItem("seal_qa", "1");
-    if (sessionStorage.getItem("seal_qa") === "1") return true;
-    const d = JSON.parse(localStorage.getItem("sealcargo_user_data") || "null");
-    return TEST_RE.test(String(d?.name || "")) || TEST_RE.test(String(d?.email || ""));
+    return sessionStorage.getItem("seal_qa") === "1";
   } catch {
     return false;
   }

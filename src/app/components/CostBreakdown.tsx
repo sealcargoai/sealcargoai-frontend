@@ -24,7 +24,6 @@ import {
   ResponsiveContainer,
   Tooltip,
 } from "recharts";
-import { buildCostPdf } from "../../utils/costPdf";
 import { listingDifferences } from "../../utils/differences";
 import { budgetNote, smallOrderNote } from "../../utils/costNotes";
 import { Lx } from "../../utils/lang";
@@ -40,12 +39,8 @@ import {
   SupplierDisclaimer,
   sealDisclaimer,
 } from "./SelectedSupplier";
-import {
-  SEAL_COMPANY,
-  drawCompanyInfoBox,
-  drawCompanyFooter,
-  generateBeautifulExcel,
-} from "../../utils/reportExports";
+import { SEAL_COMPANY } from "../../utils/company";
+import { loadCostPdf, loadReportExports, exportLoadFailed } from "../../utils/lazyExports";
 import {
   calculateCosts,
   useRates,
@@ -58,6 +53,12 @@ import {
   shareValues,
   shareText,
   qCents,
+  formatQTotal,
+  formatQAmount,
+  groupQ,
+  perUnitQ,
+  totalUSDText,
+  totalSummary,
   type CostResult,
 } from "../../utils/costCalculator";
 
@@ -65,7 +66,8 @@ import {
 type Costs = CostResult;
 
 // ─── PDF Export (with company info) ───────────────────────────────────────────
-function exportToPDF(
+// 02-11c: jsPDF / ExcelJS load only when the client exports (a separate download, not the main page)
+async function exportToPDF(
   costs: Costs,
   supplierName: string,
   quantity: number,
@@ -75,7 +77,13 @@ function exportToPDF(
   notes: string[] = [],
   differences?: { title: string; items: string[] },
 ) {
-  buildCostPdf({
+  let mod: Awaited<ReturnType<typeof loadCostPdf>>;
+  try {
+    mod = await loadCostPdf();
+  } catch {
+    return exportLoadFailed();
+  }
+  mod.buildCostPdf({
     notes,
     differences,
     title: Lx("Escenario estimado de costos de importación (no es cotización)", "Estimated import cost scenario (not a quote)"),
@@ -101,7 +109,13 @@ async function exportToExcel(
   notes: string[] = [],
   differences?: { title: string; items: string[] },
 ) {
-  await generateBeautifulExcel({
+  let mod: Awaited<ReturnType<typeof loadReportExports>>;
+  try {
+    mod = await loadReportExports();
+  } catch {
+    return exportLoadFailed();
+  }
+  await mod.generateBeautifulExcel({
     notes,
     differences,
     reportTitle: Lx("Escenario estimado de costos de importación", "Estimated import cost scenario"),
@@ -346,7 +360,10 @@ export function CostBreakdown() {
     );
   }
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit: unitInfo.unit }, rates);
-  const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
+  // 02-11c: every quetzal amount with centavos; the total is ALWAYS the sum of the printed lines
+  const Q = (usd: number, decimals = 2) => formatQ(usd, costs.exchangeRate, decimals);
+  const TOTAL = formatQTotal(costs, costs.exchangeRate);
+  const PER_UNIT = perUnitQ(costs, costs.exchangeRate);
   // Assumptions shown on screen that the PDF and Excel must keep
   // the purchase budget and the small-order note go to the PDF / Excel as they appear here
   // the case in force (form or chat) may have changed after this estimate was calculated
@@ -379,7 +396,7 @@ export function CostBreakdown() {
     priceSource: (stateSupplier?.priceSource === "client" ? "usuario" : "publicado") as "usuario" | "publicado",
     // the listing's price as published (its range, when it has one), never the typed one
     publishedPrice: originalSupplier?.priceSource !== "client" && publishedPriceText(originalSupplier) ? `${publishedPriceText(originalSupplier)} / ${unitWordFor(unitInfo.unit, 1)}` : "",
-    totalCostText: `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? L(", sin flete", ", without freight") : ""}`,
+    totalCostText: totalSummary(costs, costs.exchangeRate, L(", sin flete", ", without freight")),
     budget: budget > 0 ? `US$${budget.toLocaleString("en-US")}` : "",
     // the destination as people read it (the form stores the code "GT")
     destination: /^gt$/i.test(destination) ? "Guatemala" : destination,
@@ -407,10 +424,10 @@ export function CostBreakdown() {
   const sumKeys = (keys: string[]) =>
     costs.lines.filter((l) => keys.includes(l.key)).reduce((a, l) => a + l.amount, 0);
   const moneyGroups = [
-    { key: "product", name: L("Producto (FOB)", "Product (FOB)"), desc: L("Lo que le pagas al proveedor", "What you pay the supplier"), amount: sumKeys(["product"]), color: "#0B3C5D" },
-    { key: "logistics", name: L("Traerlo a Guatemala", "Bringing it to Guatemala"), desc: L("Flete, seguro y gastos en destino", "Freight, insurance and destination charges"), amount: sumKeys(["freight", "insurance", "local"]), color: "#3B82F6" },
-    { key: "taxes", name: L("Impuestos SAT", "SAT taxes"), desc: L("DAI e IVA de importación", "Import DAI and IVA"), amount: sumKeys(["duties", "vat"]), color: "#60A5FA" },
-    { key: "seal", name: L("Servicio de aduana SEAL", "SEAL customs service"), desc: L("Honorarios del agente aduanero", "Customs broker fee"), amount: sumKeys(["customs"]), color: "#8B5CF6" },
+    { key: "product", name: L("Producto (FOB)", "Product (FOB)"), desc: L("Lo que le pagas al proveedor", "What you pay the supplier"), amount: sumKeys(["product"]), q: groupQ(costs, ["product"], costs.exchangeRate), color: "#0B3C5D" },
+    { key: "logistics", name: L("Traerlo a Guatemala", "Bringing it to Guatemala"), desc: L("Flete, seguro y gastos en destino", "Freight, insurance and destination charges"), amount: sumKeys(["freight", "insurance", "local"]), q: groupQ(costs, ["freight", "insurance", "local"], costs.exchangeRate), color: "#3B82F6" },
+    { key: "taxes", name: L("Impuestos SAT", "SAT taxes"), desc: L("DAI e IVA de importación", "Import DAI and IVA"), amount: sumKeys(["duties", "vat"]), q: groupQ(costs, ["duties", "vat"], costs.exchangeRate), color: "#60A5FA" },
+    { key: "seal", name: L("Servicio de aduana SEAL", "SEAL customs service"), desc: L("Honorarios del agente aduanero", "Customs broker fee"), amount: sumKeys(["customs"]), q: groupQ(costs, ["customs"], costs.exchangeRate), color: "#8B5CF6" },
   ];
   // Whole "of each US$100" shares that add up to exactly 100 (largest remainder)
   {
@@ -617,8 +634,8 @@ export function CostBreakdown() {
                   ? L("Costo parcial estimado en Guatemala (sin flete)", "Estimated partial cost in Guatemala (without freight)")
                   : t("cost.totalLandedCost")}
               </div>
-              <div className="text-3xl sm:text-5xl md:text-6xl font-bold drop-shadow-lg mb-2 sm:mb-3 break-all">
-                {Q(costs.totalCost)}
+              <div className="text-3xl sm:text-5xl md:text-6xl font-bold drop-shadow-lg mb-2 sm:mb-3 break-all" data-testid="cost-total">
+                {TOTAL}
               </div>
               {costs.freightPending && (
                 <div className="mb-2 sm:mb-3 inline-block bg-amber-400 text-amber-950 rounded-lg px-3 py-1 text-xs sm:text-sm font-semibold">
@@ -628,7 +645,7 @@ export function CostBreakdown() {
               <div className="text-blue-100 text-xs sm:text-base md:text-lg">
                 {quantity.toLocaleString("en-US")} {unitWordFor(unitInfo.unit, quantity)} •{" "}
                 <span className="font-bold text-white">
-                  {Q(costs.perUnit, 2)} {Lx("por", "per")} {unitWordFor(unitInfo.unit, 1)}
+                  {formatQAmount(PER_UNIT)} {Lx("por", "per")} {unitWordFor(unitInfo.unit, 1)}
                   {piecesPerUnit > 1 && (
                     <span className="block text-xs sm:text-sm font-normal text-blue-100">
                       {Lx(
@@ -642,8 +659,8 @@ export function CostBreakdown() {
               <div className="text-blue-200 text-xs sm:text-sm mt-1">
                 <span>
                   {L(
-                    `Equivale a ${formatUSD(costs.totalCost)} • tipo de cambio referencial Q${costs.exchangeRate.toFixed(2)} por US$1`,
-                    `Equals ${formatUSD(costs.totalCost)} • reference exchange rate Q${costs.exchangeRate.toFixed(2)} per US$1`,
+                    `Equivale a ${totalUSDText(costs, costs.exchangeRate)} • tipo de cambio referencial Q${costs.exchangeRate.toFixed(2)} por US$1`,
+                    `Equals ${totalUSDText(costs, costs.exchangeRate)} • reference exchange rate Q${costs.exchangeRate.toFixed(2)} per US$1`,
                   )}
                 </span>
               </div>
@@ -693,8 +710,8 @@ export function CostBreakdown() {
                 <span className="text-[10px] leading-tight text-slate-500 text-center max-w-[96px]">
                   {costs.freightPending ? L("Total parcial, sin flete", "Partial total, no freight") : L("Total estimado", "Estimated total")}
                 </span>
-                <span className="text-base font-bold text-[#0B3C5D] max-w-[110px] truncate">
-                  {Q(costs.totalCost)}
+                <span className="text-xs sm:text-sm font-bold text-[#0B3C5D] max-w-[120px] text-center break-all leading-tight">
+                  {TOTAL}
                 </span>
               </div>
             </div>
@@ -711,7 +728,7 @@ export function CostBreakdown() {
                       {shareText(d.share, d.value, 0)}
                     </span>
                     <span className="font-medium text-slate-800 tabular-nums min-w-[6rem] text-right whitespace-nowrap shrink-0">
-                      {Q(d.value)}
+                      {formatQCents(d.value, costs.exchangeRate)}
                     </span>
                   </li>
                 );
@@ -750,7 +767,7 @@ export function CostBreakdown() {
                           {share}%
                         </p>
                         <p className="text-xs text-slate-500">
-                          {Q(g.amount)}
+                          {formatQAmount(g.q)}
                         </p>
                       </div>
                     </div>
@@ -770,7 +787,7 @@ export function CostBreakdown() {
                 {costs.freightPending ? L(" (sin flete)", " (without freight)") : ""}
               </p>
               <p className="text-base font-bold text-[#0B3C5D]">
-                +{Q(Math.max(costs.perUnit - price, 0), 2)}
+                +{formatQAmount(Math.max(Math.round((PER_UNIT - price * costs.exchangeRate) * 100) / 100, 0))}
               </p>
             </div>
           </div>
@@ -836,7 +853,7 @@ export function CostBreakdown() {
                     `En este escenario, el costo en Guatemala de cada ${unitWordFor(unitInfo.unit, 1)} sería de`,
                     `In this scenario, the landed cost in Guatemala of each ${unitWordFor(unitInfo.unit, 1)} would be`,
                   )}{" "}
-                  <b>{Q(costs.perUnit, 2)}</b>
+                  <b>{formatQAmount(PER_UNIT)}</b>
                   {piecesPerUnit > 1
                     ? L(
                         ` (unos ${Q(costs.perUnit / piecesPerUnit, 2)} por pieza, suponiendo ${piecesPerUnit} piezas por ${unitWordFor(unitInfo.unit, 1)})`,
@@ -904,7 +921,7 @@ export function CostBreakdown() {
                 <span className="text-green-500 mt-1">•</span>
                 <span>
                   {L("Con los supuestos usados, DAI e IVA suman", "With the assumptions used, DAI and IVA add up to")}{" "}
-                  <b>{Q(costs.importDuties + costs.taxes)}</b>{" "}
+                  <b>{formatQAmount(groupQ(costs, ["duties", "vat"], costs.exchangeRate))}</b>{" "}
                   ({(moneyGroups.find((g) => g.key === "taxes") as { share?: number } | undefined)?.share ?? 0}%{" "}
                   {L("del total estimado", "of the estimated total")}).
                 </span>
@@ -977,8 +994,8 @@ export function CostBreakdown() {
                       `Hello SEAL, I'd like a quote for ${inForce.quantity ? `${inForce.quantity.toLocaleString("en-US")} units` : "my case"} of: ${inForce.product.slice(0, 200)}${inForce.budget ? ` (purchase budget US$${inForce.budget.toLocaleString("en-US")})` : ""}. I had an earlier estimate for ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)} that is no longer current.`,
                     )
                   : L(
-                  `Hola SEAL, quiero una cotización confirmada para ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` de: ${productDescription.slice(0, 200)}` : ""} (escenario estimado ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", sin flete" : ""}).`,
-                  `Hello SEAL, I'd like a confirmed quote for ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` of: ${productDescription.slice(0, 200)}` : ""} (estimated scenario ${Q(costs.totalCost)}, ${formatUSD(costs.totalCost)}${costs.freightPending ? ", without freight" : ""}).`,
+                  `Hola SEAL, quiero una cotización formal para ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` de: ${productDescription.slice(0, 200)}` : ""} (escenario estimado ${totalSummary(costs, costs.exchangeRate, ", sin flete")}).`,
+                  `Hello SEAL, I'd like a formal quote for ${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}${productDescription ? ` of: ${productDescription.slice(0, 200)}` : ""} (estimated scenario ${totalSummary(costs, costs.exchangeRate, ", without freight")}).`,
                 ),
               )}`}
               target="_blank"

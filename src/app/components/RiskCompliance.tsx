@@ -1,6 +1,6 @@
 import { unitWordFor, saleUnitInfo } from "../../utils/saleUnit";
 import { wantedText } from "../../utils/useMatch";
-import { FOOD_USE } from "../../utils/category";
+import { FOOD_USE, categoryLabel } from "../../utils/category";
 import { useNavigate, useLocation } from "react-router";
 import { cleanSupplier } from "../../utils/text";
 import { ClipboardList, FileText, Info, ArrowRight, Building2, CheckCircle, Circle } from "lucide-react";
@@ -23,21 +23,8 @@ export interface ReviewTopic {
   source: string; // who confirms it
 }
 
-const CATEGORY_LABEL: Record<string, [string, string]> = {
-  machinery: ["Maquinaria / equipo", "Machinery / equipment"],
-  electronics: ["Electrónica", "Electronics"],
-  textiles: ["Textiles / calzado", "Textiles / footwear"],
-  furniture: ["Muebles", "Furniture"],
-  food: ["Alimentos / bebidas", "Food / beverages"],
-  stationery: ["Papelería / útiles escolares", "Stationery / school supplies"],
-  ppe: ["Equipo de protección (guantes, mascarillas…)", "Protective equipment (gloves, masks…)"],
-  other: ["Otro", "Other"],
-};
-
-export function categoryLabel(c: string): string {
-  const l = CATEGORY_LABEL[c] || CATEGORY_LABEL.other;
-  return Lx(l[0], l[1]);
-}
+// 02-11c: the labels live in utils/category (the PDF and the Excel use them too)
+export { categoryLabel } from "../../utils/category";
 
 
 export function getReviewTopics(productType: string, supplier: any, description = ""): ReviewTopic[] {

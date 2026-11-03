@@ -7,8 +7,8 @@
 import jsPDF from "jspdf";
 import { differencesHeading, differencesFootnote } from "./differences";
 import autoTable from "jspdf-autotable";
-import { drawCompanyInfoBox, drawCompanyFooter } from "./reportExports";
-import { lineShares, shareText, formatQ, formatQCents, formatQTotal, formatUSD, formatUnitUSD, formatUnitQ, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
+import { drawCompanyInfoBox, drawCompanyFooter } from "./company";
+import { lineShares, shareText, formatQAmount, perUnitQ, totalUSDText, formatQ, formatQCents, formatQTotal, formatUSD, formatUnitUSD, formatUnitQ, estimateNote, scenarioVariables, type CostResult } from "./costCalculator";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
@@ -251,8 +251,8 @@ function drawCostPdf(d: CostPdfInput, tight: boolean): any {
   doc.setFontSize(10);
   text(
     Lx(
-      `${d.costs.freightPending ? "Estimación parcial, sin flete" : "Escenario preliminar"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} por ${unitWordFor(d.costs.saleUnit, 1)}`,
-      `${d.costs.freightPending ? "Partial estimate, without freight" : "Preliminary scenario"}: ${formatQ(d.costs.totalCost, fx)} (${formatUSD(d.costs.totalCost)}) - ${formatQ(d.costs.perUnit, fx, 2)} per ${unitWordFor(d.costs.saleUnit, 1)}`,
+      `${d.costs.freightPending ? "Estimación parcial, sin flete" : "Escenario preliminar"}: ${formatQTotal(d.costs, fx)} (${totalUSDText(d.costs, fx)}) - ${formatQAmount(perUnitQ(d.costs, fx))} por ${unitWordFor(d.costs.saleUnit, 1)}`,
+      `${d.costs.freightPending ? "Partial estimate, without freight" : "Preliminary scenario"}: ${formatQTotal(d.costs, fx)} (${totalUSDText(d.costs, fx)}) - ${formatQAmount(perUnitQ(d.costs, fx))} per ${unitWordFor(d.costs.saleUnit, 1)}`,
     ),
     W / 2, y + (compact ? 7.5 : 8.5), { align: "center" },
   );

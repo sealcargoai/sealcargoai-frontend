@@ -138,6 +138,39 @@ export function formatQTotal(costs: { lines?: { key: string; amount: number }[];
   return qText(linesTotalQ(costs, exchangeRate));
 }
 
+// ── 02-11c: ONE total everywhere ─────────────────────────────────────────────────────────────
+// The total the client sees (headline, chart center, report card, case summary SEAL receives,
+// report email, PDF and Excel) is the sum of the printed lines in centavos — Q64,140.15, never
+// Q64,140 in one place and Q64,140.15 in another. Groups are sums of those same printed lines.
+type LinesLike = { lines?: { key: string; amount: number }[]; freightPending?: boolean; totalCost: number; perUnit?: number };
+/** Sum of the printed lines of the given keys (centavos), excluding freight still to be quoted. */
+export function groupQ(costs: LinesLike, keys: string[], exchangeRate: number): number {
+  const sum = (costs.lines || [])
+    .filter((l) => keys.includes(l.key) && !(l.key === "freight" && costs.freightPending))
+    .reduce((a, l) => a + qCents(l.amount, exchangeRate), 0);
+  return Math.round((sum + Number.EPSILON) * 100) / 100;
+}
+/** A quetzal amount already in quetzales, with centavos («Q64,140.15»). */
+export const formatQAmount = (q: number): string =>
+  q > 0 && q < 1 ? `Q${q.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: Math.max(4, unitDigits(q)) })}` : qText(q);
+/** The total per unit, from the printed total (so 4 × the unit figure matches the total). */
+export function perUnitQ(costs: LinesLike, exchangeRate: number): number {
+  if (!(costs.totalCost > 0) || !(Number(costs.perUnit) > 0)) return 0;
+  const units = costs.totalCost / Number(costs.perUnit);
+  const v = linesTotalQ(costs, exchangeRate) / units;
+  // under Q1 the figure keeps its significant digits (Q0.0044, never Q0.00), like every unit amount
+  if (v < 1) return Number(v.toPrecision(3));
+  return Math.round((v + Number.EPSILON) * 100) / 100;
+}
+/** The US$ equivalent of the printed total, with cents. */
+export function totalUSDText(costs: LinesLike, exchangeRate: number): string {
+  return formatUSD(linesTotalQ(costs, exchangeRate) / exchangeRate, 2);
+}
+/** The estimate as SEAL receives it and as the reports print it: «Q64,140.15 (US$8,119.01), sin flete». */
+export function totalSummary(costs: LinesLike, exchangeRate: number, noFreightWords: string): string {
+  return `${formatQTotal(costs, exchangeRate)} (${totalUSDText(costs, exchangeRate)})${costs.freightPending ? noFreightWords : ""}`;
+}
+
 export function formatUSD(usdAmount: number, decimals = 0): string {
   // Small unit prices (US$0.035) keep their decimals instead of showing US$0.00
   const small = decimals > 0 && usdAmount > 0 && usdAmount < 1;

@@ -12,7 +12,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.11.02-b";
+const EXPECT_VERSION = "2026.11.02-c";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
@@ -160,7 +160,7 @@ try {
       `${textBefore.length}/${textAfter.length}`,
     );
     // chat → form → chat
-    await page.getByText(/Continuar a Calificación/).click();
+    await page.getByText(/Continuar con los datos del producto/).click();
     await page.waitForURL(/\/qualify/);
     const qv = await page
       .locator("input[placeholder='1000']")
@@ -333,7 +333,7 @@ try {
     const r2 = await say(page, "serían 10,000,001 compresores");
     s = caseOf(await state(page));
     check("B82 'serían 10,000,001 compresores' no se acepta", !/Actualizado/.test(r2) && s.q === "4" && s.mq === "4", r2.slice(0, 100));
-    await page.getByText(/Continuar a Calificación/).click();
+    await page.getByText(/Continuar con los datos del producto/).click();
     await page.waitForURL(/\/qualify/);
     // a new case opens the form on step 1 (product): the quantity and budget are on step 2
     await page.waitForTimeout(500);

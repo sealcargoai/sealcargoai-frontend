@@ -2348,6 +2348,31 @@ export function plainArithmetic(text: string): { a: number; op: "×" | "÷" | "+
   const result = raw === null ? null : Math.round(raw * 10000) / 10000;
   return { a, op, b, result };
 }
+/**
+ * 02-11c: an arithmetic question that is one sentence of a longer message («¿Cuánto es 12 × 24? Para
+ * el caso son 48…»): the question and the rest of the message, or null.
+ */
+/**
+ * 02-11c: two different values for the same field in one message («la cantidad es 10 y la cantidad es
+ * 12», «presupuesto US$7,000 … presupuesto US$9,000»): which field and the values, or null.
+ */
+export function conflictingValues(text: string): { field: "quantity" | "budget"; values: number[] } | null {
+  const t = normalizeNumbers(String(text || "").toLowerCase());
+  const grab = (re: RegExp) => [...new Set([...t.matchAll(re)].map((m) => Number(m[1].replace(/,/g, ""))).filter((n) => Number.isFinite(n) && n > 0))];
+  const q = grab(/\b(?:cantidad|quantity)\s+(?:es\s+(?:de\s+)?|sea\s+|a\s+|de\s+|en\s+|is\s+|to\s+|=\s*|:\s*)?(\d[\d,]*)(?![\d.,]*\s*(?:%|litros?|l\b|v\b))/g);
+  if (q.length > 1) return { field: "quantity", values: q };
+  const b = grab(/\b(?:presupuesto|budget)\s+(?:de\s+compra\s+)?(?:es\s+(?:de\s+)?|sea\s+|a\s+|de\s+|en\s+|is\s+|to\s+|=\s*|:\s*)?(?:us\$|usd|\$)?\s*(\d[\d,]*(?:\.\d+)?)/g);
+  if (b.length > 1) return { field: "budget", values: b };
+  return null;
+}
+export function arithmeticPart(text: string): { question: string; rest: string } | null {
+  const t = String(text || "");
+  const parts = t.split(/(?<=\?)\s+|(?<=[.;])\s+(?=[¿A-ZÁÉÍÓÚÑa-záéíóúñ])/).map((x) => x.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+  const i = parts.findIndex((x) => /\?\s*$/.test(x) && plainArithmetic(x));
+  if (i < 0) return null;
+  return { question: parts[i], rest: parts.filter((_, j) => j !== i).join(" ") };
+}
 function arithmeticReply(text: string): string {
   const r = plainArithmetic(text);
   if (!r) return "";
@@ -2545,6 +2570,10 @@ export interface ReplySpec {
   askContext?: { item: string; product: string };
   /** 02-11: a bare number with no field and no measure in the product: quantity or budget? (asked) */
   askBare?: number;
+  /** 02-11c: an arithmetic question plus a number for the case (asked, or kept on hold) */
+  arithCase?: { question: string; n?: number; held: boolean; field?: "quantity" | "budget" | "measure" };
+  /** 02-11c: two different values for the same field in one message (asked) */
+  valueConflict?: { field: "quantity" | "budget"; values: number[] };
   /** 02-11b: a bare number before any product is known (and the earlier calculation's item, if any) */
   askNoProduct?: { n: number; calc: string };
   detailNote?: string; // "cada una con tanque de 500 litros": a detail of each unit that the case description doesn't have (not added)
@@ -3482,6 +3511,33 @@ export function buildReply(r: ReplySpec): string {
         `${r.hold ? "As you asked, I didn't change anything. " : ""}${why} I didn't change the quantity or any other data; your case stays: ${now}. If you want to change it, give me a whole quantity from 1 to ${QTY_MAX.toLocaleString("en-US")} (for example: "the quantity is 4").`,
       );
     }
+    if (r.hold && r.arithCase) {
+      const a = r.arithCase;
+      const calc = arithmeticReply(a.question).replace(/\s*(?:Es solo el cálculo: no cambié nada en tu caso|That's just the calculation: I didn't change anything in your case)\.$/, "");
+      const f = a.n !== undefined ? a.n.toLocaleString("en-US") : "";
+      const budget = a.field === "budget" && a.n !== undefined;
+      const bTxt = budget ? fmtBudget(a.n!) : "";
+      const tail = a.field === "measure"
+        ? Lx(`No cambié nada en tu caso. Tu caso sigue así: ${now}.`, `I didn't change anything in your case. Your case stays: ${now}.`)
+        : budget
+          ? a.held
+            ? Lx(`También mencionaste ${bTxt}; como pediste, todavía no cambié el presupuesto de compra. Tu caso sigue así: ${now}. Cuando quieras usarlo, escríbeme «el presupuesto es ${bTxt}».`, `You also mentioned ${bTxt}; as you asked, I haven't changed the purchase budget yet. Your case stays: ${now}. When you want to use it, write "the budget is ${bTxt}".`)
+            : Lx(`También mencionaste ${bTxt}: ¿es el nuevo presupuesto de compra? No cambié nada; tu caso sigue así: ${now}. Si es así, escríbeme «el presupuesto es ${bTxt}».`, `You also mentioned ${bTxt}: is it the new purchase budget? I didn't change anything; your case stays: ${now}. If so, write "the budget is ${bTxt}".`)
+        : a.n === undefined
+        ? Lx(`El resto de tu mensaje tiene números que no sé a qué dato corresponden, así que no cambié nada. Tu caso sigue así: ${now}. Si quieres cambiar algo, escríbelo directamente, por ejemplo «la cantidad es 8».`, `The rest of your message has numbers I can't match to a field, so I didn't change anything. Your case stays: ${now}. If you want to change something, say it directly, for example "the quantity is 8".`)
+        : a.held
+          ? Lx(`También mencionaste ${f} para tu caso; como pediste, todavía no cambié la cantidad. Tu caso sigue así: ${now}. Cuando quieras que la cantidad sea ${f}, escríbeme «la cantidad es ${a.n}».`, `You also mentioned ${f} for your case; as you asked, I haven't changed the quantity yet. Your case stays: ${now}. When you want the quantity to be ${f}, write "the quantity is ${a.n}".`)
+          : Lx(`También mencionaste ${f}: ¿es la nueva cantidad de tu caso? No cambié nada; tu caso sigue así: ${now}. Si es así, escríbeme «la cantidad es ${a.n}».`, `You also mentioned ${f}: is it the new quantity of your case? I didn't change anything; your case stays: ${now}. If so, write "the quantity is ${a.n}".`);
+      return `${calc}\n\n${tail}`;
+    }
+    if (r.hold && r.valueConflict) {
+      const v = r.valueConflict;
+      const fmt = (n: number) => (v.field === "budget" ? fmtBudget(n) : n.toLocaleString("en-US"));
+      const list = v.values.map(fmt).join(Lx(" y ", " and "));
+      return v.field === "budget"
+        ? Lx(`Indicaste dos presupuestos de compra distintos (${list}), así que no cambié nada. ¿Cuál es el correcto? Tu caso sigue así: ${now}. Escríbelo así: «el presupuesto es ${fmt(v.values[v.values.length - 1])}».`, `You gave two different purchase budgets (${list}), so I didn't change anything. Which one is right? Your case stays: ${now}. Write it like this: "the budget is ${fmt(v.values[v.values.length - 1])}".`)
+        : Lx(`Indicaste dos cantidades distintas (${list}), así que no cambié nada. ¿Cuál es la correcta? Tu caso sigue así: ${now}. Escríbela así: «la cantidad es ${v.values[v.values.length - 1]}».`, `You gave two different quantities (${list}), so I didn't change anything. Which one is right? Your case stays: ${now}. Write it like this: "the quantity is ${v.values[v.values.length - 1]}".`);
+    }
     if (r.hold) {
       const h = r.held;
       const prop = h
@@ -3752,6 +3808,33 @@ export function nextSpec(
   // --- mutation gate: what the message may change in the case is decided here, deterministically ---
   // "no cambies nada hasta confirmar…": nothing is applied in this message
   const holdMsg = !hypo && (HOLD.test(low0) || CONFIRM_FIRST.test(low0));
+  // 02-11c: an arithmetic question next to a number «for the case» is answered, and the number is
+  // asked about (or kept on hold when the client said not to change yet): never applied
+  const ap = !hypo ? arithmeticPart(text) : null;
+  if (ap && /\d/.test(ap.rest) && (caseProductIn || currentProduct)) {
+    const restNums = (normalizeNumbers(ap.rest).match(/\d[\d,]*/g) || []).map((x) => Number(x.replace(/,/g, ""))).filter((n) => n > 0);
+    const product = caseProductIn || currentProduct;
+    return {
+      text, product, previous: product, fieldUpdate: true, hold: true,
+      arithCase: {
+        question: ap.question,
+        n: restNums.length === 1 ? restNums[0] : undefined,
+        held: holdMsg,
+        // what the number is about: a size («tanques de 500 litros») is not asked; money is the budget
+        field: new RegExp(MEASURE, "i").test(ap.rest) ? "measure" : /presupuesto|budget|us\$|usd|\$|d[oó]lar|dollar/i.test(ap.rest) ? "budget" : "quantity",
+      },
+      caseNow: { product, quantity: caseFacts.quantity || quantityInForce(specs) || currentQuantity || undefined, budget: caseFacts.budget || budgetInForce(specs) || undefined },
+    };
+  }
+  // 02-11c: two different values for the same field in one message: asked, nothing applied
+  const conflict = !hypo ? conflictingValues(text) : null;
+  if (conflict && (caseProductIn || currentProduct)) {
+    const product = caseProductIn || currentProduct;
+    return {
+      text, product, previous: product, fieldUpdate: true, hold: true, valueConflict: conflict,
+      caseNow: { product, quantity: caseFacts.quantity || quantityInForce(specs) || currentQuantity || undefined, budget: caseFacts.budget || budgetInForce(specs) || undefined },
+    };
+  }
   // "Do not update the quantity to 8", "no toques el presupuesto": those fields are not changed
   const ban = hypo ? { all: false, fields: new Set<CaseField>(), spans: [] as string[], specWords: [] as string[] } : prohibitions(text);
   // a quantity that is not a whole number from 1 to 10,000,000 is never applied (nor rounded)

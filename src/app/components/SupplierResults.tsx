@@ -27,8 +27,8 @@ import {
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
-import { SEAL_COMPANY } from "../../utils/reportExports";
-import { calculateCosts, useRates, formatQ, formatUSD, formatUnitUSD, formatUnitQ } from "../../utils/costCalculator";
+import { SEAL_COMPANY } from "../../utils/company";
+import { calculateCosts, useRates, formatQ, formatUSD, formatUnitUSD, formatUnitQ, formatQAmount, formatQTotal, groupQ } from "../../utils/costCalculator";
 import { Lx, plural } from "../../utils/lang";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
 import { flagPrices, comparablePrice } from "../../utils/priceCheck";
@@ -503,13 +503,14 @@ function rejectReason(r: string): string {
   if (!r) return r;
   if (Lx("es", "en") === "es")
     return r
-      .replace("(no es Verified ni Gold Supplier)", "(no es proveedor verificado ni miembro Gold)")
+      // 02-11c: older cached reasons said «no es proveedor verificado»: the badges are the platform's
+      .replace(/^Sin verificación \((?:no es Verified ni Gold Supplier|no es proveedor verificado ni miembro Gold)\)/, "Sin insignias de la plataforma (ni Verified Supplier ni miembro Gold)")
       .replace(/^Gold Supplier con/, "Miembro Gold con")
       .replace("mayor a su cantidad", "mayor a tu cantidad");
   const rules: [RegExp, (m: RegExpMatchArray) => string][] = [
-    [/^Sin verificación/, () => "No verification (not Verified or Gold Supplier)"],
+    [/^Sin (?:verificación|insignias de la plataforma)/, () => "No platform badges (neither Verified Supplier nor Gold Supplier)"],
     [/^(?:Gold Supplier|Miembro Gold) con menos de (\d+) años/, (m) => `Gold Supplier with less than ${m[1]} years`],
-    [/^Calificación ([\d.]+) por debajo de ([\d.]+)/, (m) => `Rating ${m[1]} below ${m[2]}`],
+    [/^(?:Calificación|Valoración) ([\d.]+) por debajo de ([\d.]+)/, (m) => `Rating ${m[1]} below ${m[2]}`],
     [/^Pedido mínimo de ([\d,]+) unidades/, (m) => `Minimum order of ${m[1]} units, above your quantity`],
     [/^Índice (?:referencial|de Confianza) (\d+)\/100, debajo del mínimo de (\d+)/, (m) => `Reference index ${m[1]}/100, below the minimum of ${m[2]}`],
   ];
@@ -1531,29 +1532,30 @@ export function SupplierResults() {
                         )}
                         <div className="flex items-center justify-between">
                           <span>{t("suppliers.baseCost")}</span>
-                          <span className="font-medium">{formatQ(est.productCost, est.exchangeRate)}</span>
+                          <span className="font-medium">{formatQAmount(groupQ(est, ["product"], est.exchangeRate))}</span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span>{t("suppliers.estShipping")}</span>
                           <span className="font-medium">
-                            {est.freightPending ? Lx("Por cotizar", "To be quoted") : formatQ(est.shipping, est.exchangeRate)}
+                            {est.freightPending ? Lx("Por cotizar", "To be quoted") : formatQAmount(groupQ(est, ["freight"], est.exchangeRate))}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span>{Lx("Impuestos (DAI + IVA)", "Taxes (DAI + IVA)")}</span>
                           <span className="font-medium">
-                            {formatQ(est.importDuties + est.taxes, est.exchangeRate)}
+                            {formatQAmount(groupQ(est, ["duties", "vat"], est.exchangeRate))}
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
                           <span>{Lx("Seguro, aduana y destino", "Insurance, customs and destination")}</span>
                           <span className="font-medium">
-                            {formatQ(est.insurance + est.customsFees + est.localCharges, est.exchangeRate)}
+                            {formatQAmount(groupQ(est, ["insurance", "customs", "local"], est.exchangeRate))}
                           </span>
                         </div>
                         <div className="flex items-center justify-between pt-2 border-t border-slate-200 font-semibold text-[#0B3C5D]">
                           <span>{est.freightPending ? Lx("Total parcial, sin flete:", "Partial total, without freight:") : t("suppliers.totalEstimate")}</span>
-                          <span>{formatQ(est.totalCost, est.exchangeRate)}</span>
+                          {/* 02-11c: the same printed total as the breakdown, PDF and Excel (sum of lines, centavos) */}
+                          <span data-testid="sidebar-total">{formatQTotal(est, est.exchangeRate)}</span>
                         </div>
                       </>
                     );

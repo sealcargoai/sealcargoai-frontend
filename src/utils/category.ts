@@ -1,5 +1,27 @@
 // Product category from the client's description (decides the review topics).
 import { wantedText } from "./useMatch";
+import { Lx } from "./lang";
+
+// 02-11c: the category KEY is internal ("machinery", "other"…): people always read its label
+export const CATEGORY_LABEL: Record<string, [string, string]> = {
+  machinery: ["Maquinaria / equipo", "Machinery / equipment"],
+  electronics: ["Electrónica", "Electronics"],
+  textiles: ["Textiles / calzado", "Textiles / footwear"],
+  furniture: ["Muebles", "Furniture"],
+  food: ["Alimentos / bebidas", "Food / beverages"],
+  stationery: ["Papelería / útiles escolares", "Stationery / school supplies"],
+  ppe: ["Equipo de protección (guantes, mascarillas…)", "Protective equipment (gloves, masks…)"],
+  other: ["Otro", "Other"],
+};
+export function categoryLabel(c: string): string {
+  const l = CATEGORY_LABEL[c] || CATEGORY_LABEL.other;
+  return Lx(l[0], l[1]);
+}
+/** A product text for people: a bare category key becomes its label; anything else is kept. */
+export function productText(v: string): string {
+  const t = String(v || "").trim();
+  return Object.prototype.hasOwnProperty.call(CATEGORY_LABEL, t) ? categoryLabel(t) : t;
+}
 
 export const CATEGORY_KEYWORDS: Record<string, RegExp> = {
   machinery: /m[aá]quina|machine|bordador(a|as)?\b|embroider|cosedora|sewing|overlock|remalladora|tejedora|knitting|\btelar|\bloom\b|cortadora l[aá]ser|laser cutt|tostador(a|es|as)?\b|roast(er|ing)|molino|\bmill\b|grinder|moledora|\bhornos?\b|\boven|mezcladora|\bmixer|batidora|procesadora|processor|despulpadora|secadora|dryer|extrusora|extruder|\bprensa\b|selladora|sealer|embotelladora|llenadora|filling|cortadora|cutter|freidora|fryer|caldera|boiler|congelador|freezer|refrigerador|enfriador|chiller|maquinaria|maquinaria|machinery|equipo industrial|industrial equipment|\bmotor(es)?\b|\bbomba|\bpump|compresor|compressor|generador|generator|\btorno|\blathe|\bcnc\b|montacarga|forklift|excavadora|excavator|envasadora|empacadora|packing machine|horno industrial/i,

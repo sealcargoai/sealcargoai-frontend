@@ -17,6 +17,9 @@ export function AppError() {
         ? `${raw.status} ${raw.statusText || ""}`.trim()
         : String(error?.message || "");
   const looksLikeTranslation = /removeChild|insertBefore|not a child of this node/i.test(message);
+  // 02-11c: the result pages load on demand; a new version published meanwhile (or no connection)
+  // makes that load fail: «Reintentar» reloads the page with the client's data kept
+  const looksLikeLoad = /dynamically imported module|Importing a module script failed|error loading dynamically|ChunkLoadError/i.test(message);
 
   let hasDraft = false;
   try {
@@ -39,6 +42,16 @@ export function AppError() {
               : Lx("Puedes reintentar o volver a empezar.", "You can retry or start over.")}
           </span>
         </p>
+        {looksLikeLoad && (
+          <p className="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3 mb-4 text-left">
+            <span>
+              {Lx(
+                "No se pudo cargar esta pantalla (puede haber una versión nueva de la herramienta o se perdió la conexión). Presiona «Reintentar»: tus datos se conservan.",
+                "This screen couldn't load (there may be a new version of the tool, or the connection dropped). Press \"Retry\": your data is kept.",
+              )}
+            </span>
+          </p>
+        )}
         {looksLikeTranslation && (
           <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4 text-left">
             <span>

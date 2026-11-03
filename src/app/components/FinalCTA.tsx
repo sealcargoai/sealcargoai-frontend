@@ -18,30 +18,27 @@ import {
   Target,
   X,
 } from "lucide-react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, sealDisclaimer, badgeText, TrustBadge, supplierPriceInfo } from "./SelectedSupplier";
 import { getReviewTopics } from "./RiskCompliance";
-import { buildCostPdf } from "../../utils/costPdf";
 import { listingDifferences } from "../../utils/differences";
 import { budgetNote, smallOrderNote } from "../../utils/costNotes";
 import { Lx, plural } from "../../utils/lang";
 import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
-import {
-  SEAL_COMPANY,
-  drawCompanyInfoBox,
-  drawCompanyFooter,
-  generateBeautifulExcel,
-} from "../../utils/reportExports";
+import { SEAL_COMPANY } from "../../utils/company";
+import { loadCostPdf, loadReportExports, exportLoadFailed } from "../../utils/lazyExports";
 import {
   calculateCosts,
   useRates,
   formatQ,
   formatUSD,
   estimateNote,
+  formatQTotal,
+  formatQAmount,
+  perUnitQ,
+  totalSummary,
   type CostResult,
 } from "../../utils/costCalculator";
 
@@ -49,7 +46,8 @@ import {
 type Costs = CostResult;
 
 // ─── PDF (shared generator: utils/costPdf) ──────────────────────────────────
-function generateReportPDF(data: {
+// 02-11c: jsPDF loads only when a report is downloaded or emailed
+async function generateReportPDF(data: {
   supplierName: string;
   quantity: number;
   price: number;
@@ -62,7 +60,8 @@ function generateReportPDF(data: {
   saveFile?: boolean;
   notes?: string[];
   differences?: { title: string; items: string[] };
-}): string {
+}): Promise<string> {
+  const { buildCostPdf } = await loadCostPdf();
   return buildCostPdf({
     title: Lx("Informe de orientación para tu importación · costos estimados", "Guidance report for your import · estimated costs"),
     supplierName: data.supplierName,
@@ -93,7 +92,13 @@ async function exportToExcel(data: {
   notes?: string[];
   differences?: { title: string; items: string[] };
 }) {
-  await generateBeautifulExcel({
+  let mod: Awaited<ReturnType<typeof loadReportExports>>;
+  try {
+    mod = await loadReportExports();
+  } catch {
+    return exportLoadFailed();
+  }
+  await mod.generateBeautifulExcel({
     notes: data.notes,
     differences: data.differences,
     reportTitle: Lx("Informe de orientación · costos estimados", "Guidance report · estimated costs"),
@@ -168,7 +173,7 @@ export function FinalCTA() {
   // Assumptions from the costs page (pieces per set, price basis, minimum order…)
   const reportNotes: string[] = rebuilt
     ? [
-        ...reportNotesFor(rebuilt, costs.perUnit, (usd, d = 0) => formatQ(usd, costs.exchangeRate, d)),
+        ...reportNotesFor(rebuilt, costs.perUnit, (usd, d = 2) => formatQ(usd, costs.exchangeRate, d)),
         // the purchase budget and the small-order note, as on the costs page
         budgetNote(costs, parseFloat(String(stateBudget)) || 0, (usd) => formatQ(usd, costs.exchangeRate)),
         smallOrderNote(costs, unitWordFor(saleUnit, 1), (usd) => formatQ(usd, costs.exchangeRate)),
@@ -179,8 +184,10 @@ export function FinalCTA() {
   // the listing title and what differs from the request: the same warnings as on screen
   const reportDiffs = listingDifferences(productDescription, stateSupplier);
   const piecesPerUnitShown = rebuilt ? rebuilt.piecesPerUnit : Number(location.state?.piecesPerUnit) || 0;
-  const Q = (usd: number, decimals = 0) => formatQ(usd, costs.exchangeRate, decimals);
-  const totalCostText = `${Q(costs.totalCost)} (${formatUSD(costs.totalCost)})${costs.freightPending ? Lx(" — estimación parcial, sin flete", " — partial estimate, without freight") : ""}`;
+  // 02-11c: centavos everywhere; the total is the sum of the printed lines, as on the costs page, PDF and Excel
+  const Q = (usd: number, decimals = 2) => formatQ(usd, costs.exchangeRate, decimals);
+  const TOTAL = formatQTotal(costs, costs.exchangeRate);
+  const totalCostText = totalSummary(costs, costs.exchangeRate, Lx(", sin flete", ", without freight"));
 
   // ── Dynamic stats ─────────────────────────────────────────────────────────
   // Real counts from the supplier search; null = not available (block is hidden)
@@ -267,21 +274,25 @@ export function FinalCTA() {
   ];
 
   // ── Action: Download Full Report ──────────────────────────────────────────
-  const handleDownloadReport = () => {
-    generateReportPDF({
+  const handleDownloadReport = async () => {
+    try {
+      await generateReportPDF({
         notes: reportNotes,
         differences: reportDiffs,
-      supplierName,
-      quantity,
-      price,
-      priceNote,
-      productDescription,
-      productType,
-      supplier: stateSupplier,
-      costs,
-      reportId,
-      saveFile: true,
-    });
+        supplierName,
+        quantity,
+        price,
+        priceNote,
+        productDescription,
+        productType,
+        supplier: stateSupplier,
+        costs,
+        reportId,
+        saveFile: true,
+      });
+    } catch {
+      exportLoadFailed();
+    }
   };
 
   // ── Action: Excel Export ──────────────────────────────────────────────────
@@ -348,9 +359,10 @@ export function FinalCTA() {
     }
   };
 
-  const downloadReportNow = () => {
+  // 02-11c: says whether the file was really generated (the PDF library loads on demand and can fail)
+  const downloadReportNow = async (): Promise<boolean> => {
     try {
-      generateReportPDF({
+      await generateReportPDF({
         notes: reportNotes,
         differences: reportDiffs,
         supplierName,
@@ -364,17 +376,23 @@ export function FinalCTA() {
         reportId,
         saveFile: true,
       });
+      return true;
     } catch {
-      /* ignore */
+      return false;
     }
   };
+  // what to say when the email did not go out: never «se descargó» unless it did
+  const notDownloaded = Lx(
+    `Tampoco pudimos preparar el PDF en este momento. Revisa tu conexión y vuelve a intentarlo, o escríbenos al WhatsApp de SEAL ${SEAL_COMPANY.phone}.`,
+    `We also couldn't prepare the PDF right now. Check your connection and try again, or message SEAL on WhatsApp ${SEAL_COMPANY.phone}.`,
+  );
 
   // ── Action: Email Report ──────────────────────────────────────────────────
   const handleEmailReport = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     try {
-      const pdfBase64 = generateReportPDF({
+      const pdfBase64 = await generateReportPDF({
         notes: reportNotes,
         differences: reportDiffs,
         supplierName,
@@ -426,14 +444,22 @@ export function FinalCTA() {
         alert(Lx("Revisa el correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check the email: it must be complete, for example name@company.com."));
         return;
       }
+      if (res.status === 503) {
+        // 02-11c: a QA account while the QA inbox is not configured: nothing was sent to anyone
+        alert(Lx("Envío de prueba bloqueado: el buzón de QA no está configurado en el servidor, así que no se envió ningún correo.", "Test send blocked: the QA inbox is not configured on the server, so no email was sent."));
+        setShowEmailModal(false);
+        return;
+      }
       if (res.status === 403 || res.status === 429) {
         // not sent from here (limit or session): the client still gets the PDF
-        downloadReportNow();
+        const ok = await downloadReportNow();
         alert(
-          Lx(
-            "No pudimos enviarlo por correo desde aquí, así que el informe se descargó en este dispositivo. Puedes reenviarlo tú o pedírselo a SEAL por WhatsApp +502 5996 4664.",
-            "We couldn't email it from here, so the report was downloaded to this device. You can forward it yourself or ask SEAL on WhatsApp +502 5996 4664.",
-          ),
+          ok
+            ? Lx(
+                "No pudimos enviarlo por correo desde aquí, así que el informe se descargó en este dispositivo. Puedes reenviarlo tú o pedírselo a SEAL por WhatsApp +502 5996 4664.",
+                "We couldn't email it from here, so the report was downloaded to this device. You can forward it yourself or ask SEAL on WhatsApp +502 5996 4664.",
+              )
+            : Lx("No pudimos enviarlo por correo desde aquí. ", "We couldn't email it from here. ") + notDownloaded,
         );
         setShowEmailModal(false);
         return;
@@ -442,12 +468,14 @@ export function FinalCTA() {
       const result = await res.json().catch(() => ({}));
       if (result.delivered === false) {
         // Could not email the client directly — SEAL got the report and will forward it.
-        downloadReportNow();
+        const ok = await downloadReportNow();
         alert(
-          Lx(
-            `Tu informe se descargó en este dispositivo. Además, un ejecutivo de SEAL te lo enviará a ${emailRecipient}.`,
-            `Your report was downloaded to this device. A SEAL executive will also send it to ${emailRecipient}.`,
-          ),
+          ok
+            ? Lx(
+                `Tu informe se descargó en este dispositivo. Además, un ejecutivo de SEAL te lo enviará a ${emailRecipient}.`,
+                `Your report was downloaded to this device. A SEAL executive will also send it to ${emailRecipient}.`,
+              )
+            : Lx(`Un ejecutivo de SEAL te enviará el informe a ${emailRecipient}.`, `A SEAL executive will send the report to ${emailRecipient}.`),
         );
       } else {
         alert(t("final.emailSuccess"));
@@ -457,12 +485,14 @@ export function FinalCTA() {
       setEmailRecipientName("");
     } catch (err) {
       // Never leave the user empty-handed: give them the PDF right away
-      downloadReportNow();
+      const ok = await downloadReportNow();
       alert(
-        Lx(
-          `No pudimos enviarlo por correo, pero tu informe se descargó en este dispositivo. Si lo necesitas, llámanos al ${SEAL_COMPANY.phone}.`,
-          `We couldn't email it, but your report was downloaded to this device. If you need help, call us at ${SEAL_COMPANY.phone}.`,
-        ),
+        ok
+          ? Lx(
+              `No pudimos enviarlo por correo, pero tu informe se descargó en este dispositivo. Si lo necesitas, llámanos al ${SEAL_COMPANY.phone}.`,
+              `We couldn't email it, but your report was downloaded to this device. If you need help, call us at ${SEAL_COMPANY.phone}.`,
+            )
+          : Lx("No pudimos enviarlo por correo. ", "We couldn't email it. ") + notDownloaded,
       );
     } finally {
       setSubmitting(false);
@@ -599,8 +629,8 @@ export function FinalCTA() {
         </div>
         <p className="text-xs text-slate-500 mb-8">
           {Lx(
-            `Las publicaciones repetidas de un mismo proveedor se cuentan una sola vez.${leadStats.shown !== null && leadStats.shown < leadStats.qualified ? ` De los ${leadStats.qualified} que pasaron los filtros se muestran los ${leadStats.shown} mejor ubicados.` : ""}`,
-            `Repeat listings from the same supplier are counted once.${leadStats.shown !== null && leadStats.shown < leadStats.qualified ? ` Of the ${leadStats.qualified} that passed the filters, the top ${leadStats.shown} are shown.` : ""}`,
+            `Las publicaciones repetidas de un mismo proveedor se cuentan una sola vez.${leadStats.shown !== null && leadStats.shown < leadStats.qualified ? ` De los ${leadStats.qualified} que pasaron los filtros se muestran los ${leadStats.shown} primeros de la lista (ordenados por índice referencial, no es un aval).` : ""}`,
+            `Repeat listings from the same supplier are counted once.${leadStats.shown !== null && leadStats.shown < leadStats.qualified ? ` Of the ${leadStats.qualified} that passed the filters, the first ${leadStats.shown} in the list are shown (sorted by reference index, not an endorsement).` : ""}`,
           )}
         </p>
         </>
@@ -655,8 +685,8 @@ export function FinalCTA() {
               <div className="text-sm text-green-700 mb-2">
                 {costs.freightPending ? L("Costo parcial estimado (sin flete)", "Estimated partial cost (without freight)") : t("final.totalCost")}
               </div>
-              <div className="font-bold text-xl text-[#0B3C5D] mb-1">
-                {Q(costs.totalCost)}
+              <div className="font-bold text-xl text-[#0B3C5D] mb-1" data-testid="report-total">
+                {TOTAL}
               </div>
               {costs.freightPending && (
                 <div className="text-xs font-semibold text-amber-800 bg-amber-100 border border-amber-300 rounded px-2 py-0.5 inline-block mb-1">
@@ -664,7 +694,7 @@ export function FinalCTA() {
                 </div>
               )}
               <div className="text-sm text-green-700">
-                {Q(costs.perUnit, 2)} {Lx("por", "per")} {unitWordFor(saleUnit, 1)}
+                {formatQAmount(perUnitQ(costs, costs.exchangeRate))} {Lx("por", "per")} {unitWordFor(saleUnit, 1)}
                 {piecesPerUnitShown > 1 && (
                   <span className="block text-xs text-green-800">
                     {Lx(
@@ -874,7 +904,7 @@ export function FinalCTA() {
               <p className="font-semibold text-[#0B3C5D]">{supplierName}</p>
               <p className="text-slate-600 mt-1">
                 {quantity.toLocaleString("en-US")} {unitWordFor(saleUnit, quantity)} • {costs.freightPending ? Lx("Total parcial:", "Partial total:") : Lx("Total estimado:", "Estimated total:")}{" "}
-                {Q(costs.totalCost)}
+                {TOTAL}
                 {costs.freightPending ? Lx(" (sin flete)", " (without freight)") : ""}
               </p>
             </div>
