@@ -12,13 +12,13 @@ import { rememberCase } from "../../utils/caseContext";
 import { requestFacts } from "../../utils/requestFacts";
 import { writeCaseTx } from "../../utils/caseStore";
 import { track } from "../../utils/funnel";
+import { emailProblem } from "../../utils/emailFormat";
 import { overLimitMessage } from "../../utils/formValidation";
 
 const QUERY_MIN = DESCRIPTION_MIN_CHARS;
 const QUERY_MAX = 1500; // same limit as the product description in the next step
 const NAME_MIN = 2;
 const NAME_MAX = 120;
-const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/;
 const NOTICE_TIMEOUT_MS = 4000; // the start notice is sent in the background of the first click; it never blocks the flow
 
 
@@ -45,7 +45,9 @@ export function LandingPage() {
     const m = email.trim();
     if (!queryOk) return setFormError(queryTrim.length > QUERY_MAX ? overLimitMessage(queryTrim.length, QUERY_MAX) : descriptionDetailMessage());
     if (n.length < NAME_MIN) return setFormError(L("Escribe tu nombre completo.", "Enter your full name."));
-    if (!EMAIL_RE.test(m)) return setFormError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
+    const emailIssue = emailProblem(m);
+    if (emailIssue === "unsupported") return setFormError(L("Escribe el correo sin tildes, eñes ni caracteres especiales, por ejemplo nombre@empresa.com.", "Write the email without accents or special characters, for example name@company.com."));
+    if (emailIssue) return setFormError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
     if (startedRef.current) return;
     startedRef.current = true;
     setFormError("");
