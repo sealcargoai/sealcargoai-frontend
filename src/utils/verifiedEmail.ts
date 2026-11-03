@@ -34,7 +34,9 @@ export function rememberVerifiedSession(email: string, session: string, seconds:
   }
 }
 
-export type StartResult = "sent" | "limit" | "not_supported" | "invalid" | "error";
+export type StartResult = "sent" | "limit" | "not_supported" | "invalid" | "unavailable" | "error";
+/** Seconds the server asked to wait after a «limit» answer (02-11l: progressive wait), 0 if unknown. */
+export let lastRetryAfterSeconds = 0;
 /** Asks the server to email a code. «sent» never confirms the address exists or will receive it. */
 export async function startVerification(email: string, lang: "es" | "en"): Promise<StartResult> {
   try {
@@ -44,7 +46,12 @@ export async function startVerification(email: string, lang: "es" | "en"): Promi
       body: JSON.stringify({ email: email.trim(), lang }),
     });
     if (res.ok) return "sent";
-    if (res.status === 429) return "limit";
+    if (res.status === 429) {
+      const j = await res.json().catch(() => ({}));
+      lastRetryAfterSeconds = Math.max(0, Math.min(3600, Number(j?.retryAfterSeconds) || 0));
+      return "limit";
+    }
+    if (res.status === 503) return "unavailable";
     if (res.status === 400) {
       const j = await res.json().catch(() => ({}));
       return j?.error === "email_not_supported" ? "not_supported" : "invalid";
@@ -55,7 +62,7 @@ export async function startVerification(email: string, lang: "es" | "en"): Promi
   }
 }
 
-export type ConfirmResult = { ok: true; reportGrant: string } | { ok: false; reason: "wrong" | "format" | "limit" | "error" };
+export type ConfirmResult = { ok: true; reportGrant: string } | { ok: false; reason: "wrong" | "format" | "limit" | "unavailable" | "error" };
 /** Checks the code. On success stores the session and returns the single-use report grant. */
 export async function confirmVerification(email: string, code: string): Promise<ConfirmResult> {
   const c = String(code || "").replace(/\s+/g, "");
@@ -69,6 +76,7 @@ export async function confirmVerification(email: string, code: string): Promise<
     if (res.status === 403) return { ok: false, reason: "wrong" };
     if (res.status === 400) return { ok: false, reason: "format" };
     if (res.status === 429) return { ok: false, reason: "limit" };
+    if (res.status === 503) return { ok: false, reason: "unavailable" };
     if (!res.ok) return { ok: false, reason: "error" };
     const j = await res.json().catch(() => ({}));
     if (typeof j?.reportGrant !== "string" || !j.reportGrant) return { ok: false, reason: "error" };
