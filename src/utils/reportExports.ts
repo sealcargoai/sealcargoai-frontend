@@ -1,82 +1,18 @@
 import ExcelJS from "exceljs";
+import { productText } from "./category";
 import { differencesHeading, differencesFootnote } from "./differences";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
-import { estimateNote, scenarioVariables, formatUSD, formatUnitUSD, formatUnitQ, formatQ, qCents, linesTotalQ, lineShares, shareText } from "./costCalculator";
+import { estimateNote, scenarioVariables, formatUSD, formatUnitUSD, formatUnitQ, formatQ, qCents, linesTotalQ, lineShares, shareText, perUnitQ } from "./costCalculator";
 
-// ─── SEAL Company Info ────────────────────────────────────────────────────────
-export const SEAL_COMPANY = {
-  name: "SEAL - AGENCIA DE CARGA Y LOGISTICA",
-  address: "Calzada Roosevelt 33-86, Cdad. de Guatemala 01007, Guatemala",
-  phone: "+502 5996 4664",
-  website: "SEAL SmartTrade AI",
-};
+// ─── SEAL Company Info (utils/company) ────────────────────────────────────────
+import { SEAL_COMPANY } from "./company";
+export { SEAL_COMPANY };
 
-// ─── PDF helper: draw company header (call after main header) ────────────────
-export function drawCompanyInfoBox(
-  doc: any,
-  pageWidth: number,
-  yStart: number = 40,
-): number {
-  // Light grey company info bar below main header
-  doc.setFillColor(241, 245, 249); // slate-100
-  doc.rect(0, yStart, pageWidth, 14, "F");
+// PDF header/footer helpers live in utils/company (02-11c: the PDF chunk must not pull ExcelJS)
+export { drawCompanyInfoBox, drawCompanyFooter } from "./company";
 
-  doc.setTextColor(11, 60, 93);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text(SEAL_COMPANY.name, 14, yStart + 5);
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor(71, 85, 105); // slate-600
-  doc.text(SEAL_COMPANY.address, 14, yStart + 9);
-  doc.text(`Tel: ${SEAL_COMPANY.phone}`, 14, yStart + 12.5);
-
-  return yStart + 14; // return next Y position
-}
-
-// ─── PDF footer with company info ────────────────────────────────────────────
-export function drawCompanyFooter(doc: any) {
-  const pageWidth = doc.internal.pageSize.getWidth();
-  const pageHeight = doc.internal.pageSize.getHeight();
-
-  // Footer background
-  doc.setFillColor(11, 60, 93);
-  doc.rect(0, pageHeight - 22, pageWidth, 22, "F");
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "bold");
-  doc.text(SEAL_COMPANY.name, pageWidth / 2, pageHeight - 16, {
-    align: "center",
-  });
-
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(7);
-  doc.setTextColor(191, 219, 254); // blue-200
-  doc.text(SEAL_COMPANY.address, pageWidth / 2, pageHeight - 11, {
-    align: "center",
-  });
-  doc.text(
-    `Tel: ${SEAL_COMPANY.phone}  |  ${SEAL_COMPANY.website}`,
-    pageWidth / 2,
-    pageHeight - 6,
-    { align: "center" },
-  );
-
-  doc.setTextColor(150, 150, 150);
-  doc.setFontSize(6);
-  doc.text(
-    Lx("Este análisis es una estimación. Los costos reales pueden variar.", "This analysis is an estimate. Actual costs may vary."),
-    pageWidth / 2,
-    pageHeight - 1.5,
-    { align: "center" },
-  );
-}
-
-// ─── Beautiful Excel Generator ───────────────────────────────────────────────
 export interface ExcelExportData {
   reportTitle: string;
   supplierName: string;
@@ -114,9 +50,8 @@ const DEFAULT_FX = 7.9;
 // Quetzal cell format: 2 decimals, 4 under Q1 (Q0.0023, never Q0.00)
 const qFmt = (q: number) => (Math.abs(q) > 0 && Math.abs(q) < 1 ? '"Q"#,##0.0000' : '"Q"#,##0.00');
 
-export async function generateBeautifulExcel(
-  data: ExcelExportData,
-): Promise<void> {
+/** 02-11c: the workbook alone (no download), so a test can read exactly what the client gets. */
+export function buildCostWorkbook(data: ExcelExportData): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = SEAL_COMPANY.name;
   wb.lastModifiedBy = SEAL_COMPANY.name;
@@ -239,7 +174,7 @@ export async function generateBeautifulExcel(
 
   const orderRows = [
     [Lx("Proveedor considerado:", "Supplier considered:"), data.supplierName],
-    [Lx("Producto:", "Product:"), data.productType],
+    [Lx("Producto:", "Product:"), productText(data.productType)],
     [Lx("País de destino:", "Destination country:"), "Guatemala"],
     [Lx("Cantidad:", "Quantity:"), `${data.quantity.toLocaleString("en-US")} ${unitWordFor(data.costs.saleUnit, data.quantity)}`],
     [Lx(`Precio por ${unitWordFor(data.costs.saleUnit, 1)}:`, `Price per ${unitWordFor(data.costs.saleUnit, 1)}:`), `${formatUnitUSD(Number(data.price))} (${formatUnitQ(Number(data.price), data.costs.exchangeRate || DEFAULT_FX)})${data.priceNote ? ` — ${data.priceNote}` : ""}`],
@@ -498,7 +433,8 @@ export async function generateBeautifulExcel(
   const perUnitEmpty = ws.getCell(`E${perUnitRowNum}`);
 
   perUnitLabel.value = Lx(`COSTO ESTIMADO POR ${unitWordFor(data.costs.saleUnit, 1).toUpperCase()}`, `ESTIMATED COST PER ${unitWordFor(data.costs.saleUnit, 1).toUpperCase()}`);
-  perUnitValue.value = Math.round(data.costs.perUnit * (data.costs.exchangeRate || DEFAULT_FX) * 10000) / 10000;
+  // 02-11c: the per-unit figure from the printed total (centavos), as on screen and in the PDF
+  perUnitValue.value = perUnitQ(data.costs, data.costs.exchangeRate || DEFAULT_FX);
   perUnitValue.numFmt = qFmt(perUnitValue.value as number);
 
   [perUnitLabel, perUnitValue, perUnitEmpty].forEach((cell, i) => {
@@ -599,6 +535,13 @@ export async function generateBeautifulExcel(
   footerCell2.alignment = { vertical: "middle", horizontal: "center" };
   ws.getRow(f2).height = 18;
 
+  return wb;
+}
+
+export async function generateBeautifulExcel(
+  data: ExcelExportData,
+): Promise<void> {
+  const wb = buildCostWorkbook(data);
   // ─── Save file ───
   const buffer = await wb.xlsx.writeBuffer();
   const blob = new Blob([buffer], {
