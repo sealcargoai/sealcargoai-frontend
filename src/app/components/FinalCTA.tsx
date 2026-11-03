@@ -28,6 +28,7 @@ import { budgetNote, smallOrderNote } from "../../utils/costNotes";
 import { Lx, plural } from "../../utils/lang";
 import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
 import { SEAL_COMPANY } from "../../utils/company";
+import { reportRefusal } from "../../utils/reportSend";
 import { loadCostPdf, loadReportExports, exportLoadFailed } from "../../utils/lazyExports";
 import {
   calculateCosts,
@@ -440,6 +441,13 @@ export function FinalCTA() {
           }),
         },
       );
+      const refusal = reportRefusal(res.status, res.status === 403 ? (await res.clone().json().catch(() => ({})))?.error : undefined);
+      if (refusal === "qa_recipient") {
+        // 02-11e: a QA account tried to send its report outside QA: nothing was sent to anyone
+        alert(Lx("Envío de prueba bloqueado: una cuenta de QA solo puede enviar informes a cuentas de QA autorizadas, así que no se envió ningún correo.", "Test send blocked: a QA account can only send reports to authorized QA accounts, so no email was sent."));
+        setShowEmailModal(false);
+        return;
+      }
       if (res.status === 400) {
         alert(Lx("Revisa el correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check the email: it must be complete, for example name@company.com."));
         return;
