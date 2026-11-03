@@ -21,3 +21,13 @@ Causa: las reglas de cálculo + número y de valores contradictorios exigían un
 caso imprimía el producto vacío. Corrección: ambas reglas aplican también sin caso; sin producto se muestra
 «producto sin indicar». Pruebas: bloque «02-11d» en `tests/cierre-02-11c.test.ts` (3 casos; fallan sobre 02-11c).
 Versión `2026.11.02-d`.
+
+## 02-11h — correo solo ASCII (igual que el servidor)
+
+Versión `2026.11.02-h`.
+
+El servidor rechaza con 400 `email_not_supported` los correos con tildes, eñes, homógrafos o caracteres invisibles, porque `toLowerCase()` podía convertirlos en otra dirección real.
+
+`utils/emailFormat.ts` (`emailProblem`) aplica la misma regla en el inicio y en «Hablar con SEAL» (formulario `noValidate`), con el mensaje «Escribe el correo sin tildes, eñes ni caracteres especiales…». Los demás campos `type="email"` ya los rechaza el navegador: Chromium marca inválidos `Ka@…`, `k​a@…`, `josé@…` y `ana@pruéba.test`.
+
+Pruebas: `tests/identidad-02-11h.test.ts`.
