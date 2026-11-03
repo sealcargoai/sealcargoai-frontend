@@ -12,3 +12,12 @@ Versión `2026.11.02-c`. Base: `58f9303` (= producción 911a9aa en contenido).
 | Textos | «Calificación de Producto», «mejor ubicados», «Proveedor Seleccionado», servicios sin aclarar que se cotizan, claves de categoría en Excel | Textos / clave interna | Textos revisados ES/EN; `productText` en Excel | `cierre-02-11c.test.ts` T |
 | Informe | Se decía «se descargó» aunque el PDF no se generara; sin mensaje para 503 de QA | `downloadReportNow` ignoraba errores | Devuelve si se generó; mensajes según el resultado | revisión de código + rondas |
 | Rendimiento | Chunk principal 3,003 kB (821 kB gzip) | jsPDF, ExcelJS, html2canvas y páginas de resultados en el bundle inicial | Carga diferida de exportaciones y de páginas de resultados; PDF ya no arrastra ExcelJS | build (tamaños en el informe) |
+
+## 02-11d — corrección tras verificar en producción
+
+En producción, `/chat` abierto directo (sin caso) respondía a «¿Cuánto es 12 × 24? Para el caso son 48, pero
+todavía no cambies la cantidad» con «Entendido: no cambié nada. Tu caso sigue así: producto «»…», sin el 288.
+Causa: las reglas de cálculo + número y de valores contradictorios exigían un producto en el caso, y la línea del
+caso imprimía el producto vacío. Corrección: ambas reglas aplican también sin caso; sin producto se muestra
+«producto sin indicar». Pruebas: bloque «02-11d» en `tests/cierre-02-11c.test.ts` (3 casos; fallan sobre 02-11c).
+Versión `2026.11.02-d`.
