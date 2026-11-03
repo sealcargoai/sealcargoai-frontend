@@ -12,7 +12,7 @@ const { chromium } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.11.02-d";
+const EXPECT_VERSION = "2026.11.02-e";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
@@ -350,6 +350,11 @@ try {
       .first()
       .click();
     await page.waitForSelector("input[type=text]");
+    // 02-11e: wait for the restored history before reading it (it was read before it rendered: B84
+    // failed in 2 of 6 runs with an empty observation)
+    await page
+      .waitForFunction(() => [...document.querySelectorAll(".whitespace-pre-line")].some((el) => /cantidad \d|cantidad sin indicar/.test(el.textContent || "")), null, { timeout: 5000 })
+      .catch(() => {});
     const chatText = await page.locator(".whitespace-pre-line").allInnerTexts();
     const lastCase = chatText.filter((x) => /cantidad \d|cantidad sin indicar/.test(x)).pop() || "";
     check("B84 la última respuesta del chat dice lo mismo (cantidad 4; US$5,000)", /cantidad 4;/.test(lastCase) && /US\$5,000/.test(lastCase), lastCase.slice(0, 160));
