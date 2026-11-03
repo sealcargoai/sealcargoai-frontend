@@ -8,6 +8,7 @@ import { MessageSquare, X } from "lucide-react";
 import { useLanguage } from "../context/LanguageContext";
 import { sendToSeal, receiptText, type CaseContext, type SealResult } from "../../utils/caseContext";
 import { caseForSeal } from "../../utils/caseStore";
+import { emailProblem } from "../../utils/emailFormat";
 import { track } from "../../utils/funnel";
 
 function storedUser(): { name: string; email: string } {
@@ -78,7 +79,9 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     e.preventDefault();
     if (inFlight.current) return;
     if (name.trim().length < 2) return setError(L("Escribe tu nombre.", "Enter your name."));
-    if (!/^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$/.test(email.trim())) return setError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
+    const emailIssue = emailProblem(email);
+    if (emailIssue === "unsupported") return setError(L("Escribe el correo sin tildes, eñes ni caracteres especiales, por ejemplo nombre@empresa.com.", "Write the email without accents or special characters, for example name@company.com."));
+    if (emailIssue) return setError(L("Escribe un correo completo, por ejemplo nombre@empresa.com.", "Enter a complete email, for example name@company.com."));
     setError("");
     inFlight.current = true;
     setSending(true);
