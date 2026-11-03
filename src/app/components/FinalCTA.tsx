@@ -423,14 +423,23 @@ export function FinalCTA() {
           setEmailCode("");
           setEmailNote(
             Lx(
-              "Si ese correo puede recibir mensajes, te llegará un código de 6 dígitos en unos minutos (revisa también spam). Vence en 15 minutos.",
-              "If that address can receive email, a 6-digit code will arrive in a few minutes (check spam too). It expires in 15 minutes.",
+              "Si ese correo puede recibir mensajes, te llegará un código de 8 caracteres en unos minutos (revisa también spam). Vence en 15 minutos.",
+              "If that address can receive email, an 8-character code will arrive in a few minutes (check spam too). It expires in 15 minutes.",
             ),
           );
         } else if (r === "limit") {
           // 02-11l: the server says how long to wait; codes already sent keep working
           const secs = lastRetryAfterSeconds;
-          const wait = secs > 0 && secs < 120 ? Lx(`${secs} segundos`, `${secs} seconds`) : secs >= 120 ? Lx(`${Math.ceil(secs / 60)} minutos`, `${Math.ceil(secs / 60)} minutes`) : Lx("unos minutos", "a few minutes");
+          // 02-11m: the per-address daily cap can mean hours, not minutes
+          const hrs = Math.ceil(secs / 3600);
+          const wait =
+            secs > 0 && secs < 120
+              ? Lx(`${secs} segundos`, `${secs} seconds`)
+              : secs >= 120 && secs < 3600
+                ? Lx(`${Math.ceil(secs / 60)} minutos`, `${Math.ceil(secs / 60)} minutes`)
+                : secs >= 3600
+                  ? Lx(`${hrs} ${hrs === 1 ? "hora" : "horas"}`, `${hrs} ${hrs === 1 ? "hour" : "hours"}`)
+                  : Lx("unos minutos", "a few minutes");
           setEmailNote(
             Lx(
               `Ya se pidieron varios códigos para este correo. Espera ${wait} para pedir otro. Si ya te llegó un código en los últimos 15 minutos, todavía sirve: usa «Ya tengo un código».`,
@@ -456,7 +465,7 @@ export function FinalCTA() {
       if (!v.ok) {
         setEmailNote(
           v.reason === "format"
-            ? Lx("Escribe los 6 dígitos del código, sin letras.", "Type the 6 digits of the code, no letters.")
+            ? Lx("Escribe los 8 caracteres del código (letras y números), por ejemplo ABCD-2345.", "Type the 8 characters of the code (letters and numbers), for example ABCD-2345.")
             : v.reason === "wrong"
               ? Lx("El código no es correcto, ya venció o hubo demasiados intentos. Revísalo o pide uno nuevo.", "The code is wrong, expired, or there were too many attempts. Check it or ask for a new one.")
               : v.reason === "unavailable"
@@ -1114,13 +1123,15 @@ export function FinalCTA() {
                 <>
                   <input
                     type="text"
-                    inputMode="numeric"
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    spellCheck={false}
                     autoComplete="one-time-code"
-                    pattern="\s*\d{6}\s*"
-                    maxLength={8}
+                    pattern="[A-Za-z0-9\s\-]{8,12}"
+                    maxLength={12}
                     required
-                    aria-label={L("Código de 6 dígitos", "6-digit code")}
-                    placeholder={L("Código de 6 dígitos", "6-digit code")}
+                    aria-label={L("Código de 8 caracteres", "8-character code")}
+                    placeholder={L("Código de 8 caracteres", "8-character code")}
                     value={emailCode}
                     onChange={(e) => setEmailCode(e.target.value)}
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
