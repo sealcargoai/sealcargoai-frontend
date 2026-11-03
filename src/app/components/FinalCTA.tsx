@@ -1,4 +1,4 @@
-import { startVerification, confirmVerification } from "../../utils/verifiedEmail";
+import { startVerification, confirmVerification, lastRetryAfterSeconds } from "../../utils/verifiedEmail";
 import { sendToSeal, receiptText, rememberCase, caseContext } from "../../utils/caseContext";
 import { currentCase, scenarioMatches } from "../../utils/caseStore";
 import { useEffect, useState } from "react";
@@ -19,7 +19,8 @@ import {
   Target,
   X,
 } from "lucide-react";
-import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
+// 02-11l: 480×320 WebP (24 KB) instead of the 1536×1024 PNG (2.2 MB); shown at most 85 px tall
+import logo from "../../imports/seal-logo.webp";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, sealDisclaimer, badgeText, TrustBadge, supplierPriceInfo } from "./SelectedSupplier";
@@ -264,6 +265,8 @@ export function FinalCTA() {
   const [emailStep, setEmailStep] = useState<"email" | "code">("email");
   const [emailCode, setEmailCode] = useState("");
   const [emailNote, setEmailNote] = useState("");
+  // 02-11l: an authorization obtained but not used (the server could not check it): kept for a retry
+  const [pendingGrant, setPendingGrant] = useState<{ email: string; grant: string } | null>(null);
 
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
 
@@ -403,6 +406,7 @@ export function FinalCTA() {
   // 02-11k: step 1 asks the server to email a code; step 2 checks it and sends the report to that same
   // address with the single-use grant. The PDF is made here with the client's data: the email says so.
   const closeEmailModal = () => {
+    setPendingGrant(null);
     setShowEmailModal(false);
     setEmailStep("email");
     setEmailCode("");
@@ -423,8 +427,18 @@ export function FinalCTA() {
               "If that address can receive email, a 6-digit code will arrive in a few minutes (check spam too). It expires in 15 minutes.",
             ),
           );
-        } else if (r === "limit")
-          setEmailNote(Lx("Se pidieron demasiados códigos para este correo o desde esta conexión. Espera una hora o descarga el PDF.", "Too many codes were requested for this email or from this connection. Wait an hour or download the PDF."));
+        } else if (r === "limit") {
+          // 02-11l: the server says how long to wait; codes already sent keep working
+          const secs = lastRetryAfterSeconds;
+          const wait = secs > 0 && secs < 120 ? Lx(`${secs} segundos`, `${secs} seconds`) : secs >= 120 ? Lx(`${Math.ceil(secs / 60)} minutos`, `${Math.ceil(secs / 60)} minutes`) : Lx("unos minutos", "a few minutes");
+          setEmailNote(
+            Lx(
+              `Ya se pidieron varios códigos para este correo. Espera ${wait} para pedir otro. Si ya te llegó un código en los últimos 15 minutos, todavía sirve: usa «Ya tengo un código».`,
+              `Several codes were already requested for this email. Wait ${wait} to ask for another. If a code reached you in the last 15 minutes it still works: use «I already have a code».`,
+            ),
+          );
+        } else if (r === "unavailable")
+          setEmailNote(Lx("La verificación de correo no está disponible en este momento y no se envió nada. Intenta en unos minutos o descarga el PDF.", "Email verification is unavailable right now and nothing was sent. Try again in a few minutes or download the PDF."));
         else if (r === "not_supported")
           setEmailNote(Lx("Escribe el correo sin tildes, eñes ni caracteres especiales, por ejemplo nombre@empresa.com.", "Write the email without accents or special characters, for example name@company.com."));
         else if (r === "invalid") setEmailNote(Lx("Revisa el correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check the email: it must be complete, for example name@company.com."));
@@ -436,13 +450,17 @@ export function FinalCTA() {
     }
     setSubmitting(true);
     try {
-      const v = await confirmVerification(emailRecipient, emailCode);
+      const reuse = pendingGrant && pendingGrant.email === emailRecipient.trim() ? pendingGrant.grant : "";
+      const v = reuse ? ({ ok: true, reportGrant: reuse } as const) : await confirmVerification(emailRecipient, emailCode);
+      setPendingGrant(null);
       if (!v.ok) {
         setEmailNote(
           v.reason === "format"
             ? Lx("Escribe los 6 dígitos del código, sin letras.", "Type the 6 digits of the code, no letters.")
             : v.reason === "wrong"
-              ? Lx("El código no es correcto o ya venció. Revísalo o pide uno nuevo.", "The code is wrong or expired. Check it or ask for a new one.")
+              ? Lx("El código no es correcto, ya venció o hubo demasiados intentos. Revísalo o pide uno nuevo.", "The code is wrong, expired, or there were too many attempts. Check it or ask for a new one.")
+              : v.reason === "unavailable"
+                ? Lx("La verificación de correo no está disponible en este momento y no se envió nada. Intenta en unos minutos.", "Email verification is unavailable right now and nothing was sent. Try again in a few minutes.")
               : Lx("No pudimos comprobar el código ahora. Intenta de nuevo en unos minutos.", "We couldn't check the code now. Try again in a few minutes."),
         );
         return;
@@ -480,7 +498,7 @@ export function FinalCTA() {
           }),
         },
       );
-      const refusalError = res.status === 403 || res.status === 400 ? (await res.clone().json().catch(() => ({})))?.error : undefined;
+      const refusalError = res.status === 403 || res.status === 400 || res.status === 503 ? (await res.clone().json().catch(() => ({})))?.error : undefined;
       const refusal = reportRefusal(res.status, res.status === 403 ? refusalError : undefined);
       if (refusal === "qa_recipient") {
         // 02-11e: a QA account tried to send its report outside QA: nothing was sent to anyone
@@ -496,6 +514,13 @@ export function FinalCTA() {
           alert(ok ? m.message : Lx("No pudimos adjuntar el PDF al correo, así que no se envió. ", "We couldn't attach the PDF to the email, so it wasn't sent. ") + notDownloaded);
           closeEmailModal();
         } else alert(m.message);
+        return;
+      }
+      if (res.status === 503 && refusalError === "verify_unavailable") {
+        // 02-11l: the verification store is down: nothing was sent; the grant is still unused, so a retry
+        // («Enviar informe» again) uses it without asking for a new code
+        setPendingGrant({ email: emailRecipient.trim(), grant: v.reportGrant });
+        setEmailNote(Lx("La verificación de correo no está disponible en este momento y no se envió nada. Intenta en unos minutos o descarga el PDF.", "Email verification is unavailable right now and nothing was sent. Try again in a few minutes or download the PDF."));
         return;
       }
       if (res.status === 503) {
@@ -1070,6 +1095,21 @@ export function FinalCTA() {
                 onChange={(e) => setEmailRecipient(e.target.value)}
                 className="w-full px-4 py-3 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 read-only:bg-slate-50"
               />
+              {emailStep === "email" && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    // 02-11l: a code received earlier (still valid 15 minutes) can be used without asking for another
+                    if (!emailRecipient.trim()) return setEmailNote(L("Escribe primero tu correo.", "Type your email first."));
+                    setEmailStep("code");
+                    setEmailCode("");
+                    setEmailNote("");
+                  }}
+                  className="text-sm text-[#0B3C5D] underline"
+                >
+                  {L("Ya tengo un código", "I already have a code")}
+                </button>
+              )}
               {emailStep === "code" && (
                 <>
                   <input
