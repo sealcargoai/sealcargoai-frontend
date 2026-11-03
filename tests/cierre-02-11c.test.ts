@@ -224,3 +224,34 @@ describe("C6 · cálculo + número: se pregunta por el campo correcto (revisión
     expect(saved()).toEqual(UNCHANGED);
   });
 });
+
+describe("02-11d · chat abierto SIN caso (como en producción al entrar a /chat directo)", () => {
+  const empty = (lang: "es" | "en" = "es") => {
+    failWrites = false;
+    for (const k of Object.keys(store)) delete store[k];
+    doc.documentElement.lang = lang;
+  };
+  it("«¿Cuánto es 12 × 24? Para el caso son 48, pero todavía no cambies la cantidad» → 288, 48 en espera, sin «producto «»»", () => {
+    empty();
+    const r = chat(["¿Cuánto es 12 × 24? Para el caso son 48, pero todavía no cambies la cantidad"]).reply;
+    expect(r).toContain("12 × 24 = 288");
+    expect(r).toMatch(/mencionaste 48 para tu caso; como pediste, todavía no cambié la cantidad/);
+    expect(r).toContain("producto sin indicar");
+    expect(r).not.toContain("«»");
+    expect(currentCase().quantity).toBeFalsy();
+  });
+  it("«la cantidad es 10 y la cantidad es 12» sin caso → pregunta, no registra", () => {
+    empty();
+    const r = chat(["la cantidad es 10 y la cantidad es 12"]).reply;
+    expect(r).toMatch(/dos cantidades distintas \(10 y 12\)/);
+    expect(r).not.toContain("«»");
+    expect(currentCase().quantity).toBeFalsy();
+  });
+  it("inglés sin caso: «How much is 12 x 24? For the case it's 48»", () => {
+    empty("en");
+    const r = chat(["How much is 12 x 24? For the case it's 48"]).reply;
+    expect(r).toContain("12 × 24 = 288");
+    expect(r).toContain("product not given");
+    expect(currentCase().quantity).toBeFalsy();
+  });
+});
