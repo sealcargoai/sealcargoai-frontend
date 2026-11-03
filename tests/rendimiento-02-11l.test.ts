@@ -52,12 +52,19 @@ describe("verificación: respuestas del servidor (02-11l)", () => {
     expect(v.lastRetryAfterSeconds).toBe(30);
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ error: "verify_unavailable" }), { status: 503 }));
     expect(await v.startVerification("a@cliente-ficticio.test", "es")).toBe("unavailable");
-    expect(await v.confirmVerification("a@cliente-ficticio.test", "123456")).toEqual({ ok: false, reason: "unavailable" });
+    expect(await v.confirmVerification("a@cliente-ficticio.test", "ABCD2345")).toEqual({ ok: false, reason: "unavailable" });
   });
   it("la pantalla del informe: espera indicada, «Ya tengo un código» y almacén caído sin enviar nada", () => {
     const s = read("../src/app/components/FinalCTA.tsx");
     expect(s).toMatch(/Ya tengo un código/);
     expect(s).toMatch(/lastRetryAfterSeconds/);
+    // 02-11m: a wait of hours is said in hours (the daily cap per address)
+    expect(s).toMatch(/hrs === 1 \? "hora" : "horas"/);
+    // 02-11m: 8-character codes (letters and digits), typed as text
+    expect(s).toMatch(/aria-label=\{L\("Código de 8 caracteres", "8-character code"\)\}/);
+    expect(s).toMatch(/inputMode="text"/);
+    expect(s).not.toMatch(/6 dígitos|6-digit/);
+    expect(s).toMatch(/hrs === 1 \? "hour" : "hours"/);
     expect(s).toMatch(/res\.status === 503 && refusalError === "verify_unavailable"/);
     expect(s).toMatch(/no está disponible en este momento y no se envió nada/);
     expect(s).toMatch(/is unavailable right now and nothing was sent/);
