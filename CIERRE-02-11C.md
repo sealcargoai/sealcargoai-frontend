@@ -112,3 +112,24 @@ ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), 
 - Espera indicada por el servidor («Espera 30 segundos…»), con la aclaración de que los códigos ya recibidos siguen sirviendo.
 - Botón «Ya tengo un código».
 - Aviso «La verificación de correo no está disponible… no se envió nada».
+
+## 02-11m — código de 8 caracteres y esperas en horas (frontend)
+
+- **Campo del código:** ahora es de 8 caracteres, letras y números (por ejemplo `ABCD-2345`).
+  - Teclado de texto, mayúsculas automáticas y sin corrector.
+  - Se aceptan espacios, guiones y minúsculas: `confirmVerification` los normaliza.
+  - Un código del formato anterior (6 dígitos) da error de formato en la pantalla, sin llamar al servidor.
+- **Mensajes ES/EN:**
+  - «te llegará un código de 8 caracteres»;
+  - «Escribe los 8 caracteres del código (letras y números)»;
+  - si la espera indicada por el servidor dura horas, se dice en horas.
+- **Pruebas:** `tests/verificacion-02-11k.test.ts` y `tests/rendimiento-02-11l.test.ts` quedaron actualizadas.
+
+## 02-11n — código de 10 caracteres y tope diario explicado (frontend)
+
+- **Código de verificación:** 10 caracteres de letras y números (por ejemplo `ABCDE-23456`). El cálculo de riesgo que lo justifica está en el `CIERRE-02-11C.md` del backend.
+  - Teclado de texto, mayúsculas automáticas y sin corrector.
+  - Se aceptan espacios, guion y minúsculas.
+  - Un código de 8 o de 6 caracteres da error de formato sin llamar al servidor.
+- **Tope diario de informes:** cuando el servidor responde 429 `report_limit`, la pantalla dice en ES/EN que ese correo ya recibió el máximo de 3 informes en 24 horas y descarga el PDF.
+- **Pruebas:** `tests/verificacion-02-11k.test.ts` y `tests/rendimiento-02-11l.test.ts` quedaron actualizadas.

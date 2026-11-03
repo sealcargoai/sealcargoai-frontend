@@ -72,9 +72,9 @@ describe("verificación del correo", () => {
       return new Response(JSON.stringify({ verified: true, session: "s".repeat(43), reportGrant: "g".repeat(43), sessionSeconds: 43200, grantSeconds: 1800 }), { status: 200 });
     });
     expect(await startVerification("Pedro@Cliente-Ficticio.test", "es")).toBe("sent");
-    const v = await confirmVerification("Pedro@Cliente-Ficticio.test", " 123 456 ");
+    const v = await confirmVerification("Pedro@Cliente-Ficticio.test", " abcde-23456 ");
     expect(v).toEqual({ ok: true, reportGrant: "g".repeat(43) });
-    expect(calls[1].body).toEqual({ email: "Pedro@Cliente-Ficticio.test", code: "123456" });
+    expect(calls[1].body).toEqual({ email: "Pedro@Cliente-Ficticio.test", code: "ABCDE23456" });
     expect(verifiedSessionFor("pedro@cliente-ficticio.test")).toBe("s".repeat(43));
     expect(verifiedSessionFor("otra@cliente-ficticio.test")).toBe("");
   });
@@ -89,8 +89,9 @@ describe("verificación del correo", () => {
       expect(await startVerification("x@cliente-ficticio.test", "es")).toBe(want);
     }
     vi.stubGlobal("fetch", async () => new Response(JSON.stringify({ error: "code_invalid" }), { status: 403 }));
-    expect(await confirmVerification("x@cliente-ficticio.test", "000000")).toEqual({ ok: false, reason: "wrong" });
-    expect(await confirmVerification("x@cliente-ficticio.test", "12ab56")).toEqual({ ok: false, reason: "format" });
+    expect(await confirmVerification("x@cliente-ficticio.test", "AAAAA22222")).toEqual({ ok: false, reason: "wrong" });
+    expect(await confirmVerification("x@cliente-ficticio.test", "ABCD2345")).toEqual({ ok: false, reason: "format" }); // 02-11n: the 8-character form of 02-11m
+    expect(await confirmVerification("x@cliente-ficticio.test", "ABCDE!2345")).toEqual({ ok: false, reason: "format" });
     expect(verifiedSessionFor("x@cliente-ficticio.test")).toBe("");
   });
   it("una sesión vencida no se usa", () => {

@@ -1,4 +1,4 @@
-// 02-11k: proof of control of an email. The server mails a 6-digit code; the code gives a session
+// 02-11k: proof of control of an email. The server mails a 10-character code (02-11n; 8 in 02-11m, 6 digits before); the code gives a session
 // (12 h, used by searches of a QA account) and a single-use report grant (30 min). Nothing here is
 // trusted by the server: it checks every token itself. Storage only saves the client retyping a code.
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -65,8 +65,9 @@ export async function startVerification(email: string, lang: "es" | "en"): Promi
 export type ConfirmResult = { ok: true; reportGrant: string } | { ok: false; reason: "wrong" | "format" | "limit" | "unavailable" | "error" };
 /** Checks the code. On success stores the session and returns the single-use report grant. */
 export async function confirmVerification(email: string, code: string): Promise<ConfirmResult> {
-  const c = String(code || "").replace(/\s+/g, "");
-  if (!/^\d{6}$/.test(c)) return { ok: false, reason: "format" };
+  // 02-11n: 10 letters/digits; spaces, dashes and lowercase are accepted and normalized
+  const c = String(code || "").toUpperCase().replace(/[\s-]+/g, "");
+  if (!/^[A-Z0-9]{10}$/.test(c)) return { ok: false, reason: "format" };
   try {
     const res = await fetch(`${API}/api/email/verify/confirm`, {
       method: "POST",
