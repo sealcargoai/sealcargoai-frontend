@@ -3429,8 +3429,8 @@ export const fmtBudget = (n: number) => `US$${n.toLocaleString("en-US", { minimu
 
 function caseLine(c: NonNullable<ReplySpec["caseNow"]>): string {
   return Lx(
-    `producto «${c.product}»; cantidad ${c.quantity ? c.quantity.toLocaleString("en-US") : "sin indicar"}; presupuesto de compra ${c.budget ? fmtBudget(c.budget) : "sin indicar"}`,
-    `product "${c.product}"; quantity ${c.quantity ? c.quantity.toLocaleString("en-US") : "not given"}; purchase budget ${c.budget ? fmtBudget(c.budget) : "not given"}`,
+    `producto ${c.product ? `«${c.product}»` : "sin indicar"}; cantidad ${c.quantity ? c.quantity.toLocaleString("en-US") : "sin indicar"}; presupuesto de compra ${c.budget ? fmtBudget(c.budget) : "sin indicar"}`,
+    `product ${c.product ? `"${c.product}"` : "not given"}; quantity ${c.quantity ? c.quantity.toLocaleString("en-US") : "not given"}; purchase budget ${c.budget ? fmtBudget(c.budget) : "not given"}`,
   );
 }
 
@@ -3811,7 +3811,8 @@ export function nextSpec(
   // 02-11c: an arithmetic question next to a number «for the case» is answered, and the number is
   // asked about (or kept on hold when the client said not to change yet): never applied
   const ap = !hypo ? arithmeticPart(text) : null;
-  if (ap && /\d/.test(ap.rest) && (caseProductIn || currentProduct)) {
+  // (also with no case open: the chat started without a product still answers and asks; 02-11d)
+  if (ap && /\d/.test(ap.rest)) {
     const restNums = (normalizeNumbers(ap.rest).match(/\d[\d,]*/g) || []).map((x) => Number(x.replace(/,/g, ""))).filter((n) => n > 0);
     const product = caseProductIn || currentProduct;
     return {
@@ -3828,7 +3829,7 @@ export function nextSpec(
   }
   // 02-11c: two different values for the same field in one message: asked, nothing applied
   const conflict = !hypo ? conflictingValues(text) : null;
-  if (conflict && (caseProductIn || currentProduct)) {
+  if (conflict) {
     const product = caseProductIn || currentProduct;
     return {
       text, product, previous: product, fieldUpdate: true, hold: true, valueConflict: conflict,
