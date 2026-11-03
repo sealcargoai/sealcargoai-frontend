@@ -251,7 +251,7 @@ export function getReviewTopics(productType: string, supplier: any, description 
       `${badgeText(supplier)}. Badges and certifications are published by the platform or declared by the supplier.`,
     ),
     action: T(
-      "Pedir muestras y, si va a comprar, solicitar la verificación del proveedor en China.",
+      "Pedir muestras y, si vas a comprar, solicitar la verificación del proveedor en China.",
       "Request samples and, if you'll buy, request the supplier verification in China.",
     ),
     source: T("SEAL (servicio adicional)", "SEAL (additional service)"),

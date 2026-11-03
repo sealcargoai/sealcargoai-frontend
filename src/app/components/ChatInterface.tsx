@@ -4,6 +4,7 @@ import { Send, MessageSquare, FileText, ArrowRight } from "lucide-react";
 import logo from "../../imports/ChatGPT_Image_Apr_27,_2026,_10_59_16_AM.png";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
+import { Lx } from "../../utils/lang";
 import { buildReply, contactIntent, urgentContact, requestStatusQuestion, quantityInForce, fmtBudget, validQuantity, type ReplySpec } from "../../utils/chatReply";
 import { applyChatMessage } from "../../utils/chatCase";
 import { lastSentCase, switchCaseProduct, switchedCase, caseContext } from "../../utils/caseContext";
@@ -403,6 +404,7 @@ export function ChatInterface() {
             <button
               onClick={handleSend}
               disabled={!input.trim()}
+              aria-label={Lx("Enviar mensaje", "Send message")}
               className="p-3 rounded-xl bg-gradient-to-r from-blue-600 to-[#0B3C5D] text-white hover:from-blue-700 hover:to-[#0a2f47] disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-md hover:shadow-lg"
             >
               <Send className="w-5 h-5" />

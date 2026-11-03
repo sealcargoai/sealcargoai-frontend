@@ -9,6 +9,7 @@ import { useLanguage } from "../context/LanguageContext";
 import { sendToSeal, receiptText, type CaseContext, type SealResult } from "../../utils/caseContext";
 import { caseForSeal } from "../../utils/caseStore";
 import { emailProblem } from "../../utils/emailFormat";
+import { sealRefusalMessage } from "../../utils/sendErrors";
 import { track } from "../../utils/funnel";
 
 function storedUser(): { name: string; email: string } {
@@ -30,7 +31,23 @@ interface Props {
   className?: string;
 }
 
+/** A stored history line («Estimación anterior (ya no vigente): guantes · cantidad 2,000 · …»), shown in the client's language. */
+export function earlierLine(x: string, L: (es: string, en: string) => string): string {
+  const own = /^Estimación anterior \(ya no vigente\): /.test(x);
+  const body = own ? x.replace(/^Estimación anterior \(ya no vigente\): /, "") : x;
+  const en = body
+    .replace(/(^| · )cantidad /g, "$1quantity ")
+    .replace(/(^| · )presupuesto /g, "$1budget ")
+    .replace(/(^| · )proveedor /g, "$1supplier ")
+    .replace(/(^| · )precio /g, "$1price ")
+    .replace(/(^| · )estimación /g, "$1estimate ");
+  return L(`${own ? "Estimación anterior" : "Historial"} (ya no vigente): ${body}`, `${own ? "Earlier estimate" : "History"} (no longer current): ${en}`);
+}
+
 export function ContactSeal({ source, intent = "", context = {}, requestType, variant = "button", label, className = "" }: Props) {
+  // 02-11j: a caller's «hidden md:inline-flex» must win over the base «inline-flex» (both were set, so the
+  // button showed on phones and pushed the results header 150 px past the screen)
+  const display = /(^|\s)hidden(\s|$)/.test(className) ? "" : "inline-flex";
   const { L } = useLanguage();
   const stored = storedUser();
   const [open, setOpen] = useState(false);
@@ -62,7 +79,9 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     ctx.warnings?.length ? L(`${ctx.warnings.length} advertencia(s) que viste`, `${ctx.warnings.length} warning(s) you saw`) : "",
     ctx.chat?.length ? L("Lo que escribiste en el chat", "What you wrote in the chat") : "",
     // a product changed in this case: the earlier data goes as history, marked as not current
-    ...(ctx.earlier || []).map((x) => L(`Historial (ya no vigente): ${x}`, `History (no longer current): ${x}`)),
+    // 02-11j: the line is stored in Spanish (for SEAL); on screen it follows the client's language and
+    // is not labelled twice («Historial (ya no vigente): Estimación anterior (ya no vigente): …»)
+    ...(ctx.earlier || []).map((x) => earlierLine(x, L)),
   ].filter(Boolean);
 
   const openForm = () => {
@@ -100,14 +119,8 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
     // a confirmation only with a case number from the server; on failure what was written stays
     if (r.ok) return setResult(r);
     setError(
-      r.status === 400 && /^quantity_/.test(r.error || "")
-        ? L("La cantidad de tu caso no es válida (debe ser un número entero de 1 a 10,000,000). Corrígela en el chat o en el formulario y vuelve a enviar.", "Your case quantity is not valid (it must be a whole number from 1 to 10,000,000). Correct it in the chat or the form and send again.")
-        : r.status === 400 && /^budget_/.test(r.error || "")
-        ? L("El presupuesto de tu caso no es válido (mayor a US$0 y hasta US$100,000,000). Corrígelo y vuelve a enviar.", "Your case budget is not valid (above US$0 and up to US$100,000,000). Correct it and send again.")
-        : r.status === 400 && r.error === "invalid_fields"
-        ? L("Algunos datos del caso no tienen un formato válido. Revisa el formulario y vuelve a enviar.", "Some case data is not in a valid format. Check the form and send again.")
-        : r.status === 400
-        ? L("Revisa tu nombre y correo (por ejemplo nombre@empresa.com).", "Check your name and email (for example name@company.com).")
+      r.status === 400
+        ? sealRefusalMessage(r.error, L)
         : r.status === 429
           ? L("Se alcanzó el límite de envíos por ahora. Escríbenos al WhatsApp +502 5996 4664.", "The sending limit was reached for now. Message us on WhatsApp +502 5996 4664.")
           : L("No se pudo enviar. Escríbenos al WhatsApp +502 5996 4664.", "Could not send. Message us on WhatsApp +502 5996 4664."),
@@ -121,7 +134,7 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
         {text}
       </button>
     ) : variant === "hero" ? (
-      <button type="button" onClick={openForm} className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-[#0B3C5D] font-semibold shadow-lg hover:bg-blue-50 ${className}`}>
+      <button type="button" onClick={openForm} className={`${display} items-center gap-2 px-4 py-2.5 rounded-xl bg-white text-[#0B3C5D] font-semibold shadow-lg hover:bg-blue-50 ${className}`}>
         <MessageSquare className="w-4 h-4" /> {text}
       </button>
     ) : variant === "card" ? (
@@ -134,7 +147,7 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
         </button>
       </div>
     ) : (
-      <button type="button" onClick={openForm} className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-emerald-700 text-white text-sm font-semibold hover:bg-emerald-800 ${className}`}>
+      <button type="button" onClick={openForm} className={`${display} items-center gap-2 px-4 py-2 rounded-lg bg-emerald-700 text-white text-sm font-semibold hover:bg-emerald-800 ${className}`}>
         <MessageSquare className="w-4 h-4" /> {text}
       </button>
     );
@@ -178,7 +191,7 @@ export function ContactSeal({ source, intent = "", context = {}, requestType, va
                 <p className="text-sm text-emerald-900 bg-emerald-50 border border-emerald-200 rounded-lg p-3">{receiptText(result, L)}</p>
                 {result.caseUrl && (
                   <a href={result.caseUrl} target="_blank" rel="noopener noreferrer" className="block text-sm font-semibold text-[#0B3C5D] underline">
-                    {L("Ver lo que recibió SEAL y el estado de mi caso", "See what SEAL received and my case status")}
+                    {L("Ver lo que recibió SEAL y el estado de mi caso", "See what SEAL received and my case status (page in Spanish)")}
                   </a>
                 )}
                 <a

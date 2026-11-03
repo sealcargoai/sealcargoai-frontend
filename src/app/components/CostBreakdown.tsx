@@ -56,6 +56,7 @@ import {
   formatQTotal,
   formatQAmount,
   groupQ,
+  linesTotalQ,
   perUnitQ,
   totalUSDText,
   totalSummary,
@@ -871,7 +872,8 @@ export function CostBreakdown() {
                 // The budget is what the client plans to pay the supplier (FOB),
                 // so it is compared with the product cost, not with the landed total.
                 const diff = budget - costs.productCost;
-                const extra = costs.totalCost - costs.productCost;
+                // 02-11j: the printed total minus the printed FOB (centavos), as the PDF and the Excel say it
+                const extraQ = formatQAmount(Math.round((linesTotalQ(costs, costs.exchangeRate) - groupQ(costs, ["product"], costs.exchangeRate)) * 100) / 100);
                 return (
                   <li className="flex items-start gap-2">
                     <span className="text-green-500 mt-1">•</span>
@@ -888,11 +890,11 @@ export function CostBreakdown() {
                           )}{" "}
                       {L(
                         costs.freightPending
-                          ? `Aparte, traer la compra a Guatemala suma ${Q(extra)} en seguro, impuestos y gastos; el flete se cotiza aparte y no está incluido. Confírmalo con una cotización antes de decidir.`
-                          : `Aparte, traer la compra a Guatemala suma ${Q(extra)} en flete, seguro, impuestos y gastos. Confírmalo con una cotización antes de decidir.`,
+                          ? `Aparte, traer la compra a Guatemala suma ${extraQ} en seguro, impuestos y gastos; el flete se cotiza aparte y no está incluido. Confírmalo con una cotización antes de decidir.`
+                          : `Aparte, traer la compra a Guatemala suma ${extraQ} en flete, seguro, impuestos y gastos. Confírmalo con una cotización antes de decidir.`,
                         costs.freightPending
-                          ? `On top of that, bringing it to Guatemala adds ${Q(extra)} in insurance, taxes and charges; freight is quoted separately and not included. Confirm it with a quote before deciding.`
-                          : `On top of that, bringing it to Guatemala adds ${Q(extra)} in freight, insurance, taxes and charges. Confirm it with a quote before deciding.`,
+                          ? `On top of that, bringing it to Guatemala adds ${extraQ} in insurance, taxes and charges; freight is quoted separately and not included. Confirm it with a quote before deciding.`
+                          : `On top of that, bringing it to Guatemala adds ${extraQ} in freight, insurance, taxes and charges. Confirm it with a quote before deciding.`,
                       )}
                     </span>
                   </li>
@@ -910,8 +912,8 @@ export function CostBreakdown() {
                     <span className="text-green-500 mt-1">•</span>
                     <span>
                       {L(
-                        `En este pedido, los cargos que no dependen de la cantidad (seguro mínimo, honorarios de aduana y gastos en destino) suman ${Q(fixed)}, más que el producto (${Q(costs.productCost)}). Por eso el costo por ${unitWordFor(unitInfo.unit, 1)} sale alto; con una cantidad mayor se reparte entre más unidades.${insuranceMin ? " Además, el seguro mínimo forma parte del valor CIF, así que también sube la base del DAI y del IVA." : ""}`,
-                        `In this order, the charges that don't depend on quantity (minimum insurance, customs fee and destination charges) add up to ${Q(fixed)}, more than the product (${Q(costs.productCost)}). That's why the cost per ${unitWordFor(unitInfo.unit, 1)} is high; with a larger quantity it is spread over more units.${insuranceMin ? " Also, the minimum insurance is part of the CIF value, so it also raises the DAI and IVA base." : ""}`,
+                        `En este pedido, los cargos que no dependen de la cantidad (seguro mínimo, honorarios de aduana y gastos en destino) suman ${formatQAmount(groupQ(costs, ["insurance", "customs", "local"], costs.exchangeRate))}, más que el producto (${formatQAmount(groupQ(costs, ["product"], costs.exchangeRate))}). Por eso el costo por ${unitWordFor(unitInfo.unit, 1)} sale alto; con una cantidad mayor se reparte entre más unidades.${insuranceMin ? " Además, el seguro mínimo forma parte del valor CIF, así que también sube la base del DAI y del IVA." : ""}`,
+                        `In this order, the charges that don't depend on quantity (minimum insurance, customs fee and destination charges) add up to ${formatQAmount(groupQ(costs, ["insurance", "customs", "local"], costs.exchangeRate))}, more than the product (${formatQAmount(groupQ(costs, ["product"], costs.exchangeRate))}). That's why the cost per ${unitWordFor(unitInfo.unit, 1)} is high; with a larger quantity it is spread over more units.${insuranceMin ? " Also, the minimum insurance is part of the CIF value, so it also raises the DAI and IVA base." : ""}`,
                       )}
                     </span>
                   </li>
