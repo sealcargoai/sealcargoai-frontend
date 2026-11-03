@@ -1,6 +1,9 @@
 // Chat answers: short, honest, and tied to the product the client actually
 // named. Without a known product the answer stays general and asks for it.
 import { Lx } from "./lang";
+import { currentRates, ratePct } from "./costCalculator";
+// 02-11j: the chat quotes the rates the estimate uses (it said 15% / 12% / 30 a 45 even when SEAL changed them)
+const transitText = (lang: "es" | "en") => String(currentRates().transitDays || "30-45").replace(/\s*-\s*/, lang === "es" ? " a " : " to ");
 import { inferCategory, FOOD_USE, CATEGORY_KEYWORDS } from "./category";
 import { wantedText } from "./useMatch";
 import { explain, forMath, oddEquivalenceReply, readMoney, moneyLines, type OrderCounts } from "./orderMoney";
@@ -2484,8 +2487,8 @@ const FIXED: Record<string, () => string> = {
     ),
   dai: () =>
     Lx(
-      "No puedo dar el impuesto exacto sin la ficha técnica: el DAI depende de la partida arancelaria, y la partida se define con lo que dice esa ficha (qué es el producto, material, uso). En la estimación usamos 15% de DAI como referencia y el IVA de 12% sobre CIF + DAI. Siguiente paso: completa el formulario para ver el escenario y, para la partida exacta, comparte la ficha técnica con un agente aduanero de SEAL (WhatsApp +502 5996 4664).",
-      "I can't give the exact tax without the technical sheet: the DAI depends on the tariff heading, and the heading is set from that sheet (what the product is, material, use). The estimate uses 15% DAI as reference and 12% IVA on CIF + DAI. Next step: complete the form to see the scenario and, for the exact heading, share the technical sheet with a SEAL customs broker (WhatsApp +502 5996 4664).",
+      `No puedo dar el impuesto exacto sin la ficha técnica: el DAI depende de la partida arancelaria, y la partida se define con lo que dice esa ficha (qué es el producto, material, uso). En la estimación usamos ${ratePct(currentRates().dutyRate)} de DAI como referencia y el IVA de ${ratePct(currentRates().vatRate)} sobre CIF + DAI. Siguiente paso: completa el formulario para ver el escenario y, para la partida exacta, comparte la ficha técnica con un agente aduanero de SEAL (WhatsApp +502 5996 4664).`,
+      `I can't give the exact tax without the technical sheet: the DAI depends on the tariff heading, and the heading is set from that sheet (what the product is, material, use). The estimate uses ${ratePct(currentRates().dutyRate)} DAI as reference and ${ratePct(currentRates().vatRate)} IVA on CIF + DAI. Next step: complete the form to see the scenario and, for the exact heading, share the technical sheet with a SEAL customs broker (WhatsApp +502 5996 4664).`,
     ),
   container: () =>
     Lx(
@@ -2494,8 +2497,8 @@ const FIXED: Record<string, () => string> = {
     ),
   transit: () =>
     Lx(
-      "Como referencia, el tránsito marítimo desde China a Guatemala suele ser de 30 a 45 días, más el tiempo de producción del proveedor y el despacho. El plazo real lo confirman el proveedor (producción) y la cotización de flete de SEAL según la ruta y la fecha de embarque.",
-      "As a reference, ocean transit from China to Guatemala is usually 30 to 45 days, plus the supplier's production time and customs clearance. The real lead time is confirmed by the supplier (production) and SEAL's freight quote for the route and sailing date.",
+      `Como referencia, el tránsito marítimo desde China a Guatemala suele ser de ${transitText("es")} días, más el tiempo de producción del proveedor y el despacho. El plazo real lo confirman el proveedor (producción) y la cotización de flete de SEAL según la ruta y la fecha de embarque.`,
+      `As a reference, ocean transit from China to Guatemala is usually ${transitText("en")} days, plus the supplier's production time and customs clearance. The real lead time is confirmed by the supplier (production) and SEAL's freight quote for the route and sailing date.`,
     ),
   cost: () =>
     Lx(

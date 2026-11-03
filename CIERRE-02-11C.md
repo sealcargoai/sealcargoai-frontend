@@ -41,3 +41,36 @@ Defecto relacionado corregido: si la búsqueda se rechazaba por el correo (`emai
 La página no decide quién es QA: lo hace solo el servidor, con su lista. `?qa=1` solo marca la sesión para las métricas.
 
 Pruebas: `tests/qa-identidad-02-11i.test.ts`.
+
+## 02-11j — auditoría integral (frontend)
+
+Versión `2026.11.02-j`. Pruebas de comportamiento en `tests/auditoria-02-11j.test.ts` (14): con el código anterior fallan 10. En el navegador local (con Resend simulado) también pasan `s16` (resultados y costos, ES/EN) y `s17` (móvil de 390 px y accesibilidad básica).
+
+| Sev. | Defecto | Corrección |
+|---|---|---|
+| Media | Los medios centavos se redondeaban hacia abajo: 5 × US$0.83 se imprimía Q32.78 en vez de Q32.79, y la base del DAI y del IVA («FOB + seguro Q2,059.13») no cuadraba con las filas impresas (Q2,059.14) | `round2`: medio centavo hacia arriba, sin ruido binario. Las bases son la suma de las filas impresas (comprobado en 200 escenarios) |
+| Media | En la pantalla, la nota de presupuesto y la de pedido pequeño usaban montos sin redondear: diferían 1 centavo del PDF y el Excel, o mostraban «Q0.0008» | Usan los montos impresos (`linesTotalQ` y `groupQ`) |
+| Media | Un tipo de cambio 0, texto o fuera de rango desde el servidor daba «QNaN» o rompía la página de costos | `sanitizeRates` |
+| Media | En el teléfono (390 px), el encabezado de resultados se salía 150 px de la pantalla, porque el botón «Hablar con SEAL» llevaba `inline-flex` y `hidden` a la vez | `ContactSeal` respeta `hidden` |
+| Media | Rechazos 400: cantidad, presupuesto o PDF inválidos mostraban «Revisa tu correo»; en la cotización, «intenta de nuevo», que vuelve a fallar | `utils/sendErrors.ts` nombra el dato rechazado; con «invalid PDF» se descarga el PDF |
+| Media | Medallas oro, plata y bronce en el orden sugerido (se leían como «mejor proveedor») | Número neutro con «no es un aval de SEAL» |
+| Baja | Tasas redondeadas a entero («8%» para un cálculo con 7.5%) | `ratePct` |
+| Baja | Tarifa LCL sin centavos (Q1,551 × 3.30 no daba la fila); sin explicar el mínimo cobrable ni el cobro por peso | 2 decimales, «(mínimo cobrable)» y «(por peso)» |
+| Baja | Excel: «Q0.2400» y «0.0%» para montos diminutos | Formato de centavos y «<0.1%» |
+| Baja | El chat decía 15% DAI, 12% IVA y 30–45 días fijos | Usa las tasas vigentes |
+| Baja | Textos: país «CN»; visor de imágenes en español con la página en inglés; «Leads Guardados» y un botón «Exportar a CRM» que no hacía nada; «Desglose completo» con el flete pendiente; «te atendemos de inmediato»; «No recomendado»; «Datos en vivo» con datos de caché; «si va a comprar»; historial en español dentro del inglés; enlace del caso sin aviso de que la página está en español | Corregidos |
+| Baja | Accesibilidad: botón de enviar del chat, «volver» del formulario y corazón de guardar sin nombre accesible; selector de orden sin etiqueta | `aria-label` y `aria-pressed` |
+
+**Sin cambiar, a propósito:**
+- «Para comprar con más seguridad **se requiere** el servicio de verificación…»: es redacción comercial de SEAL; se puede cambiar a «se recomienda» si se decide.
+- El valor por unidad redondeado no reconstruye el total en cantidades grandes (es inherente al redondeo).
+
+**Build:**
+- El aviso de `eval` viene de ExcelJS (se carga solo al exportar). El sitio no tiene una CSP que lo bloquee.
+- Los paquetes grandes son ExcelJS y jsPDF, que se cargan al exportar.
+- `npm audit`: las 2 críticas son de `tinypool` (vitest, solo desarrollo), no del sitio.
+
+**Revisión independiente (pasada 5), corregido:**
+- `round2` daba NaN con montos menores que 1e-6 (por la notación exponencial). Ahora devuelve 0 bajo medio centavo y deja igual los valores de 1e15 en adelante.
+- La línea de flete LCL es exactamente «m³ mostrados × tarifa mostrada» (3.30 × Q1,551.27 = Q5,119.19).
+- El mensaje de caso repetido avisa cuando el teléfono o la empresa nuevos no se aplicaron (`contactPending`).

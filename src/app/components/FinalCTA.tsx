@@ -26,6 +26,7 @@ import { getReviewTopics } from "./RiskCompliance";
 import { listingDifferences } from "../../utils/differences";
 import { budgetNote, smallOrderNote } from "../../utils/costNotes";
 import { Lx, plural } from "../../utils/lang";
+import { sealRefusalMessage, reportRefusal400Message } from "../../utils/sendErrors";
 import { saleUnitInfo, unitWordFor } from "../../utils/saleUnit";
 import { SEAL_COMPANY } from "../../utils/company";
 import { reportRefusal } from "../../utils/reportSend";
@@ -342,7 +343,12 @@ export function FinalCTA() {
           });
       if (res.status === 429) {
         // the email endpoint allows a few requests per hour: retrying now won't work
-        alert(L(`Se alcanzó el límite de envíos por ahora. Escríbenos al WhatsApp de SEAL ${SEAL_COMPANY.phone} y te atendemos de inmediato.`, `The sending limit was reached for now. Message SEAL on WhatsApp ${SEAL_COMPANY.phone} and we'll help you right away.`));
+        alert(L(`Se alcanzó el límite de envíos por ahora. Escríbenos al WhatsApp de SEAL ${SEAL_COMPANY.phone} con los datos de tu caso.`, `The sending limit was reached for now. Message SEAL on WhatsApp ${SEAL_COMPANY.phone} with your case details.`));
+        return;
+      }
+      // 02-11j: a refused field is named (it used to say «inténtalo de nuevo», which fails again)
+      if (res.status === 400) {
+        alert(sealRefusalMessage(res.error, L));
         return;
       }
       if (!res.ok) throw new Error("Failed");
@@ -441,7 +447,8 @@ export function FinalCTA() {
           }),
         },
       );
-      const refusal = reportRefusal(res.status, res.status === 403 ? (await res.clone().json().catch(() => ({})))?.error : undefined);
+      const refusalError = res.status === 403 || res.status === 400 ? (await res.clone().json().catch(() => ({})))?.error : undefined;
+      const refusal = reportRefusal(res.status, res.status === 403 ? refusalError : undefined);
       if (refusal === "qa_recipient") {
         // 02-11e: a QA account tried to send its report outside QA: nothing was sent to anyone
         alert(Lx("Envío de prueba bloqueado: una cuenta de QA solo puede enviar informes a cuentas de QA autorizadas, así que no se envió ningún correo.", "Test send blocked: a QA account can only send reports to authorized QA accounts, so no email was sent."));
@@ -449,7 +456,13 @@ export function FinalCTA() {
         return;
       }
       if (res.status === 400) {
-        alert(Lx("Revisa el correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check the email: it must be complete, for example name@company.com."));
+        // 02-11j: «invalid PDF» is not the client's email: say so and give them the PDF
+        const m = reportRefusal400Message(refusalError, Lx);
+        if (m.downloadPdf) {
+          const ok = await downloadReportNow();
+          alert(ok ? m.message : Lx("No pudimos adjuntar el PDF al correo, así que no se envió. ", "We couldn't attach the PDF to the email, so it wasn't sent. ") + notDownloaded);
+          setShowEmailModal(false);
+        } else alert(m.message);
         return;
       }
       if (res.status === 503) {

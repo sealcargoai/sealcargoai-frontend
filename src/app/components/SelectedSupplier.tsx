@@ -6,6 +6,7 @@ import { useNavigate } from "react-router";
 import { MapPin, Award, Star, Package, ExternalLink, AlertCircle, ArrowLeft, Search, ShieldCheck } from "lucide-react";
 import { formatUSD, formatUnitUSD, formatUnitQ } from "../../utils/costCalculator";
 import { Lx } from "../../utils/lang";
+import { sealRefusalMessage } from "../../utils/sendErrors";
 import { requestedSpecs, matchSpecs, specLabel } from "../../utils/capacity";
 import { matchUse } from "../../utils/useMatch";
 import { matchMaterial, partMaterialIssue } from "../../utils/materialMatch";
@@ -547,11 +548,11 @@ export function sealDisclaimer(): string {
 }
 
 const TRUST_LABEL_EN: Record<string, string> = {
-  verification: "Verification",
+  verification: "Platform badges",
   track: "Track record",
   performance: "Commercial performance",
   reputation: "Reputation",
-  protection: "Payment protection",
+  protection: "Order protection (Trade Assurance)",
 };
 
 // Backend details are in Spanish; translate the fixed phrases for English
@@ -644,7 +645,7 @@ export function SupplierDisclaimer({
           source: "proveedor",
         });
       if (res.status === 400) {
-        setError(Lx("Revisa tu nombre y correo (por ejemplo nombre@empresa.com).", "Check your name and email (for example name@company.com)."));
+        setError(sealRefusalMessage(res.error, Lx));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);

@@ -30,6 +30,7 @@ import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/company";
 import { calculateCosts, useRates, formatQ, formatUSD, formatUnitUSD, formatUnitQ, formatQAmount, formatQTotal, groupQ } from "../../utils/costCalculator";
 import { Lx, plural } from "../../utils/lang";
+import { sealRefusalMessage } from "../../utils/sendErrors";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
 import { flagPrices, comparablePrice } from "../../utils/priceCheck";
 import { orderByUse, matchUse, wantedText } from "../../utils/useMatch";
@@ -48,6 +49,7 @@ import {
   trustInfo,
   badgeText,
   SpecTags,
+  countryName,
 } from "./SelectedSupplier";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3001";
@@ -131,7 +133,7 @@ function MorePlatforms({
           source: "resultados",
         });
       if (res.status === 400) {
-        setError(Lx("Revisa tu correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
+        setError(sealRefusalMessage(res.error, Lx));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -298,7 +300,7 @@ function NoResults({
           source: "resultados",
         });
       if (res.status === 400) {
-        setError(Lx("Revisa tu correo: debe ser completo, por ejemplo nombre@empresa.com.", "Check your email: it must be complete, for example name@company.com."));
+        setError(sealRefusalMessage(res.error, Lx));
         return;
       }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -960,7 +962,9 @@ export function SupplierResults() {
           </p>
           <p className="text-xs text-slate-400 mt-1">
             {isLiveData
-              ? Lx("✅ Datos en vivo de Alibaba", "✅ Live data from Alibaba")
+              ? apiData?.fromCache
+                ? Lx("✅ Datos de Alibaba (consulta reciente)", "✅ Alibaba data (recent lookup)")
+                : Lx("✅ Datos en vivo de Alibaba", "✅ Live data from Alibaba")
               : ""}
           </p>
         </div>
@@ -1110,6 +1114,7 @@ export function SupplierResults() {
             <div className="bg-white rounded-lg border border-slate-200 p-4 flex items-center gap-4">
               <Filter className="w-5 h-5 text-slate-400" />
               <select
+                aria-label={Lx("Ordenar resultados", "Sort results")}
                 value={sortBy}
                 onChange={(e) => setSortBy(e.target.value)}
                 className="flex-1 min-w-0 outline-none text-sm bg-transparent"
@@ -1139,14 +1144,11 @@ export function SupplierResults() {
                 >
                   {/* Ranking Badge */}
                   {sortBy === "seal" && index < 3 && (
+                    // 02-11j: a neutral position number (gold/silver/bronze medals read as «best supplier»)
                     <div
-                      className={`absolute -top-3 -left-3 w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-lg z-10 ${
-                        index === 0
-                          ? "bg-gradient-to-br from-yellow-400 to-yellow-600"
-                          : index === 1
-                            ? "bg-gradient-to-br from-slate-300 to-slate-400"
-                            : "bg-gradient-to-br from-amber-600 to-amber-700"
-                      }`}
+                      className="absolute -top-3 -left-3 w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-lg z-10 bg-slate-600"
+                      title={Lx("Posición en el orden sugerido (no es un aval de SEAL)", "Position in the suggested order (not an endorsement by SEAL)")}
+                      aria-label={Lx(`Posición ${index + 1} en el orden sugerido (no es un aval de SEAL)`, `Position ${index + 1} in the suggested order (not an endorsement by SEAL)`)}
                     >
                       #{index + 1}
                     </div>
@@ -1204,7 +1206,7 @@ export function SupplierResults() {
                         <div className="flex items-center gap-4 text-sm text-slate-600">
                           <div className="flex items-center gap-1">
                             <MapPin className="w-4 h-4" />
-                            {supplier.location}
+                            {countryName(supplier.location)}
                           </div>
                           <div className="flex items-center gap-1">
                             <Star className="w-4 h-4 fill-yellow-400 text-yellow-400" />
@@ -1348,7 +1350,7 @@ export function SupplierResults() {
                         >
                           <img
                             src={img}
-                            alt={`Product view ${i + 1}`}
+                            alt={Lx(`Vista del producto ${i + 1}`, `Product view ${i + 1}`)}
                             className="w-full h-24 object-cover transition-transform duration-300 ease-in-out group-hover:scale-110"
                             onError={(e) => {
                               // No stock photo: an image that isn't the real product is hidden
@@ -1373,6 +1375,8 @@ export function SupplierResults() {
                         e.stopPropagation();
                         toggleSave(supplier.id);
                       }}
+                      aria-label={savedSuppliers.includes(supplier.id) ? Lx("Quitar de opciones guardadas", "Remove from saved options") : Lx("Guardar esta opción", "Save this option")}
+                      aria-pressed={savedSuppliers.includes(supplier.id)}
                       className={`px-4 py-2 rounded-lg border-2 transition-all ${
                         savedSuppliers.includes(supplier.id)
                           ? "border-red-500 bg-red-50 text-red-600"
@@ -1595,9 +1599,6 @@ export function SupplierResults() {
                         </div>
                       ))}
                   </div>
-                  <button className="w-full mt-3 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors text-sm font-semibold">
-                    {t("suppliers.exportLeads")} {savedSuppliers.length}
-                  </button>
                 </div>
               )}
             </div>
@@ -1727,7 +1728,7 @@ export function SupplierResults() {
           >
             <img
               src={lightboxImages[lightboxIndex]}
-              alt={`${lightboxSupplier} - Image ${lightboxIndex + 1}`}
+              alt={Lx(`${lightboxSupplier} - imagen ${lightboxIndex + 1}`, `${lightboxSupplier} - image ${lightboxIndex + 1}`)}
               className="max-w-full max-h-[75vh] object-contain rounded-2xl shadow-2xl"
               onError={(e) => {
                 // No stock photo in place of the real product
@@ -1741,8 +1742,7 @@ export function SupplierResults() {
                 {lightboxSupplier}
               </p>
               <p className="text-white/60 text-sm mt-1">
-                Imagen {lightboxIndex + 1} de {lightboxImages.length} • Click
-                fuera para cerrar
+                {Lx(`Imagen ${lightboxIndex + 1} de ${lightboxImages.length} • Toca fuera para cerrar`, `Image ${lightboxIndex + 1} of ${lightboxImages.length} • Tap outside to close`)}
               </p>
             </div>
 
@@ -1764,7 +1764,7 @@ export function SupplierResults() {
                   >
                     <img
                       src={img}
-                      alt={`Thumbnail ${i + 1}`}
+                      alt={Lx(`Miniatura ${i + 1}`, `Thumbnail ${i + 1}`)}
                       className="w-full h-full object-cover"
                     />
                   </button>

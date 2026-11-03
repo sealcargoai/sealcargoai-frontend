@@ -401,6 +401,7 @@ export function ProductQualification() {
                 navigate("/chat", { state: { query: formData.productType || userQuery, name: userName, email: userEmail, descriptionCleaned: !!location.state?.descriptionCleaned } })
               }
               className="text-slate-600 hover:text-[#0B3C5D] flex items-center gap-2 font-medium transition-colors"
+              aria-label={t("qualification.back")}
             >
               <ArrowLeft className="w-4 h-4" />
               <span className="hidden sm:inline">

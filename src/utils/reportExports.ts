@@ -4,7 +4,7 @@ import { differencesHeading, differencesFootnote } from "./differences";
 import { Lx, getLang } from "./lang";
 import { unitWordFor } from "./saleUnit";
 import { showNotice } from "./notice";
-import { estimateNote, scenarioVariables, formatUSD, formatUnitUSD, formatUnitQ, formatQ, qCents, linesTotalQ, lineShares, shareText, perUnitQ } from "./costCalculator";
+import { estimateNote, scenarioVariables, formatUSD, formatUnitUSD, formatUnitQ, formatQ, qCents, linesTotalQ, lineShares, shareText, perUnitQ, ratePct } from "./costCalculator";
 
 // ─── SEAL Company Info (utils/company) ────────────────────────────────────────
 import { SEAL_COMPANY } from "./company";
@@ -272,11 +272,13 @@ export function buildCostWorkbook(data: ExcelExportData): ExcelJS.Workbook {
       l.key === "insurance" && data.costs.productCost > 0 && l.amount > data.costs.productCost * (data.insuranceRate || 0.01) * 1.0001
         ? Lx(`mín. ${formatQ(data.costs.insuranceMin || 250, data.costs.exchangeRate || DEFAULT_FX)}`, `min. ${formatQ(data.costs.insuranceMin || 250, data.costs.exchangeRate || DEFAULT_FX)}`)
         : RATE_BY_KEY[l.key] !== undefined
-        ? `${((RATE_BY_KEY[l.key] as number) * 100).toFixed(0)}%${l.key === "duties" ? Lx(" ref.", " ref.") : ""}`
+        ? `${ratePct(RATE_BY_KEY[l.key] as number)}${l.key === "duties" ? Lx(" ref.", " ref.") : ""}`
         : "—",
     // cents, not float noise (53944.600000000006) when the cell is copied
     amount: qCents(l.amount, data.costs.exchangeRate || DEFAULT_FX),
     pending: l.key === "freight" && !!data.costs.freightPending,
+    // 02-11j: the unrounded amount, for the share («<0.1%» like the screen and PDF, never «0.0%»)
+    rawQ: l.amount * (data.costs.exchangeRate || DEFAULT_FX),
     isRate: RATE_BY_KEY[l.key] !== undefined,
     rateKey: l.key,
   }));
@@ -325,7 +327,8 @@ export function buildCostWorkbook(data: ExcelExportData): ExcelJS.Workbook {
 
     // unrounded amounts; small ones keep 4 decimals (same as the screen and PDF)
     amountCell.value = row.pending ? Lx("Por cotizar", "To be quoted") : row.amount;
-    amountCell.numFmt = qFmt(row.amount);
+    // 02-11j: the cell holds centavos, so it shows centavos (Q0.24, never «Q0.2400»)
+    amountCell.numFmt = '"Q"#,##0.00';
     amountCell.font = {
       name: "Arial",
       size: 10,
@@ -339,7 +342,7 @@ export function buildCostWorkbook(data: ExcelExportData): ExcelJS.Workbook {
     };
 
     // Share of the total (the applied rate has its own column)
-    const percentDisplay = row.pending ? "—" : shareText(row.share, row.amount, 1);
+    const percentDisplay = row.pending ? "—" : shareText(row.share, row.rawQ, 1);
     percentCell.value = percentDisplay;
     percentCell.font = { name: "Arial", size: 10, color: { argb: "FF64748B" } };
     percentCell.alignment = { vertical: "middle", horizontal: "center" };
