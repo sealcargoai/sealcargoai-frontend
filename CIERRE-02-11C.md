@@ -112,3 +112,15 @@ ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), 
 - Espera indicada por el servidor («Espera 30 segundos…»), con la aclaración de que los códigos ya recibidos siguen sirviendo.
 - Botón «Ya tengo un código».
 - Aviso «La verificación de correo no está disponible… no se envió nada».
+
+## 02-11m — código de 8 caracteres y esperas en horas (frontend)
+
+- **Campo del código:** ahora es de 8 caracteres, letras y números (por ejemplo `ABCD-2345`).
+  - Teclado de texto, mayúsculas automáticas y sin corrector.
+  - Se aceptan espacios, guiones y minúsculas: `confirmVerification` los normaliza.
+  - Un código del formato anterior (6 dígitos) da error de formato en la pantalla, sin llamar al servidor.
+- **Mensajes ES/EN:**
+  - «te llegará un código de 8 caracteres»;
+  - «Escribe los 8 caracteres del código (letras y números)»;
+  - si la espera indicada por el servidor dura horas, se dice en horas.
+- **Pruebas:** `tests/verificacion-02-11k.test.ts` y `tests/rendimiento-02-11l.test.ts` quedaron actualizadas.
