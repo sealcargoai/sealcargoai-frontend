@@ -423,8 +423,8 @@ export function FinalCTA() {
           setEmailCode("");
           setEmailNote(
             Lx(
-              "Si ese correo puede recibir mensajes, te llegará un código de 8 caracteres en unos minutos (revisa también spam). Vence en 15 minutos.",
-              "If that address can receive email, an 8-character code will arrive in a few minutes (check spam too). It expires in 15 minutes.",
+              "Si ese correo puede recibir mensajes, te llegará un código de 10 caracteres en unos minutos (revisa también spam). Vence en 15 minutos.",
+              "If that address can receive email, a 10-character code will arrive in a few minutes (check spam too). It expires in 15 minutes.",
             ),
           );
         } else if (r === "limit") {
@@ -434,7 +434,7 @@ export function FinalCTA() {
           const hrs = Math.ceil(secs / 3600);
           const wait =
             secs > 0 && secs < 120
-              ? Lx(`${secs} segundos`, `${secs} seconds`)
+              ? Lx(`${secs} ${secs === 1 ? "segundo" : "segundos"}`, `${secs} ${secs === 1 ? "second" : "seconds"}`)
               : secs >= 120 && secs < 3600
                 ? Lx(`${Math.ceil(secs / 60)} minutos`, `${Math.ceil(secs / 60)} minutes`)
                 : secs >= 3600
@@ -465,7 +465,7 @@ export function FinalCTA() {
       if (!v.ok) {
         setEmailNote(
           v.reason === "format"
-            ? Lx("Escribe los 8 caracteres del código (letras y números), por ejemplo ABCD-2345.", "Type the 8 characters of the code (letters and numbers), for example ABCD-2345.")
+            ? Lx("Escribe los 10 caracteres del código (letras y números), por ejemplo ABCDE-23456.", "Type the 10 characters of the code (letters and numbers), for example ABCDE-23456.")
             : v.reason === "wrong"
               ? Lx("El código no es correcto, ya venció o hubo demasiados intentos. Revísalo o pide uno nuevo.", "The code is wrong, expired, or there were too many attempts. Check it or ask for a new one.")
               : v.reason === "unavailable"
@@ -543,6 +543,20 @@ export function FinalCTA() {
         setEmailStep("email");
         setEmailCode("");
         setEmailNote(Lx("La verificación venció o ya se usó, así que no se envió nada. Pide un código nuevo.", "The verification expired or was already used, so nothing was sent. Ask for a new code."));
+        return;
+      }
+      if (res.status === 429 && (await res.clone().json().catch(() => ({})))?.error === "report_limit") {
+        // 02-11n: the daily cap of reports to this email (3 in 24 h): say so, and give the PDF here
+        const ok = await downloadReportNow();
+        alert(
+          ok
+            ? Lx(
+                "Este correo ya recibió el máximo de informes de hoy (3 en 24 horas), así que no se envió otro. El informe se descargó en este dispositivo.",
+                "This email already received today's maximum of reports (3 in 24 hours), so no other was sent. The report was downloaded to this device.",
+              )
+            : Lx("Este correo ya recibió el máximo de informes de hoy (3 en 24 horas), así que no se envió otro. ", "This email already received today's maximum of reports (3 in 24 hours), so no other was sent. ") + notDownloaded,
+        );
+        closeEmailModal();
         return;
       }
       if (res.status === 403 || res.status === 429) {
@@ -1127,11 +1141,11 @@ export function FinalCTA() {
                     autoCapitalize="characters"
                     spellCheck={false}
                     autoComplete="one-time-code"
-                    pattern="[A-Za-z0-9\s\-]{8,12}"
-                    maxLength={12}
+                    pattern="[A-Za-z0-9\s\-]{10,14}"
+                    maxLength={14}
                     required
-                    aria-label={L("Código de 8 caracteres", "8-character code")}
-                    placeholder={L("Código de 8 caracteres", "8-character code")}
+                    aria-label={L("Código de 10 caracteres", "10-character code")}
+                    placeholder={L("Código de 10 caracteres", "10-character code")}
                     value={emailCode}
                     onChange={(e) => setEmailCode(e.target.value)}
                     className="w-full px-4 py-3 rounded-lg border border-slate-300 tracking-widest focus:outline-none focus:ring-2 focus:ring-blue-500"
