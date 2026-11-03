@@ -208,6 +208,7 @@ export interface SealResult {
   status: number;
   id?: string; // case number (SEAL-YYYYMMDD-XXXXXX)
   duplicate?: boolean; // it was already an open case: updated, not duplicated
+  contactPending?: boolean; // 02-11j: a different phone/company came with the repeat and was not applied
   notified?: boolean; // SEAL's inbox got it (false = registered only: SEAL sees it in the registry)
   caseUrl?: string; // signed page: what SEAL received and the case status
   test?: boolean; // the server identified it as a test record (not a commercial lead)
@@ -227,7 +228,7 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
       body: JSON.stringify(body),
     });
     const j = await res.json().catch(() => ({}));
-    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test, ...(!res.ok && typeof j.error === "string" ? { error: j.error.slice(0, 40) } : {}) };
+    const out: SealResult = { ok: res.ok && !!j.id, status: res.status, id: j.id, duplicate: !!j.duplicate, contactPending: !!j.contactPending, notified: j.notified !== false, caseUrl: typeof j.caseUrl === "string" && /^https?:\/\//.test(j.caseUrl) ? j.caseUrl : undefined , test: !!j.test, ...(!res.ok && typeof j.error === "string" ? { error: j.error.slice(0, 40) } : {}) };
     if (out.ok) {
       // the history of earlier products went with THIS case; a later case of another product
       // starts without it (SEAL must not read guantes/molinos as part of a termos request)
@@ -262,6 +263,13 @@ export async function sendToSeal(req: SealRequest): Promise<SealResult> {
 /** The line the client sees after sending (case number, duplicate or not notified). */
 export function receiptText(r: SealResult, L: (es: string, en: string) => string): string {
   if (!r.id) return "";
+  // 02-11j: a repeat with a different phone/company does not change the case's contact (anyone who knows
+  // the email and product could otherwise): the client is told to confirm it with the case number
+  if (r.duplicate && r.contactPending)
+    return L(
+      `Ya teníamos tu caso ${r.id}: lo actualizamos sin duplicarlo. Por seguridad, el teléfono o la empresa nuevos no se cambian automáticamente; confírmalos por WhatsApp +502 5996 4664 con tu número de caso.`,
+      `We already had your case ${r.id}: we updated it without duplicating it. For security, a new phone or company is not changed automatically; confirm it on WhatsApp +502 5996 4664 with your case number.`,
+    );
   if (r.duplicate)
     return L(
       `Ya teníamos tu caso ${r.id}: lo actualizamos con esta información, sin duplicarlo. SEAL te contactará.`,

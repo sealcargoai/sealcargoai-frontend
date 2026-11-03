@@ -53,6 +53,9 @@ export function estimateNote(): string {
   );
 }
 
+/** 02-11j: a rate as a percentage with up to 2 decimals and no trailing zeros («15%», «7.5%», «0.35%»). */
+export const ratePct = (r: number): string => `${Number((Number(r) * 100).toFixed(2))}%`;
+
 /** What can move this preliminary scenario (shown on screen, PDF and Excel). */
 export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
   return [
@@ -60,8 +63,8 @@ export function scenarioVariables(costs: { freightPending: boolean; dutyRate: nu
       ? Lx("Flete: no está incluido; se cotiza con el volumen y el peso reales.", "Freight: not included; quoted with the actual volume and weight.")
       : Lx("Flete: tarifa real de la naviera o consolidador y volumen/peso confirmados.", "Freight: actual carrier or consolidator rate and confirmed volume/weight."),
     Lx(
-      `DAI: depende de la partida arancelaria; se usó ${Math.round(costs.dutyRate * 100)}% como referencia.`,
-      `DAI duty: depends on the tariff heading; ${Math.round(costs.dutyRate * 100)}% was used as reference.`,
+      `DAI: depende de la partida arancelaria; se usó ${ratePct(costs.dutyRate)} como referencia.`,
+      `DAI duty: depends on the tariff heading; ${ratePct(costs.dutyRate)} was used as reference.`,
     ),
     opts.priceIsMidpoint
       ? Lx("Precio: se usó el precio medio del rango publicado; el precio negociado puede ser otro.", "Price: the midpoint of the published range was used; the negotiated price may differ.")
@@ -84,13 +87,29 @@ export function formatQ(usdAmount: number, exchangeRate: number, decimals = 0): 
 
 /** 30-f: a line amount in quetzales rounded to centavos, the way it is printed in the PDF and Excel. */
 export function qCents(usdAmount: number, exchangeRate: number): number {
-  return Math.round((usdAmount * exchangeRate + Number.EPSILON) * 100) / 100;
+  return round2(usdAmount * exchangeRate);
+}
+/**
+ * 02-11j: half a centavo rounds UP, as it is written. «+ Number.EPSILON» did nothing above 1: a product of
+ * Q32.785 is stored as 32.78499… and was printed Q32.78 (and the CIF base text then differed from the sum
+ * of the printed lines). The value is first read at 12 significant digits (its decimal meaning), then
+ * rounded with a decimal exponent, so no binary error reaches the centavos.
+ */
+export function round2(x: number): number {
+  if (!Number.isFinite(x)) return x;
+  const s = Math.sign(x) || 1;
+  const a = Math.abs(x);
+  // (review) outside the range where toPrecision writes plain decimals: below half a centavo it is 0
+  // («1e-7e2» was NaN), and from 1e15 the double has no centavos to correct
+  if (a < 0.005) return 0;
+  if (a >= 1e15) return x;
+  return s * Number(`${Math.round(Number(`${Number(a.toPrecision(15))}e2`))}e-2`);
 }
 /** 30-f: the total of the printed lines (each already in centavos), so the rows add up to the total. */
 export function linesTotalQ(costs: { lines?: { key: string; amount: number }[]; freightPending?: boolean; totalCost: number }, exchangeRate: number): number {
   if (!costs.lines || !costs.lines.length) return qCents(costs.totalCost, exchangeRate);
   const sum = costs.lines.filter((l) => !(l.key === "freight" && costs.freightPending)).reduce((a, l) => a + qCents(l.amount, exchangeRate), 0);
-  return Math.round((sum + Number.EPSILON) * 100) / 100;
+  return round2(sum);
 }
 
 /**
@@ -148,7 +167,7 @@ export function groupQ(costs: LinesLike, keys: string[], exchangeRate: number): 
   const sum = (costs.lines || [])
     .filter((l) => keys.includes(l.key) && !(l.key === "freight" && costs.freightPending))
     .reduce((a, l) => a + qCents(l.amount, exchangeRate), 0);
-  return Math.round((sum + Number.EPSILON) * 100) / 100;
+  return round2(sum);
 }
 /** A quetzal amount already in quetzales, with centavos («Q64,140.15»). */
 export const formatQAmount = (q: number): string =>
@@ -160,7 +179,7 @@ export function perUnitQ(costs: LinesLike, exchangeRate: number): number {
   const v = linesTotalQ(costs, exchangeRate) / units;
   // under Q1 the figure keeps its significant digits (Q0.0044, never Q0.00), like every unit amount
   if (v < 1) return Number(v.toPrecision(3));
-  return Math.round((v + Number.EPSILON) * 100) / 100;
+  return round2(v);
 }
 /** The US$ equivalent of the printed total, with cents. */
 export function totalUSDText(costs: LinesLike, exchangeRate: number): string {
@@ -206,13 +225,38 @@ export function currentRates(): Rates {
   return ratesCache || DEFAULT_RATES;
 }
 
+/**
+ * 02-11j: the server's rates merged over the defaults, keeping the default for any value that would break or
+ * distort the estimate: not a finite number («7.80» as text, undefined), an exchange rate outside 1–50 (0
+ * gave «QNaN»), a container of 0 m³ (division by zero), negative amounts, or a percentage outside 0–1.
+ */
+export function sanitizeRates(raw: unknown): Rates {
+  const out: Rates = { ...DEFAULT_RATES };
+  const src = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  for (const k of Object.keys(DEFAULT_RATES) as (keyof Rates)[]) {
+    if (!(k in src)) continue;
+    const def = DEFAULT_RATES[k];
+    if (typeof def === "string") {
+      if (typeof src[k] === "string" && String(src[k]).trim()) (out as unknown as Record<string, unknown>)[k] = String(src[k]).trim();
+      continue;
+    }
+    const n = typeof src[k] === "number" ? (src[k] as number) : typeof src[k] === "string" && /^\s*\d+(?:\.\d+)?\s*$/.test(src[k] as string) ? Number(src[k]) : NaN;
+    if (!Number.isFinite(n) || n < 0) continue;
+    if (k === "exchangeRate" && !(n >= 1 && n <= 50)) continue;
+    if (/Cbm$/.test(k) && k !== "lclMinCbm" && !(n > 0)) continue;
+    if (/Rate$/.test(k) && k !== "exchangeRate" && n > 1) continue;
+    (out as unknown as Record<string, unknown>)[k] = n;
+  }
+  return out;
+}
+
 export function fetchRates(): Promise<Rates> {
   if (ratesCache) return Promise.resolve(ratesCache);
   if (!ratesPromise) {
     ratesPromise = fetch(`${API_URL}/api/rates`)
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        const r: Rates = { ...DEFAULT_RATES, ...(data?.rates || {}) };
+        const r = sanitizeRates(data?.rates);
         ratesCache = r;
         return r;
       })
@@ -284,12 +328,17 @@ export function calculateFreight(
   }
 
   if (chargeable <= rates.lclMaxCbm) {
-    const perCbm = (rates.container40 / rates.container40Cbm) * rates.lclFactor;
-    const cbm = Math.max(rates.lclMinCbm, chargeable);
+    // 02-11j (review): the line is exactly «m³ shown × rate shown»: the rate in quetzales with centavos and
+    // the m³ with 2 decimals, so 3.30 m³ × Q1,551.27 = Q5,119.19 is the line (not Q5,119.20)
+    const perCbmQ = round2(((rates.container40 / rates.container40Cbm) * rates.lclFactor) * rates.exchangeRate);
+    const perCbm = perCbmQ / rates.exchangeRate;
+    const cbm = round2(Math.max(rates.lclMinCbm, chargeable));
     return {
-      amount: perCbm * cbm,
+      amount: round2(perCbmQ * cbm) / rates.exchangeRate,
       mode: "LCL",
-      detail: `${Lx("Carga consolidada", "Consolidated cargo")} • ${cbm.toFixed(2)} m³ × ${formatQ(perCbm, rates.exchangeRate)}/m³ • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
+      // 02-11j: the rate per m³ with centavos (Q1,551 × 3.30 did not give the line's Q5,119.20) and why
+      // the m³ charged can differ from the volume entered (minimum, or weight)
+      detail: `${Lx("Carga consolidada", "Consolidated cargo")} • ${cbm.toFixed(2)} m³${chargeable < rates.lclMinCbm ? Lx(" (mínimo cobrable)", " (minimum chargeable)") : (weightKg || 0) / 1000 > (volumeCbm || 0) ? Lx(" (por peso: 1,000 kg = 1 m³)", " (by weight: 1,000 kg = 1 m³)") : ""} × ${formatQ(perCbm, rates.exchangeRate, 2)}/m³ • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
       chargeableCbm: cbm,
     };
   }
@@ -336,8 +385,13 @@ export function calculateCosts(
   const localCharges = rates.localChargesGTQ > 0 ? rates.localChargesGTQ / rates.exchangeRate : Math.round(rates.localCharges);
 
   const totalCost = productCost + shipping + insurance + importDuties + taxes + customsFees + localCharges;
+  // 02-11j: the bases printed in the DAI and IVA details are the sums of the printed lines (centavos), so
+  // «FOB + seguro Q2,059.14» is exactly the FOB line plus the insurance line on the same page
+  const baseCifQ = round2(qCents(productCost, rates.exchangeRate) + qCents(shipping, rates.exchangeRate) + qCents(insurance, rates.exchangeRate));
+  const baseVatQ = round2(baseCifQ + qCents(importDuties, rates.exchangeRate));
 
-  const pct = (r: number) => `${(r * 100).toFixed(0)}%`;
+  // 02-11j: the rate as used (7.5%, never «8%» for a 7.5% calculation)
+  const pct = ratePct;
   const lines: CostLine[] = [
     {
       key: "product",
@@ -364,14 +418,14 @@ export function calculateCosts(
       key: "duties",
       // reference rate: the real one depends on the tariff heading
       label: Lx("DAI (arancel) referencial", "DAI (import duty), reference"),
-      detail: `${pct(rates.dutyRate)} ${shipping > 0 ? Lx("sobre valor CIF (FOB + flete + seguro)", "on CIF value (FOB + freight + insurance)") : Lx("sobre FOB + seguro (falta sumar el flete al CIF)", "on FOB + insurance (freight still to be added to CIF)")} ${formatQ(cif, rates.exchangeRate, 2)}`,
+      detail: `${pct(rates.dutyRate)} ${shipping > 0 ? Lx("sobre valor CIF (FOB + flete + seguro)", "on CIF value (FOB + freight + insurance)") : Lx("sobre FOB + seguro (falta sumar el flete al CIF)", "on FOB + insurance (freight still to be added to CIF)")} ${qText(baseCifQ)}`,
       amount: importDuties,
       color: "#60A5FA",
     },
     {
       key: "vat",
       label: Lx("IVA", "IVA (VAT)"),
-      detail: `${pct(rates.vatRate)} ${shipping > 0 ? Lx("sobre CIF + DAI", "on CIF + DAI") : Lx("sobre FOB + seguro + DAI (sin flete)", "on FOB + insurance + DAI (without freight)")} ${formatQ(cif + importDuties, rates.exchangeRate, 2)}`,
+      detail: `${pct(rates.vatRate)} ${shipping > 0 ? Lx("sobre CIF + DAI", "on CIF + DAI") : Lx("sobre FOB + seguro + DAI (sin flete)", "on FOB + insurance + DAI (without freight)")} ${qText(baseVatQ)}`,
       amount: taxes,
       color: "#93C5FD",
     },
