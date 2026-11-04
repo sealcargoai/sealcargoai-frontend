@@ -133,3 +133,12 @@ ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), 
   - Un código de 8 o de 6 caracteres da error de formato sin llamar al servidor.
 - **Tope diario de informes:** cuando el servidor responde 429 `report_limit`, la pantalla dice en ES/EN que ese correo ya recibió el máximo de 3 informes en 24 horas y descarga el PDF.
 - **Pruebas:** `tests/verificacion-02-11k.test.ts` y `tests/rendimiento-02-11l.test.ts` quedaron actualizadas.
+
+## 02-11o — desafío del navegador y renovación sin código (frontend)
+
+- **Comprobación breve (`src/utils/pow.ts`):** cuando el servidor responde 428 `challenge_required`, el navegador resuelve el desafío y vuelve a pedir el código.
+  - Usa una implementación propia de SHA-256 (probada byte a byte contra Node) y corre por partes, sin congelar la página.
+  - Mientras tanto, la pantalla avisa en ES/EN: «Hay mucha demanda en este momento: tu navegador hace una comprobación breve…».
+  - Si el desafío es inválido o se repite, se detiene a los 3 reintentos.
+- **Informe sin código nuevo:** si en las últimas 12 h este navegador verificó ese mismo correo, se pide una autorización nueva con la sesión (`/verify/renew`) y no se envía otro código. Si el servidor no la acepta, se vuelve al código.
+- **Pruebas:** `tests/abuso-02-11o.test.ts` (6).

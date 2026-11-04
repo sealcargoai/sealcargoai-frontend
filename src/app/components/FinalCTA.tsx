@@ -1,4 +1,4 @@
-import { startVerification, confirmVerification, lastRetryAfterSeconds } from "../../utils/verifiedEmail";
+import { startVerification, confirmVerification, lastRetryAfterSeconds, renewGrant } from "../../utils/verifiedEmail";
 import { sendToSeal, receiptText, rememberCase, caseContext } from "../../utils/caseContext";
 import { currentCase, scenarioMatches } from "../../utils/caseStore";
 import { useEffect, useState } from "react";
@@ -414,10 +414,22 @@ export function FinalCTA() {
   };
   const handleEmailReport = async (e: React.FormEvent) => {
     e.preventDefault();
+    // 02-11o: a recent verification of this same email in this browser (12 h) gives a new authorization
+    // without a new code; only when there is none (or it expired) is a code emailed
+    let renewed = "";
     if (emailStep === "email") {
       setSubmitting(true);
+      renewed = await renewGrant(emailRecipient);
+    }
+    if (emailStep === "email" && !renewed) {
       try {
-        const r = await startVerification(emailRecipient, Lx("es", "en") as "es" | "en");
+        const r = await startVerification(emailRecipient, Lx("es", "en") as "es" | "en", (running) =>
+          setEmailNote(
+            running
+              ? Lx("Hay mucha demanda en este momento: tu navegador hace una comprobación breve antes de pedir el código…", "There is high demand right now: your browser is doing a short check before asking for the code…")
+              : "",
+          ),
+        );
         if (r === "sent") {
           setEmailStep("code");
           setEmailCode("");
@@ -459,7 +471,7 @@ export function FinalCTA() {
     }
     setSubmitting(true);
     try {
-      const reuse = pendingGrant && pendingGrant.email === emailRecipient.trim() ? pendingGrant.grant : "";
+      const reuse = renewed || (pendingGrant && pendingGrant.email === emailRecipient.trim() ? pendingGrant.grant : "");
       const v = reuse ? ({ ok: true, reportGrant: reuse } as const) : await confirmVerification(emailRecipient, emailCode);
       setPendingGrant(null);
       if (!v.ok) {
