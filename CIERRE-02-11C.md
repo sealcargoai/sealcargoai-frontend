@@ -158,3 +158,8 @@ ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), 
 - Chat: respuestas concretas para baterías de litio (datos UN38.3, Wh, MSDS, embalaje; decide el transportista) y para antes de pagar el anticipo (proforma, especificaciones, condiciones de pago, beneficiario = proveedor). Un mensaje que cambia el caso y pregunta algo responde las dos cosas; «Son 300 sillas. ¿…» ya no toma «300 sillas. Qué le pido al» como producto.
 - Informe por correo: diálogo con rol y nombre, se desplaza con el teclado abierto (alto visible), foco en el código, botón cerrar con etiqueta, descarga alternativa y WhatsApp de SEAL dentro del diálogo.
 - Pruebas: `tests/proveedores-02-11s.test.ts` (21), `tests/chat-02-11s.test.ts` (10); L10/L26 de `combined-review3` cambian a «por confirmar» a propósito.
+
+## 02-11t — Voltaje del equipo, mismas razones que el servidor (2026-11-04)
+
+- `utils/voltage.ts` (copia exacta de backend `services/voltage.js`) decide el voltaje en `electricMatch.ts`: el de un componente no cuenta; incompatibles salen; variantes → «Confirma que te coticen la variante de 220 V»; sin dato o sin saber a qué corresponde → «Voltaje del equipo por confirmar».
+- `tests/voltaje-02-11t.test.ts` (33): los 25 vectores de `tests/fixtures/voltage-vectors.json` (idénticos a los del servidor) dan el mismo veredicto y contienen las mismas palabras en ES y EN; Hz/W/kW/kV/mAh no son voltaje.

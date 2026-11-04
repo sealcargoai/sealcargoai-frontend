@@ -68,7 +68,7 @@ describe("recorrido de la lista: excluir antes de ordenar; grupos separados", ()
       ["Industrial screw air compressor 220V 60Hz", "match"],
       ["Industrial screw air compressor", "confirm"],
     ]);
-    expect(g.shown[1].verdictNotes.join(" ")).toMatch(/no indica el voltaje/);
+    expect(g.shown[1].verdictNotes.join(" ")).toMatch(/Voltaje del equipo por confirmar/);
   });
   it("ordenar por precio no sube una «por confirmar» sobre una clara", () => {
     const g = groupByVerdict(list, D);
