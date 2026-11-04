@@ -74,12 +74,29 @@ export function leadingZeroBits(challenge: string, nonce: string): number {
   return bits;
 }
 
-/** Finds a nonce for `bits` zero bits; yields to the page every slice. Gives up after `maxTries`. */
-export async function solveChallenge(challenge: string, bits: number, maxTries = 1 << 24): Promise<string> {
-  const slice = 20_000;
-  for (let start = 0; start < maxTries; start += slice) {
+export interface SolveOptions {
+  /** 0..1 estimate (tries / expected tries), called about every slice */
+  onProgress?: (fraction: number) => void;
+  /** the person pressed «Cancelar» */
+  signal?: AbortSignal;
+  /** give up after this long (the page tells the person what to do); default 30 s */
+  maxMs?: number;
+}
+/**
+ * Finds a nonce for `bits` zero bits; yields to the page every slice so it stays responsive.
+ * 02-11o: reports progress, can be cancelled and never runs longer than `maxMs` (default 30 s).
+ * Returns "" when cancelled, out of time, or the difficulty is out of range.
+ */
+export async function solveChallenge(challenge: string, bits: number, opts: SolveOptions = {}): Promise<string> {
+  if (!(bits > 0 && bits <= 24)) return "";
+  const deadline = Date.now() + (opts.maxMs ?? 30_000);
+  const expected = 2 ** bits;
+  const slice = 5_000;
+  for (let start = 0; ; start += slice) {
+    if (opts.signal?.aborted || Date.now() > deadline) return "";
     for (let n = start; n < start + slice; n++) if (leadingZeroBits(challenge, String(n)) >= bits) return String(n);
+    // the expected number of tries is 2^bits; the estimate approaches but never reaches 100 %
+    opts.onProgress?.(Math.min(0.95, 1 - Math.exp(-(start + slice) / expected)));
     await new Promise((r) => setTimeout(r, 0));
   }
-  return "";
 }
