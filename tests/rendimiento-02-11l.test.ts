@@ -73,6 +73,6 @@ describe("verificación: respuestas del servidor (02-11l)", () => {
     expect(s).toMatch(/is unavailable right now and nothing was sent/);
     // the unused authorization is kept for a retry (no new code needed when nothing was sent)
     expect(s).toMatch(/setPendingGrant\(\{ email: emailRecipient\.trim\(\), grant: v\.reportGrant \}\)/);
-    expect(s).toMatch(/const reuse = pendingGrant && pendingGrant\.email === emailRecipient\.trim\(\)/);
+    expect(s).toMatch(/const reuse = renewed \|\| \(pendingGrant && pendingGrant\.email === emailRecipient\.trim\(\)/);
   });
 });
