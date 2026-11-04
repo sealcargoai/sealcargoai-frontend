@@ -6,7 +6,7 @@ import { matchFeatures, featureText } from "./featureMatch";
 import { Lx } from "./lang";
 import { requestedSpecs, matchSpecs, specLabel } from "./capacity";
 import { matchUse } from "./useMatch";
-import { matchMaterial, partMaterialIssue } from "./materialMatch";
+import { matchMaterial, partMaterialIssue, materialUnstated } from "./materialMatch";
 import { matchElectric } from "./electricMatch";
 import { componentText, type ComponentFlag } from "./componentMatch";
 
@@ -24,10 +24,36 @@ export function listingDifferences(
   description: string,
   supplier?: { productName?: string; componentFlag?: ComponentFlag } | null,
 ): ListingDifferences {
+  const { title, diffs, toConfirm } = compare(description, supplier);
+  return { title, items: [...diffs, ...toConfirm].filter(Boolean) };
+}
+
+/**
+ * 02-11s: one verdict per listing, from the same comparison the screen and the reports use:
+ * - "incompatible": the title contradicts the request (another voltage, a material the client ruled out,
+ *   a steel toe cap when a composite one was asked, a part instead of the product…). It is not recommended.
+ * - "confirm": nothing contradicts, but something asked is not stated (or several options are offered).
+ * - "match": everything asked that can be read in a title is stated as asked. Still published data only.
+ */
+export type Verdict = "match" | "confirm" | "incompatible";
+export function listingVerdict(
+  description: string,
+  supplier?: { productName?: string; componentFlag?: ComponentFlag } | null,
+): { verdict: Verdict; reasons: string[]; toConfirm: string[] } {
+  const { diffs, toConfirm } = compare(description, supplier);
+  const reasons = diffs.filter(Boolean);
+  const open = toConfirm.filter(Boolean);
+  return { verdict: reasons.length ? "incompatible" : open.length ? "confirm" : "match", reasons, toConfirm: open };
+}
+
+function compare(
+  description: string,
+  supplier?: { productName?: string; componentFlag?: ComponentFlag } | null,
+): { title: string; diffs: string[]; toConfirm: string[] } {
   const title = String(supplier?.productName || "").trim();
   const diffs: string[] = [];
   const toConfirm: string[] = [];
-  if (!title) return { title, items: [] };
+  if (!title) return { title, diffs, toConfirm };
 
   if (supplier?.componentFlag) diffs.push(sentence(componentText(supplier.componentFlag).warn));
 
@@ -66,7 +92,12 @@ export function listingDifferences(
           : Lx(`La publicación indica ${mat.listed}, un material que excluiste`, `The listing states ${mat.listed}, a material you ruled out`),
       ),
     );
-  else if (mat?.mixed)
+  else if (!mat && !part) {
+    // 02-11s: «sin látex» / «puntera compuesta» asked and the title says nothing about it
+    const unstated = materialUnstated(description, title);
+    if (unstated) toConfirm.push(sentence(Lx(`La publicación no indica ${unstated}; confírmalo con el proveedor`, `The listing does not state ${unstated}; confirm it with the supplier`)));
+  }
+  if (mat?.status !== "other" && mat?.mixed)
     toConfirm.push(
       sentence(Lx(`El título menciona varios materiales (${mat.mixed}); puede ser una mezcla y no ${mat.asked} puro: pide la ficha técnica`, `The title names several materials (${mat.mixed}); it may be a blend rather than pure ${mat.asked}: ask for the technical sheet`)),
     );
@@ -81,9 +112,10 @@ export function listingDifferences(
   for (const i of specs?.items ?? []) {
     if (i.status === "meets" && !i.edge) continue;
     const l = specLabel(i);
-    (i.status === "lower" || i.status === "higher" ? diffs : toConfirm).push(sentence(`${l.text}. ${l.sub}`));
+    // a larger capacity than asked is a difference to weigh, not a contradiction (02-11s)
+    (i.status === "lower" ? diffs : toConfirm).push(sentence(`${l.text}. ${l.sub}`));
   }
-  return { title, items: [...diffs, ...toConfirm].filter(Boolean) };
+  return { title, diffs, toConfirm };
 }
 
 /** The heading and closing line the reports use with these items. */

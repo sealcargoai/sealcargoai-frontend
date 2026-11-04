@@ -194,6 +194,16 @@ export function matchElectric(description: string, productTitle?: string): Elect
   const engOk = !want.engines.length || (!!engOnly && want.engines.includes(engOnly));
   // Guatemala's grid is 60 Hz: a title stating only 50 Hz is worth a check
   const only50 = !want.hz.length && g.hz.length > 0 && !g.hz.includes(60);
+  // 02-11s: "220V/380V" (several voltages, one of them the requested): an option to confirm, not a match
+  const voltOptions = [...g.ranges.map(([a, b]) => `${a}-${b} V`), ...g.volts.map((v) => `${v} V`)];
+  if (got && hasVolts(want) && voltsOk && voltOptions.length > 1 && phaseOk && hzOk && engOk)
+    return {
+      status: "unknown",
+      asked,
+      listed: describe(got),
+      text: Lx(`Ofrece varias opciones de voltaje (${voltOptions.join(" / ")}); una es ${voltText(want)}`, `It offers several voltage options (${voltOptions.join(" / ")}); one is ${voltText(want)}`),
+      sub: Lx("Confirma que te coticen esa opción", "Confirm they quote that option"),
+    };
   if (got && phaseOk && voltsOk && hzOk && engOk && !bothPhases && !only50) {
     const okText = describe(want) || want.engines.map(engineWord).join(" / ");
     return { status: "match", asked, listed: describe(got), text: Lx(`Indica la alimentación pedida: ${okText}`, `States the requested power supply: ${okText}`), sub: "" };

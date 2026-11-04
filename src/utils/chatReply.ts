@@ -30,7 +30,8 @@ export function productFromMessage(text: string): string | null {
   const asks = /\?/.test(t) || QUESTION_WORD.test(t) || replyKinds(m ? m[1] : t).length > 0;
   if (m) {
     // the product ends where a question or another clause starts
-    const cap = clean(m[1].split(/[,;¿]|\s+(?:y|and|pero|but)\s+(?:qu[eé]|c[oó]mo|cu[aá]nto|necesit|what|how|do|does)\b/i)[0]);
+    // 02-11s: a sentence ends the product too ("Son 300 sillas. ¿Qué le pido…" is not «300 sillas. Qué le pido al»)
+    const cap = clean(m[1].split(/[,;¿!¡]|\.(?=\s|$)|\s+(?:y|and|pero|but)\s+(?:qu[eé]|c[oó]mo|cu[aá]nto|necesit|what|how|do|does)\b/i)[0]);
     if (!cap || NOT_A_PRODUCT.test(cap) || QUESTION_WORD.test(cap)) return null;
     // a strong verb names the product; "es/son …" or a question need a product word
     if ((STRONG.test(t) && !asks) || inferCategory(cap) !== "other") return cap;
@@ -2392,6 +2393,11 @@ function baseKinds(text: string): string[] {
   return inner;
 }
 
+const LITHIUM = /\bbater[ií]as?\s+(?:de\s+)?(?:ion(?:es)?\s+de\s+)?litio|\blitio\b|\blithium\b|\bli[\s-]?ion\b|\blifepo4\b|\bpower\s*banks?\b|\bbater[ií]as?\s+externas?\b/;
+// "no quiero baterías de litio, son sillas", "sin baterías", "not lithium": not a question about batteries
+const LITHIUM_NEG = /\b(?:no|ni|sin|not|without|no\s+son|no\s+quiero)\s+(?:[a-záéíóúñ]+\s+){0,2}(?:bater[ií]as?|litio|lithium|power\s*banks?)\b/;
+const DEPOSIT = /\banticipos?\b|\badelanto\b|\bpag(?:o|ar)\s+(?:por\s+)?adelantad|\bdep[oó]sito\s+(?:inicial|al\s+proveedor)|\b(?:advance|down)\s+payment|\bdeposit\b|\bprepay|\b(?:t\/t|tt)\s+(?:30|50)\s*%/;
+
 function baseKindsInner(text: string): string[] {
   const t = text.toLowerCase();
   const kinds: string[] = [];
@@ -2403,15 +2409,19 @@ function baseKindsInner(text: string): string[] {
   // how many boxes fit in a container is a question of volume, not of counting
   if (/contenedor|container/.test(t) && /cab[ea]n?|caber|entran?|meter|fit|cu[aá]nt[oa]s\s+(?:cajas|bultos|tarimas)\s+(?:son|hay|caben)|how\s+many\s+(?:boxes|cartons|pallets)/.test(t)) return ["container"];
   const isMath = !!(packMathAll(text).length || packMath(text) || bareMath(text));
+  // 02-11s: lithium batteries (dangerous goods) and what to ask before paying a deposit get concrete steps
+  if (LITHIUM.test(t) && !LITHIUM_NEG.test(t) && !isMath) kinds.push("lithium");
+  const deposit = DEPOSIT.test(t) && !isMath;
+  if (deposit) kinds.push("deposit");
   if (/certificad|certificaci|certificate|certification|\bce\b|\bfda\b|\biso\b|\bul\b|\brohs\b|\bsgs\b|grado alimenticio|food[- ]grade|apto para alimentos|suitable for food/.test(t)) kinds.push("certificate");
   // in a calculation, "mi proveedor exige un mínimo" is context, not a question about the supplier
-  if ((isMath ? /confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit|seguro\s+el\s+proveedor/ : /proveedor|supplier|seller|vendedor|f[aá]brica|factory|confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit/).test(t)) kinds.push("supplier");
+  if (!deposit && (isMath ? /confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit|seguro\s+el\s+proveedor/ : /proveedor|supplier|seller|vendedor|f[aá]brica|factory|confiable|reliable|\breal\b|estafa|fraude|scam|verificad|verificaci|verified|verification|legit/).test(t)) kinds.push("supplier");
   // "Guarantee" goes to customs authorization only when the question is about the import itself
   const customsCtx = /importaci|aduana|autoriz|permiso|aprobad|aprobaci|liberaci|despacho|que pase|customs|\bimport(?:ation|s)?\s+(?:dut|permit|licen|tax|clearance|approv)|authoriz|permit|approv/.test(t);
   // "asegurar" alone ("¿puedo asegurar que son 20 pares?") is not about customs
   const guaranteeWord = /garantiz|garant[ií]a de que|sin problema|guarantee/.test(t) || (customsCtx && /asegur/.test(t));
   const permitWord = /permiso|autoriz|licencia|permit|authoriz|license/.test(t);
-  if ((customsCtx && (!isMath || guaranteeWord || permitWord)) || (guaranteeWord && !kinds.includes("certificate"))) kinds.push("guarantee");
+  if (((customsCtx && (!isMath || guaranteeWord || permitWord)) || (guaranteeWord && !kinds.includes("certificate") && !(deposit && !customsCtx))) && !kinds.includes("lithium")) kinds.push("guarantee");
   if (/\bdai\b|arancel|partida|impuesto|\biva\b|tributo|tariff|duty|duties|\btax/.test(t)) kinds.push("dai");
   if (!/libres?|almacenaje|bodegaje|storage|free\s+days/.test(t) && /cu[aá]nto\s+(?:tiempo|tarda|demora)|cu[aá]ntos\s+d[ií]as|cu[aá]ndo\s+(?:llega|llegar[ií]a|estar[ií]a)|when\s+(?:will\s+it\s+)?arrive|tiempo\s+de\s+(?:tr[aá]nsito|env[ií]o|llegada)|tarda\s+en\s+llegar|how\s+long|transit\s+time|lead\s+time/.test(t)) kinds.push("transit");
   else if (isMath ? /precio|costo|cuest[ae]|cotiz|price|cost|quote|how much/.test(t) : /precio|costo|cu[aá]nto\b|cotiz|price|cost|quote|how much/.test(t)) kinds.push("cost");
@@ -2475,6 +2485,17 @@ function certificateReply(text: string, ctx: ChatCtx): string {
 }
 
 const FIXED: Record<string, () => string> = {
+  // 02-11s: orientation with concrete steps; it never says the cargo is authorized
+  lithium: () =>
+    Lx(
+      "Las baterías de litio son mercancía peligrosa: por avión se aceptan solo con condiciones (tipo de batería, energía, estado de carga y embalaje), y la aerolínea o el transportista decide; no puedo confirmar que tu carga sea aceptada. Pide al proveedor, antes de comprar: 1) si son de ion de litio o de litio metal y si van sueltas, empacadas con el equipo o dentro de él; 2) la energía por batería en Wh (o los gramos de litio) y el voltaje; 3) el informe de prueba UN38.3 y la hoja de seguridad (MSDS/SDS); 4) el número UN y la instrucción de embalaje que aplicaría, el peso y las medidas por caja y el estado de carga. Con esos datos SEAL consulta al transportista si se acepta por avión o conviene marítimo, y qué permisos pide la importación (WhatsApp +502 5996 4664).",
+      "Lithium batteries are dangerous goods: by air they are accepted only under conditions (battery type, energy, state of charge and packaging), and the airline or carrier decides; I can't confirm your cargo will be accepted. Ask the supplier before buying: 1) whether they are lithium-ion or lithium-metal and whether they ship loose, packed with the equipment or inside it; 2) the energy per battery in Wh (or grams of lithium) and the voltage; 3) the UN38.3 test summary and the safety data sheet (MSDS/SDS); 4) the UN number and packing instruction that would apply, weight and dimensions per box and the state of charge. With that data SEAL asks the carrier whether it goes by air or ocean is better, and which permits the import needs (WhatsApp +502 5996 4664).",
+    ),
+  deposit: () =>
+    Lx(
+      "Antes de pagar el anticipo, pide y revisa: 1) una proforma (PI) con el nombre legal del proveedor, el modelo exacto, especificaciones (medidas, material, voltaje), cantidad, precio unitario, Incoterm (por ejemplo FOB y puerto) y plazo de producción; 2) la ficha técnica y fotos del producto real, o una muestra si el pedido lo justifica; 3) las condiciones de pago por escrito: porcentaje del anticipo, cuándo se paga el saldo (contra copia del B/L o tras una inspección) y qué pasa si hay atraso o defectos; 4) que el beneficiario de la cuenta bancaria sea la misma empresa de la proforma y del contrato; desconfía si te piden pagar a una persona o a otra empresa, o si cambian los datos bancarios por correo, y confírmalo por un canal distinto. Esto no confirma que el proveedor sea confiable: si quieres, SEAL revisa la proforma y la partida antes de que pagues (WhatsApp +502 5996 4664).",
+      "Before paying the deposit, ask for and check: 1) a proforma invoice (PI) with the supplier's legal name, exact model, specifications (dimensions, material, voltage), quantity, unit price, Incoterm (for example FOB and port) and production time; 2) the technical sheet and photos of the real product, or a sample if the order justifies it; 3) the payment terms in writing: deposit percentage, when the balance is paid (against a copy of the B/L or after an inspection) and what happens with delays or defects; 4) that the bank account beneficiary is the same company as on the proforma and contract; be wary if asked to pay a person or another company, or if the bank details change by email, and confirm through a different channel. This doesn't confirm the supplier is reliable: if you want, SEAL reviews the proforma and the tariff heading before you pay (WhatsApp +502 5996 4664).",
+    ),
   supplier: () =>
     Lx(
       "No puedo confirmar si un proveedor es real o confiable: la herramienta solo organiza lo que publica la plataforma (insignias, años, reseñas) y no lo verifica. Siguiente paso: continúa con el formulario para ver opciones ordenadas por índice referencial y, si vas a comprar, pide a SEAL la verificación del proveedor en China (servicio adicional).",
@@ -3455,7 +3476,20 @@ function isQuestion(text: string): boolean {
   const t = String(text || "").toLowerCase().trim();
   return /[?¿]/.test(t) || /^(?:qu[eé]|c[oó]mo|cu[aá]nt\w*|cu[aá]l\w*|d[oó]nde|cu[aá]ndo|qui[eé]n\w*|por\s*qu[eé]|puedo|pueden|podr[ií]a\w*|tienen|hay|es\s+posible|se\s+puede|how|what|which|where|when|who|why|can|could|do|does|is|are)\b/.test(t);
 }
+// 02-11s: a message that changes the case AND asks something ("Son 300 sillas. ¿Cuánto tarda en llegar?",
+// "…¿qué le pido antes del anticipo?") used to get only the case update; the question is answered too.
+// Only orientation answers are added (never a calculation or a second case change).
+const ADVICE = ["lithium", "deposit", "transit", "dai", "supplier", "guarantee", "container"];
 export function buildReply(r: ReplySpec): string {
+  const out = buildReplyInner(r);
+  if (!r.caseNow || !(r.fieldUpdate || r.hypothetical || r.hold)) return out;
+  const extra = replyKinds(r.text)
+    .filter((k) => ADVICE.includes(k))
+    .map((k) => FIXED[k]())
+    .filter((t) => t && !out.includes(t.slice(0, 60)));
+  return extra.length ? [out, ...extra].join("\n\n") : out;
+}
+function buildReplyInner(r: ReplySpec): string {
   if (r.formUpdate)
     return Lx(
       `Actualizaste el producto en el formulario: ahora es «${r.newProduct}». Sigo con ese producto; lo que hablamos antes se conserva arriba.`,

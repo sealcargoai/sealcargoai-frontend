@@ -100,6 +100,7 @@ const alt = (xs: [RegExp, string, string][]) => xs.map(([r]) => r.source).join("
 // "fiberglass toe cap leather shoes" would read as a leather toe cap)
 const PART_A = new RegExp(`\\b(${alt(PART_WORDS)})\\s+(?:(no|sin)\\s+)?(?:de|en)\\s+(?:(no|sin)\\s+)?(${alt(PART_MATS)})\\b`, "gi");
 const PART_A_NOMAT = new RegExp(`\\b(${alt(PART_WORDS)})\\s+(no|non)[\\s-]+(${alt(PART_MATS)})\\b`, "gi");
+const PART_C = /\b(punteras?|suelas?|entresuelas?|plantillas?)\s+(?:(no)\s+)?(compuest[oa]s?|met[aá]lic[oa]s?)\b/gi;
 const PART_B = new RegExp(`\\b(?:(non|no|sin)[\\s-]+)?(${alt(PART_MATS)})[\\s-]+(${alt(PART_WORDS)})\\b`, "gi");
 const nameOf = (xs: [RegExp, string, string][], w: string) => xs.find(([r]) => new RegExp(`^(?:${r.source})$`, "i").test(w.trim()));
 
@@ -115,6 +116,9 @@ function partMaterials(text?: string): { pairs: PartMat[]; rest: string } {
   let rest = t.replace(PART_A, (all, pw, neg1, neg2, mw, off) => (add(pw, mw, !!(neg1 || neg2), t.slice(Math.max(0, off - 8), off)), " "));
   // "puntera no metálica"
   rest = rest.replace(PART_A_NOMAT, (all, pw, neg, mw) => (add(pw, mw, true, ""), " "));
+  // 02-11s: "puntera compuesta", "puntera metálica", "suela no metálica": the material as an adjective
+  // right after the part (Spanish only; "toe cap leather shoes" would read as a leather toe cap)
+  rest = rest.replace(PART_C, (all, pw, neg, mw) => (add(pw, mw, !!neg, ""), " "));
   const t2 = rest;
   rest = rest.replace(PART_B, (all, neg, mw, pw, off) => (add(pw, mw, !!neg, t2.slice(Math.max(0, off - 8), off)), " "));
   return { pairs, rest };
@@ -176,6 +180,33 @@ export function partMaterialIssue(description: string, productTitle?: string): P
       };
   }
   return gradeIssue(description, productTitle);
+}
+
+/**
+ * 02-11s: what the client asked about the material (or ruled out) that the listing does not state at all:
+ * «sin látex» against "Disposable gloves", «puntera compuesta» against "Safety boots". Those are data to
+ * confirm, never a match. "" when everything asked is addressed (or nothing was asked).
+ */
+export function materialUnstated(description: string, productTitle?: string): string {
+  const out: string[] = [];
+  const title = String(productTitle || "");
+  // parts: "puntera compuesta" asked, the title names no material for the toe cap
+  const wantParts = partMaterials(description).pairs.filter((p) => !p.negated);
+  const gotParts = partMaterials(title).pairs;
+  for (const w of wantParts)
+    if (!gotParts.some((g) => g.part === w.part)) out.push(Lx(`de qué es ${w.part === "puntera" ? "la puntera" : `la ${w.part}`} (pediste ${w.mat})`, `what the ${w.partEn} is made of (you asked for ${w.matEn})`));
+  // whole product: "sin látex" / "de algodón" asked, the title names no material and doesn't say "latex free"
+  const descRest = partMaterials(description).rest;
+  const { wanted, excluded } = splitExclusions(descRest);
+  const asked = matsIn(wanted);
+  const ruledOut = matsIn(`${excluded} ${notMadeOf(descRest)}`).filter((m) => !asked.includes(m));
+  if ((asked.length || ruledOut.length) && !matsIn(partMaterials(title).rest).length) {
+    const saidNot = matsIn(notMadeOf(title));
+    const open = ruledOut.filter((m) => !saidNot.includes(m));
+    if (asked.length) out.push(Lx(`el material (pediste ${asked.map((m) => m.es).join(" o ")})`, `the material (you asked for ${asked.map((m) => m.en).join(" or ")})`));
+    else if (open.length) out.push(Lx(`si contiene ${open.map((m) => m.es).join(" o ")} (lo excluiste)`, `whether it contains ${open.map((m) => m.en).join(" or ")} (you ruled it out)`));
+  }
+  return out.join(Lx(" ni ", " or "));
 }
 
 export function matchMaterial(description: string, productTitle?: string): MaterialMatch | null {
