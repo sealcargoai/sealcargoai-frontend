@@ -1,6 +1,7 @@
 // 02-11k: proof of control of an email. The server mails a 10-character code (02-11n; 8 in 02-11m, 6 digits before); the code gives a session
 // (12 h, used by searches of a QA account) and a single-use report grant (30 min). Nothing here is
 // trusted by the server: it checks every token itself. Storage only saves the client retyping a code.
+import { solveChallenge } from "./pow";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
 const KEY = "seal_verified_session";
 
@@ -37,28 +38,71 @@ export function rememberVerifiedSession(email: string, session: string, seconds:
 export type StartResult = "sent" | "limit" | "not_supported" | "invalid" | "unavailable" | "error";
 /** Seconds the server asked to wait after a «limit» answer (02-11l: progressive wait), 0 if unknown. */
 export let lastRetryAfterSeconds = 0;
-/** Asks the server to email a code. «sent» never confirms the address exists or will receive it. */
-export async function startVerification(email: string, lang: "es" | "en"): Promise<StartResult> {
+/** 02-11o: called while the browser solves the server's short check (so the screen can say so). */
+export type OnCheck = (running: boolean) => void;
+/**
+ * Asks the server to email a code. «sent» never confirms the address exists or will receive it.
+ * 02-11o: while the service is receiving many requests the server answers 428 with a small challenge; the
+ * browser solves it (a second or two) and asks again, at most 3 times.
+ */
+export async function startVerification(email: string, lang: "es" | "en", onCheck?: OnCheck): Promise<StartResult> {
   try {
-    const res = await fetch(`${API}/api/email/verify/start`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: email.trim(), lang }),
-    });
-    if (res.ok) return "sent";
-    if (res.status === 429) {
-      const j = await res.json().catch(() => ({}));
-      lastRetryAfterSeconds = Math.max(0, Math.min(3600, Number(j?.retryAfterSeconds) || 0));
-      return "limit";
-    }
-    if (res.status === 503) return "unavailable";
-    if (res.status === 400) {
-      const j = await res.json().catch(() => ({}));
-      return j?.error === "email_not_supported" ? "not_supported" : "invalid";
+    let extra: Record<string, string> = {};
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const res = await fetch(`${API}/api/email/verify/start`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), lang, ...extra }),
+      });
+      if (res.ok) return "sent";
+      if (res.status === 428 && attempt < 3) {
+        const j = await res.json().catch(() => ({}));
+        const bits = Number(j?.difficulty);
+        if (typeof j?.challenge !== "string" || !(bits > 0 && bits <= 24)) return "error";
+        onCheck?.(true);
+        const nonce = await solveChallenge(j.challenge, bits);
+        onCheck?.(false);
+        if (!nonce) return "error";
+        extra = { challenge: j.challenge, nonce };
+        continue;
+      }
+      if (res.status === 429) {
+        const j = await res.json().catch(() => ({}));
+        lastRetryAfterSeconds = Math.max(0, Math.min(3600, Number(j?.retryAfterSeconds) || 0));
+        return "limit";
+      }
+      if (res.status === 503) return "unavailable";
+      if (res.status === 400) {
+        const j = await res.json().catch(() => ({}));
+        return j?.error === "email_not_supported" ? "not_supported" : "invalid";
+      }
+      return "error";
     }
     return "error";
   } catch {
+    onCheck?.(false);
     return "error";
+  }
+}
+
+/**
+ * 02-11o: with a verified session of this email (12 h) the server gives a new single-use report grant
+ * without emailing a new code. "" when there is no session or the server refuses it (then: code).
+ */
+export async function renewGrant(email: string): Promise<string> {
+  const session = verifiedSessionFor(email);
+  if (!session) return "";
+  try {
+    const res = await fetch(`${API}/api/email/verify/renew`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim(), session }),
+    });
+    if (!res.ok) return "";
+    const j = await res.json().catch(() => ({}));
+    return typeof j?.reportGrant === "string" ? j.reportGrant : "";
+  } catch {
+    return "";
   }
 }
 
