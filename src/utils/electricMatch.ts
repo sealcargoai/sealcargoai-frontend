@@ -4,6 +4,7 @@
 // one property that matches never hides another that doesn't. Only reads what is
 // written: a title that says nothing about it is "to confirm", never a match.
 import { Lx } from "./lang";
+import { voltageCheck, equipmentPart } from "./voltage";
 
 export type Phase = "single" | "three" | "";
 export type Engine = "electric" | "diesel" | "gasoline";
@@ -128,7 +129,10 @@ export function matchElectric(description: string, productTitle?: string): Elect
   if (!want.phase && ex.phase) want.phase = ex.phase === "single" ? "three" : "single";
   want.volts = want.volts.filter((v) => !ex.volts.includes(v));
   want.engines = want.engines.filter((e) => !ex.engines.includes(e));
-  const got = parseElectric(productTitle);
+  // 02-11t: the equipment's own figures ("control panel 220 V" is a component's), and the voltage verdict
+  // shared with the server (utils/voltage.ts ⇄ backend services/voltage.js)
+  const got = parseElectric(equipmentPart(productTitle).text);
+  const vc = voltageCheck(description, productTitle);
   // the engine type only matters when a fuel engine is in play ("eléctrico" alone, as in an
   // electric kettle, says nothing to compare)
   const fuel = (es: Engine[]) => es.some((e) => e !== "electric");
@@ -164,12 +168,11 @@ export function matchElectric(description: string, productTitle?: string): Elect
   const g = got || { phase: "" as Phase, volts: [], ranges: [], hz: [], engines: [] };
   const phaseOff = !!want.phase && !!g.phase && g.phase !== want.phase;
   if (phaseOff) parts.push(Lx(`Esta publicación indica ${phaseWord(g.phase)}; solicitaste ${phaseWord(want.phase)}`, `This listing states ${phaseWord(g.phase)}; you asked for ${phaseWord(want.phase)}`));
-  const voltsOff = hasVolts(want) && hasVolts(g) && !voltsMeet(want, g);
+  const voltsOff = vc?.verdict === "incompatible";
   const lead = (es: string, en: string) => (parts.length ? Lx(es.toLowerCase(), en.toLowerCase()) : Lx(`Esta publicación ${es.toLowerCase()}`, `This listing ${en.toLowerCase()}`));
-  if (voltsOff) parts.push(Lx(`${lead("indica", "states")} ${voltText(g)}; solicitaste ${voltText(want)}`, `${lead("indica", "states")} ${voltText(g)}; you asked for ${voltText(want)}`));
-  // a voltage the client ruled out
-  const ruledVolts = hasVolts(g) && !voltsMeet(want, g) ? g.volts.filter((v) => ex.volts.includes(v)) : [];
-  if (ruledVolts.length && !voltsOff) parts.push(Lx(`${lead("indica", "states")} ${ruledVolts.join(" / ")} V, que excluiste`, `${lead("indica", "states")} ${ruledVolts.join(" / ")} V, which you ruled out`));
+  const lower1 = (x: string) => (parts.length ? x.charAt(0).toLowerCase() + x.slice(1) : x);
+  // another voltage than the one asked, or one the client ruled out (the shared verdict and its words)
+  if (voltsOff) parts.push(lower1(Lx(vc!.es, vc!.en)));
   const hzOff = want.hz.length > 0 && g.hz.length > 0 && !g.hz.some((h) => want.hz.includes(h));
   if (hzOff) parts.push(Lx(`${lead("indica", "states")} ${g.hz.join("/")} Hz; solicitaste ${want.hz.join("/")} Hz`, `${lead("indica", "states")} ${g.hz.join("/")} Hz; you asked for ${want.hz.join("/")} Hz`));
   // engine: fuel when the client asked electric (or ruled the fuel out), and the other way round
@@ -189,21 +192,14 @@ export function matchElectric(description: string, productTitle?: string): Elect
 
   // nothing contradicts: what matches and what is still unstated
   const phaseOk = !want.phase || g.phase === want.phase;
-  const voltsOk = !hasVolts(want) || voltsMeet(want, g);
+  const voltsOk = !hasVolts(want) ? vc?.verdict !== "confirm" : vc?.verdict === "match";
   const hzOk = !want.hz.length || g.hz.some((h) => want.hz.includes(h));
   const engOk = !want.engines.length || (!!engOnly && want.engines.includes(engOnly));
   // Guatemala's grid is 60 Hz: a title stating only 50 Hz is worth a check
   const only50 = !want.hz.length && g.hz.length > 0 && !g.hz.includes(60);
-  // 02-11s: "220V/380V" (several voltages, one of them the requested): an option to confirm, not a match
-  const voltOptions = [...g.ranges.map(([a, b]) => `${a}-${b} V`), ...g.volts.map((v) => `${v} V`)];
-  if (got && hasVolts(want) && voltsOk && voltOptions.length > 1 && phaseOk && hzOk && engOk)
-    return {
-      status: "unknown",
-      asked,
-      listed: describe(got),
-      text: Lx(`Ofrece varias opciones de voltaje (${voltOptions.join(" / ")}); una es ${voltText(want)}`, `It offers several voltage options (${voltOptions.join(" / ")}); one is ${voltText(want)}`),
-      sub: Lx("Confirma que te coticen esa opción", "Confirm they quote that option"),
-    };
+  // 02-11t: several voltages, only a component's, or none for the equipment: the shared verdict says why
+  if (vc?.verdict === "confirm" && phaseOk && hzOk && engOk && !bothPhases)
+    return { status: "unknown", asked, listed: got ? describe(got) : "", text: Lx(vc.es, vc.en) + (only50 ? Lx(`; además indica ${g.hz.join("/")} Hz (en Guatemala la red es de 60 Hz)`, `; it also states ${g.hz.join("/")} Hz (Guatemala's grid is 60 Hz)`) : ""), sub: Lx("Confírmalo con el proveedor antes de comprar", "Confirm it with the supplier before buying") };
   if (got && phaseOk && voltsOk && hzOk && engOk && !bothPhases && !only50) {
     const okText = describe(want) || want.engines.map(engineWord).join(" / ");
     return { status: "match", asked, listed: describe(got), text: Lx(`Indica la alimentación pedida: ${okText}`, `States the requested power supply: ${okText}`), sub: "" };
