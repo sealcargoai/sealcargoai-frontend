@@ -1,7 +1,7 @@
 import { startVerification, confirmVerification, lastRetryAfterSeconds, renewGrant } from "../../utils/verifiedEmail";
 import { sendToSeal, receiptText, rememberCase, caseContext } from "../../utils/caseContext";
 import { currentCase, scenarioMatches } from "../../utils/caseStore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { cleanSupplier } from "../../utils/text";
 import { qtyFrom, resolveScenario, priceNoteFor, reportNotesFor } from "../../utils/scenario";
 import { clearDraft } from "../../utils/draft";
@@ -267,6 +267,9 @@ export function FinalCTA() {
   const [emailNote, setEmailNote] = useState("");
   // 02-11l: an authorization obtained but not used (the server could not check it): kept for a retry
   const [pendingGrant, setPendingGrant] = useState<{ email: string; grant: string } | null>(null);
+  // 02-11o: the short browser check (proof of work): progress shown, can be cancelled, at most 30 s
+  const [checking, setChecking] = useState(false);
+  const checkAbort = useRef<AbortController | null>(null);
 
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
 
@@ -406,6 +409,7 @@ export function FinalCTA() {
   // 02-11k: step 1 asks the server to email a code; step 2 checks it and sends the report to that same
   // address with the single-use grant. The PDF is made here with the client's data: the email says so.
   const closeEmailModal = () => {
+    checkAbort.current?.abort();
     setPendingGrant(null);
     setShowEmailModal(false);
     setEmailStep("email");
@@ -423,13 +427,25 @@ export function FinalCTA() {
     }
     if (emailStep === "email" && !renewed) {
       try {
-        const r = await startVerification(emailRecipient, Lx("es", "en") as "es" | "en", (running) =>
-          setEmailNote(
-            running
-              ? Lx("Hay mucha demanda en este momento: tu navegador hace una comprobación breve antes de pedir el código…", "There is high demand right now: your browser is doing a short check before asking for the code…")
-              : "",
-          ),
+        checkAbort.current = new AbortController();
+        const r = await startVerification(
+          emailRecipient,
+          Lx("es", "en") as "es" | "en",
+          (running, progress = 0) => {
+            setChecking(running);
+            const pct = Math.round(progress * 100);
+            setEmailNote(
+              running
+                ? Lx(
+                    `Hay mucha demanda en este momento: tu navegador hace una comprobación breve antes de pedir el código (${pct} %). Puede tardar hasta 30 segundos; puedes cancelarla.`,
+                    `There is high demand right now: your browser is doing a short check before asking for the code (${pct}%). It can take up to 30 seconds; you can cancel it.`,
+                  )
+                : "",
+            );
+          },
+          checkAbort.current.signal,
         );
+        setChecking(false);
         if (r === "sent") {
           setEmailStep("code");
           setEmailCode("");
@@ -458,7 +474,11 @@ export function FinalCTA() {
               `Several codes were already requested for this email. Wait ${wait} to ask for another. If a code reached you in the last 15 minutes it still works: use «I already have a code».`,
             ),
           );
-        } else if (r === "unavailable")
+        } else if (r === "cancelled")
+          setEmailNote(Lx("Cancelaste la comprobación; no se pidió ningún código. Puedes intentarlo de nuevo o descargar el PDF.", "You cancelled the check; no code was requested. You can try again or download the PDF."));
+        else if (r === "too_slow")
+          setEmailNote(Lx("La comprobación tardó demasiado en este dispositivo y se detuvo; no se pidió ningún código. Intenta en unos minutos (con menos demanda no hace falta) o descarga el PDF.", "The check took too long on this device and was stopped; no code was requested. Try again in a few minutes (with less demand it is not needed) or download the PDF."));
+        else if (r === "unavailable")
           setEmailNote(Lx("La verificación de correo no está disponible en este momento y no se envió nada. Intenta en unos minutos o descarga el PDF.", "Email verification is unavailable right now and nothing was sent. Try again in a few minutes or download the PDF."));
         else if (r === "not_supported")
           setEmailNote(Lx("Escribe el correo sin tildes, eñes ni caracteres especiales, por ejemplo nombre@empresa.com.", "Write the email without accents or special characters, for example name@company.com."));
@@ -1179,6 +1199,11 @@ export function FinalCTA() {
                 <p role="status" aria-live="polite" className="text-sm text-slate-700 bg-slate-50 border border-slate-200 rounded-lg p-3" data-testid="email-note">
                   {emailNote}
                 </p>
+              )}
+              {checking && (
+                <button type="button" onClick={() => checkAbort.current?.abort()} className="text-sm text-[#0B3C5D] underline" data-testid="cancel-check">
+                  {L("Cancelar la comprobación", "Cancel the check")}
+                </button>
               )}
 
               <button

@@ -35,17 +35,17 @@ export function rememberVerifiedSession(email: string, session: string, seconds:
   }
 }
 
-export type StartResult = "sent" | "limit" | "not_supported" | "invalid" | "unavailable" | "error";
+export type StartResult = "sent" | "limit" | "not_supported" | "invalid" | "unavailable" | "cancelled" | "too_slow" | "error";
 /** Seconds the server asked to wait after a «limit» answer (02-11l: progressive wait), 0 if unknown. */
 export let lastRetryAfterSeconds = 0;
-/** 02-11o: called while the browser solves the server's short check (so the screen can say so). */
-export type OnCheck = (running: boolean) => void;
+/** 02-11o: called while the browser solves the server's short check: running, and progress 0..1. */
+export type OnCheck = (running: boolean, progress?: number) => void;
 /**
  * Asks the server to email a code. «sent» never confirms the address exists or will receive it.
  * 02-11o: while the service is receiving many requests the server answers 428 with a small challenge; the
  * browser solves it (a second or two) and asks again, at most 3 times.
  */
-export async function startVerification(email: string, lang: "es" | "en", onCheck?: OnCheck): Promise<StartResult> {
+export async function startVerification(email: string, lang: "es" | "en", onCheck?: OnCheck, signal?: AbortSignal, maxMs = 30_000): Promise<StartResult> {
   try {
     let extra: Record<string, string> = {};
     for (let attempt = 0; attempt < 4; attempt++) {
@@ -59,10 +59,10 @@ export async function startVerification(email: string, lang: "es" | "en", onChec
         const j = await res.json().catch(() => ({}));
         const bits = Number(j?.difficulty);
         if (typeof j?.challenge !== "string" || !(bits > 0 && bits <= 24)) return "error";
-        onCheck?.(true);
-        const nonce = await solveChallenge(j.challenge, bits);
+        onCheck?.(true, 0);
+        const nonce = await solveChallenge(j.challenge, bits, { signal, maxMs, onProgress: (p) => onCheck?.(true, p) });
         onCheck?.(false);
-        if (!nonce) return "error";
+        if (!nonce) return signal?.aborted ? "cancelled" : "too_slow";
         extra = { challenge: j.challenge, nonce };
         continue;
       }

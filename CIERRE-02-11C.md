@@ -142,3 +142,11 @@ ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), 
   - Si el desafío es inválido o se repite, se detiene a los 3 reintentos.
 - **Informe sin código nuevo:** si en las últimas 12 h este navegador verificó ese mismo correo, se pide una autorización nueva con la sesión (`/verify/renew`) y no se envía otro código. Si el servidor no la acepta, se vuelve al código.
 - **Pruebas:** `tests/abuso-02-11o.test.ts` (6).
+
+## 02-11p — comprobación del navegador acotada, cancelable y con progreso
+
+- **Progreso:** `solveChallenge` lo informa como una estimación de 0 a 95 %, se puede cancelar con `AbortSignal` y se detiene a los 30 s.
+- **Mensaje durante la comprobación:** indica el porcentaje y que puede tardar hasta 30 segundos. Aparece el botón «Cancelar la comprobación» («Cancel the check»).
+- **Si se cancela o no alcanza el tiempo:** no se pide ningún código y el mensaje explica qué hacer, en ES/EN. Cerrar el formulario también cancela la comprobación.
+- **Mediciones:** están en el `CIERRE-02-11C.md` del backend. El peor caso medido, 18 bits con la CPU 6 veces más lenta, fue de 8.2 s.
+- **Pruebas:** `tests/abuso-02-11o.test.ts` pasó de 6 a 9.

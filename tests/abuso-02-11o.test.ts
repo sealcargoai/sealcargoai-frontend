@@ -83,12 +83,54 @@ describe("pedir código con desafío y renovar con sesión", () => {
   });
 });
 
+describe("02-11p: comprobación acotada", () => {
+  it("informa el progreso, se puede cancelar y se detiene al llegar al tiempo máximo", async () => {
+    const seen: number[] = [];
+    // 30 bits is out of range: refused at once
+    expect(await solveChallenge("c", 30)).toBe("");
+    // impossible in time: stops at maxMs
+    const t0 = Date.now();
+    expect(await solveChallenge("1793790000000.Q2g.24.mac", 24, { maxMs: 300, onProgress: (p) => seen.push(p) })).toBe("");
+    expect(Date.now() - t0).toBeLessThan(2000);
+    expect(seen.length).toBeGreaterThan(0);
+    expect(Math.max(...seen)).toBeLessThanOrEqual(0.95);
+    expect(seen.every((p, i) => i === 0 || p >= seen[i - 1])).toBe(true);
+    // cancelled
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 50);
+    expect(await solveChallenge("1793790000000.Q2g.24.mac", 24, { signal: ac.signal })).toBe("");
+  });
+  it("startVerification: cancelado → «cancelled»; sin tiempo → «too_slow» (nada se pide al servidor después)", async () => {
+    let calls = 0;
+    vi.stubGlobal("fetch", async () => {
+      calls++;
+      return new Response(JSON.stringify({ error: "challenge_required", challenge: "1793790000000.Q2g.24.mac", difficulty: 24 }), { status: 428 });
+    });
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 50);
+    expect(await v.startVerification("a@cliente-ficticio.test", "es", undefined, ac.signal)).toBe("cancelled");
+    expect(calls).toBe(1);
+    calls = 0;
+    expect(await v.startVerification("a@cliente-ficticio.test", "es", undefined, undefined, 200)).toBe("too_slow");
+    expect(calls).toBe(1);
+  });
+});
+
 describe("pantalla del informe", () => {
   const s = readFileSync(new URL("../src/app/components/FinalCTA.tsx", import.meta.url), "utf8");
   it("intenta renovar antes de pedir un código, y avisa en ES/EN durante la comprobación", () => {
     expect(s.indexOf("renewed = await renewGrant(emailRecipient)")).toBeGreaterThan(0);
-    expect(s.indexOf("renewed = await renewGrant(emailRecipient)")).toBeLessThan(s.indexOf("await startVerification(emailRecipient"));
+    expect(s.indexOf("renewed = await renewGrant(emailRecipient)")).toBeLessThan(s.indexOf("await startVerification("));
     expect(s).toMatch(/tu navegador hace una comprobación breve/);
     expect(s).toMatch(/your browser is doing a short check/);
+  });
+  it("02-11p: progreso en %, botón «Cancelar la comprobación», límite de 30 s y mensajes ES/EN de cancelado y demasiado lento", () => {
+    expect(s).toMatch(/comprobación breve antes de pedir el código \(\$\{pct\} %\)/);
+    expect(s).toMatch(/Cancelar la comprobación", "Cancel the check"/);
+    expect(s).toMatch(/Cancelaste la comprobación; no se pidió ningún código/);
+    expect(s).toMatch(/You cancelled the check; no code was requested/);
+    expect(s).toMatch(/tardó demasiado en este dispositivo/);
+    expect(s).toMatch(/took too long on this device/);
+    expect(s).toMatch(/checkAbort\.current\?\.abort\(\)/);
   });
 });
