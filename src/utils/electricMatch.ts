@@ -4,7 +4,7 @@
 // one property that matches never hides another that doesn't. Only reads what is
 // written: a title that says nothing about it is "to confirm", never a match.
 import { Lx } from "./lang";
-import { voltageCheck, equipmentPart } from "./voltage";
+import { voltageCheck, equipmentPart, requestedVolts, readVolts, fmtVolts, negatedVolts } from "./voltage";
 
 export type Phase = "single" | "three" | "";
 export type Engine = "electric" | "diesel" | "gasoline";
@@ -14,6 +14,7 @@ export interface Electric {
   ranges: [number, number][]; // "220-240V"
   hz: number[];
   engines: Engine[];
+  label?: string; // 02-11w: the voltages as the shared reader writes them ("24 V DC")
 }
 
 const SINGLE = /\b(?:monof[aá]sic[oa]s?|mono\s*-?\s*f[aá]sic[oa]|single[\s-]*phase|one[\s-]*phase|1[\s-]*(?:phase|fase|ph)\b|1\s*-?\s*φ|1\s*~|1\s*f\b|una\s+fase)/;
@@ -34,7 +35,6 @@ const ENGINE_RE: Record<Engine, RegExp> = {
 const NEG = "(?:no|ni|sin|excepto|salvo|menos|excluy\\w*|exclu[iy]\\w*|descart\\w*|evit\\w*|not|nor|no\\s+quiero|except|excluding|exclude\\w*|without|avoid\\w*)";
 const PHASE_WORDS = `(?:monof[aá]sic[oa]s?|mono\\s*-?\\s*f[aá]sic[oa]s?|single[\\s-]*phase|one[\\s-]*phase|1[\\s-]*(?:phase|fase|ph)|trif[aá]sic[oa]s?|tri\\s*-?\\s*f[aá]sic[oa]s?|three[\\s-]*phase|3[\\s-]*(?:phase|fases?|ph))`;
 const NEGATED = new RegExp(`\\b${NEG}\\s+(?:[a-záéíóúüñ]+\\s+){0,4}?${PHASE_WORDS}(?:\\s*(?:,|y|o|ni|or|and|nor)\\s*${PHASE_WORDS})*`, "g");
-const NEG_VOLTS = new RegExp(`\\b${NEG}\\s+(?:[a-záéíóúüñ]+\\s+){0,3}?(\\d{2,3})\\s*(?:v|volts?|voltios?|vac)\\b`, "g");
 const NEG_ENGINE = new RegExp(`\\b${NEG}\\s+(?:[a-záéíóúüñ]+\\s+){0,3}?(di[eé]sel|gasolin[ae]|petrol|el[eé]ctric[oa]?)`, "g");
 
 export interface Exclusions {
@@ -54,10 +54,11 @@ export function exclusions(text?: string): Exclusions {
     else if (hasThree(m) && !hasSingle(m)) phase = "three";
     return " ";
   });
-  t = t.replace(NEG_VOLTS, (_m, v) => {
-    volts.push(Number(v));
-    return " ";
-  });
+  // 02-11w: the shared reading (utils/voltage.ts): only a negation about the voltage rules it out
+  // ("sin aceite 220 V" asks for 220 V)
+  const nv = negatedVolts(t);
+  volts.push(...nv.ruled);
+  t = nv.rest;
   t = t.replace(NEG_ENGINE, (_m, w: string) => {
     engines.push(/di/.test(w) ? "diesel" : /gas|petrol/.test(w) ? "gasoline" : "electric");
     return " ";
@@ -98,7 +99,7 @@ export function parseElectric(text?: string): Electric | null {
 
 const phaseWord = (p: Phase) => (p === "single" ? Lx("monofásico", "single-phase") : Lx("trifásico", "three-phase"));
 const engineWord = (e: Engine) => (e === "electric" ? Lx("eléctrico", "electric") : e === "diesel" ? Lx("motor diésel", "diesel engine") : Lx("motor a gasolina", "gasoline engine"));
-const voltText = (e: Electric) => [...e.ranges.map(([a, b]) => `${a}-${b} V`), ...e.volts.map((v) => `${v} V`)].join(" / ");
+const voltText = (e: Electric) => e.label ?? [...e.ranges.map(([a, b]) => `${a}-${b} V`), ...e.volts.map((v) => `${v} V`)].join(" / ");
 const describe = (e: Electric) =>
   [voltText(e), e.phase ? phaseWord(e.phase) : "", e.hz.length ? e.hz.map((h) => `${h} Hz`).join("/") : ""].filter(Boolean).join(" ");
 /** A requested voltage is offered: the same figure, or inside a published range (and the other way round). */
@@ -131,7 +132,20 @@ export function matchElectric(description: string, productTitle?: string): Elect
   want.engines = want.engines.filter((e) => !ex.engines.includes(e));
   // 02-11t: the equipment's own figures ("control panel 220 V" is a component's), and the voltage verdict
   // shared with the server (utils/voltage.ts ⇄ backend services/voltage.js)
-  const got = parseElectric(equipmentPart(productTitle).text);
+  // 02-11w: the voltages (any figure, AC/DC when written) come from the shared reader, the same as the server
+  const rv = requestedVolts(description);
+  want.volts = rv.list.map((x) => x.v);
+  want.ranges = rv.ranges.map((r) => [r.a, r.b] as [number, number]);
+  want.label = fmtVolts(rv);
+  const eqText = equipmentPart(productTitle, description).text;
+  const gv = readVolts(eqText);
+  let got = parseElectric(eqText);
+  if (!got && (gv.list.length || gv.ranges.length)) got = { phase: "", volts: [], ranges: [], hz: [], engines: [] };
+  if (got) {
+    got.volts = gv.list.map((x) => x.v);
+    got.ranges = gv.ranges.map((r) => [r.a, r.b] as [number, number]);
+    got.label = fmtVolts(gv);
+  }
   const vc = voltageCheck(description, productTitle);
   // the engine type only matters when a fuel engine is in play ("eléctrico" alone, as in an
   // electric kettle, says nothing to compare)
@@ -198,8 +212,9 @@ export function matchElectric(description: string, productTitle?: string): Elect
   // Guatemala's grid is 60 Hz: a title stating only 50 Hz is worth a check
   const only50 = !want.hz.length && g.hz.length > 0 && !g.hz.includes(60);
   // 02-11t: several voltages, only a component's, or none for the equipment: the shared verdict says why
-  if (vc?.verdict === "confirm" && phaseOk && hzOk && engOk && !bothPhases)
-    return { status: "unknown", asked, listed: got ? describe(got) : "", text: Lx(vc.es, vc.en) + (only50 ? Lx(`; además indica ${g.hz.join("/")} Hz (en Guatemala la red es de 60 Hz)`, `; it also states ${g.hz.join("/")} Hz (Guatemala's grid is 60 Hz)`) : ""), sub: Lx("Confírmalo con el proveedor antes de comprar", "Confirm it with the supplier before buying") };
+  // 02-11w: the voltage reason is the server's; a title that also mixes phases (no phase asked) adds that note
+  if (vc?.verdict === "confirm" && phaseOk && hzOk && engOk && (!bothPhases || !want.phase))
+    return { status: "unknown", asked, listed: got ? describe(got) : "", text: Lx(vc.es, vc.en) + (bothPhases ? Lx("; además menciona monofásico y trifásico", "; it also mentions single- and three-phase") : "") + (only50 ? Lx(`; además indica ${g.hz.join("/")} Hz (en Guatemala la red es de 60 Hz)`, `; it also states ${g.hz.join("/")} Hz (Guatemala's grid is 60 Hz)`) : ""), sub: Lx("Confírmalo con el proveedor antes de comprar", "Confirm it with the supplier before buying") };
   if (got && phaseOk && voltsOk && hzOk && engOk && !bothPhases && !only50) {
     const okText = describe(want) || want.engines.map(engineWord).join(" / ");
     return { status: "match", asked, listed: describe(got), text: Lx(`Indica la alimentación pedida: ${okText}`, `States the requested power supply: ${okText}`), sub: "" };
