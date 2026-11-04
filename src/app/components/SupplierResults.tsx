@@ -3,7 +3,7 @@ import { track } from "../../utils/funnel";
 import { sendToSeal, receiptText, setCaseScenario, SCENARIO_KEYS } from "../../utils/caseContext";
 import { supplierKey, loadCostChoices } from "../../utils/draft";
 import { qtyFrom, resolveScenario, type CostChoices } from "../../utils/scenario";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Fragment } from "react";
 import { useNavigate, useLocation } from "react-router";
 import {
   Star,
@@ -38,6 +38,8 @@ import { orderByUse, matchUse, wantedText } from "../../utils/useMatch";
 import { orderByMaterial, matchMaterial, partMaterialIssue } from "../../utils/materialMatch";
 import { orderByElectric, matchElectric } from "../../utils/electricMatch";
 import { flagComponents, orderByComponent, type ComponentFlag } from "../../utils/componentMatch";
+import { groupByVerdict, sortWithinGroups } from "../../utils/verdictGroups";
+import type { Verdict } from "../../utils/differences";
 import { saleUnitInfo, unitWordFor, packSizeFromTitle } from "../../utils/saleUnit";
 import { descriptionIsDetailed } from "../../utils/descriptionCheck";
 import {
@@ -250,6 +252,8 @@ function MorePlatforms({
 function NoResults({
   keyword,
   noRelevant = false,
+  contradicted = [],
+  contradictedCount = 0,
   noSearch = false,
   totalAnalyzed,
   filteredOut,
@@ -260,6 +264,9 @@ function NoResults({
 }: {
   keyword: string;
   noRelevant?: boolean;
+  /** 02-11s: why each listing was left out (its title contradicts the request) */
+  contradicted?: string[];
+  contradictedCount?: number;
   /** 02-11: this tab has no search (opened from a link, a new tab or after the session ended) */
   noSearch?: boolean;
   totalAnalyzed: number;
@@ -353,6 +360,17 @@ function NoResults({
                   )}
           </p>
 
+          {contradictedCount > 0 && (
+            <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 text-sm text-amber-900" data-testid="none-match">
+              <p className="font-medium mb-1">
+                {Lx(
+                  `No hay coincidencias claras: ${contradictedCount} ${contradictedCount === 1 ? "publicación contradice" : "publicaciones contradicen"} lo que pediste, así que no las recomendamos.`,
+                  `No clear matches: ${contradictedCount} ${contradictedCount === 1 ? "listing contradicts" : "listings contradict"} what you asked for, so we don't recommend them.`,
+                )}
+              </p>
+              {contradicted[0] && <p>{Lx("Por ejemplo:", "For example:")} {contradicted[0]}</p>}
+            </div>
+          )}
           {allFiltered && filteredOut.length > 0 && (
             <details className="mb-6 bg-red-50 border border-red-200 rounded-xl p-4">
               <summary className="cursor-pointer font-medium text-red-900">
@@ -617,6 +635,58 @@ function sortSuppliers<T extends { price: number; rating: number | null; moq: nu
   return copy;
 }
 
+// 02-11s: the verdict of each recommended listing, in words (published data, never a check by SEAL)
+function VerdictTag({ supplier }: { supplier: { verdict?: Verdict; verdictNotes?: string[] } }) {
+  if (supplier.verdict === "confirm")
+    return (
+      <div className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-2" data-testid="verdict-confirm">
+        <span className="font-semibold">{Lx("Especificación por confirmar", "Specification to confirm")}</span>
+        {supplier.verdictNotes?.length ? <span>: {supplier.verdictNotes.join(" ")}</span> : null}
+      </div>
+    );
+  if (supplier.verdict === "match")
+    return (
+      <p className="text-xs text-emerald-800 mb-2" data-testid="verdict-match">
+        <span className="font-semibold">{Lx("Coincide según el anuncio", "Matches according to the listing")}</span>{" "}
+        {Lx("(lo publicado por el proveedor; confírmalo antes de comprar)", "(what the supplier published; confirm it before buying)")}
+      </p>
+    );
+  return null;
+}
+
+// 02-11s: the server's reasons come as { es, en }; anything else is ignored
+const serverReasonsText = (v: unknown): string[] =>
+  (Array.isArray(v) ? v : [])
+    .map((r) => (r && typeof r === "object" ? Lx(String((r as { es?: unknown }).es ?? ""), String((r as { en?: unknown }).en ?? "")) : ""))
+    .filter((x) => x && x.length < 200);
+
+// 02-11s: listings left out because their title contradicts the request (shown on demand, never recommended)
+function ExcludedBySpec({ list, serverCount = 0, serverReasons = [] }: { list: { item: { name?: string; productName?: string }; reasons: string[] }[]; serverCount?: number; serverReasons?: string[] }) {
+  // the server already left out some listings (same rules, before ordering): counted here too
+  const total = list.length + serverCount;
+  if (!total) return null;
+  return (
+    <details className="bg-slate-50 border border-slate-200 rounded-lg p-3 text-sm text-slate-700" data-testid="excluded-by-spec">
+      <summary className="cursor-pointer font-medium">
+        {Lx(
+          `${total} ${total === 1 ? "publicación no se recomienda porque contradice" : "publicaciones no se recomiendan porque contradicen"} lo que pediste`,
+          `${total} ${total === 1 ? "listing is not recommended because it contradicts" : "listings are not recommended because they contradict"} what you asked for`,
+        )}
+      </summary>
+      <ul className="mt-2 space-y-1">
+        {list.slice(0, 20).map((x, i) => (
+          <li key={i}>
+            <span className="text-slate-500">{x.item.productName || x.item.name}</span> — {x.reasons[0]}
+          </li>
+        ))}
+        {serverReasons.map((r, i) => (
+          <li key={`s${i}`}>{r}</li>
+        ))}
+      </ul>
+    </details>
+  );
+}
+
 interface Supplier {
   id: number;
   name: string;
@@ -626,6 +696,8 @@ interface Supplier {
   priceNotComparable?: boolean;
   saleUnit?: string;
   componentFlag?: ComponentFlag;
+  verdict?: Verdict;
+  verdictNotes?: string[];
   rating: number | null;
   reviews: number;
   moq: number;
@@ -679,7 +751,7 @@ export function SupplierResults() {
   // Alibaba text can arrive HTML-escaped ("&amp;"); decode it once here
   // Order: requested use first (a paint mill is not a corn mill), then specs, then the rest
   // Order: parts/accessories last, then requested use, material and specs
-  const displaySuppliers: Supplier[] = (flagPrices as (l: unknown[], t: string) => Supplier[])(orderByComponent(flagComponents(orderByUse(orderByElectric(orderByMaterial(orderBySpecs(
+  const ranked = orderByComponent(flagComponents(orderByUse(orderByElectric(orderByMaterial(orderBySpecs(
     (apiData?.topSuppliers ?? []).map((s: Supplier, idx: number) => ({
       ...s,
       // Older results could carry 0 when the price text was "US$0.02-0.05": use the range midpoint
@@ -698,7 +770,11 @@ export function SupplierResults() {
       productName: s.productName ? decodeEntities(s.productName) : s.productName,
     })),
     reqSpecs,
-  ), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? ""), String(location.state?.productType ?? ""))).slice(0, 9), String(location.state?.productType ?? ""));
+  ), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? "")), String(location.state?.productDescription ?? ""), String(location.state?.productType ?? "")));
+  // 02-11s: contradictions out before any ordering; clear matches first, "por confirmar" after
+  const grouped = groupByVerdict(ranked as Supplier[], String(location.state?.productDescription ?? ""));
+  const displaySuppliers: Supplier[] = (flagPrices as (l: unknown[], t: string) => Supplier[])(grouped.shown.slice(0, 9), String(location.state?.productType ?? ""));
+  const excludedBySpec = grouped.excluded;
   const filteredOutList: { name: string; reason: string }[] =
     apiData?.filteredOut ?? [];
 
@@ -751,6 +827,7 @@ export function SupplierResults() {
     !!first &&
     !first.priceFlag &&
     !first.componentFlag &&
+    first.verdict === "match" &&
     first.price > 0 &&
     matchUse(descriptionText, first.productName)?.status !== "other" &&
     matchMaterial(descriptionText, first.productName)?.status !== "other" &&
@@ -883,7 +960,9 @@ export function SupplierResults() {
     return (
       <NoResults
         keyword={apiData?.searchKeyword ?? ""}
-        noRelevant={!!apiData?.noRelevantMatches}
+        noRelevant={!!apiData?.noRelevantMatches || excludedBySpec.length > 0}
+        contradicted={[...excludedBySpec.map((x) => x.reasons[0]), ...serverReasonsText(apiData?.specReasons)].filter((x) => typeof x === "string" && x)}
+        contradictedCount={excludedBySpec.length + (Number(apiData?.specExcluded) || 0)}
         noSearch={!apiData}
         totalAnalyzed={apiData?.totalAnalyzed ?? 0}
         filteredOut={filteredOutList}
@@ -1069,6 +1148,11 @@ export function SupplierResults() {
             )}
             <UseSummary description={String(location.state?.productDescription ?? "")} list={displaySuppliers} />
             <SpecSummary reqs={reqSpecs} list={displaySuppliers} />
+            <ExcludedBySpec
+              list={excludedBySpec}
+              serverCount={Number(apiData?.specExcluded) || 0}
+              serverReasons={serverReasonsText(apiData?.specReasons)}
+            />
             {!hasChoice && (
               <div
                 id="supplier-list"
@@ -1132,11 +1216,21 @@ export function SupplierResults() {
             </div>
 
             {/* Supplier Cards */}
-            {sortSuppliers(displaySuppliers, sortBy, String(location.state?.productType ?? "")).map((supplier, index) => {
+            {sortWithinGroups(displaySuppliers, (l) => sortSuppliers(l, sortBy, String(location.state?.productType ?? ""))).map((supplier, index, all) => {
               const images = getProductImages(supplier);
+              // 02-11s: the unconfirmed group starts with its own heading (never mixed with clear matches)
+              const firstToConfirm = supplier.verdict === "confirm" && (index === 0 || all[index - 1].verdict !== "confirm");
               return (
+                <Fragment key={supplier.id}>
+                {firstToConfirm && (
+                  <h2 className="text-sm font-semibold text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2" data-testid="group-confirm">
+                    {index === 0
+                      ? Lx("Ninguna publicación indica todo lo que pediste. Estas no lo contradicen, pero falta confirmarlo con el proveedor:", "No listing states everything you asked for. These don't contradict it, but it must be confirmed with the supplier:")
+                      : Lx("Por confirmar: estas publicaciones no indican todo lo que pediste", "To confirm: these listings don't state everything you asked for")}
+                  </h2>
+                )}
                 <div
-                  key={supplier.id}
+                  key={"card-" + supplier.id}
                   className={`bg-white rounded-xl border-2 cursor-pointer transition-all hover:shadow-lg relative ${
                     hasChoice && selectedSupplier.id === supplier.id
                       ? "border-blue-500 shadow-lg"
@@ -1177,6 +1271,7 @@ export function SupplierResults() {
                             {supplier.productName}
                           </p>
                         )}
+                        <VerdictTag supplier={supplier} />
                         <SpecTags description={String(location.state?.productDescription ?? "")} productName={supplier.productName} component={supplier.componentFlag} />
                         {supplier.priceFlag && (
                           <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mb-3">
@@ -1410,6 +1505,7 @@ export function SupplierResults() {
                     </a>
                   </div>
                 </div>
+                </Fragment>
               );
             })}
           </div>

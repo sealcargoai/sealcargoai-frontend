@@ -1113,15 +1113,29 @@ export function FinalCTA() {
 
       {/* ── Email Report Modal ──────────────────────────────────────────────── */}
       {showEmailModal && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-6">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold text-[#0B3C5D]">
+        // 02-11s: on a phone the open keyboard leaves little room: the overlay scrolls, the box fits the visible
+        // height (dvh) and the field in focus is brought into view, so the code and the final button stay reachable
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-start sm:items-center justify-center z-50 p-3 sm:p-6 overflow-y-auto overscroll-contain" data-testid="email-modal-overlay">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="email-modal-title"
+            className="bg-white rounded-2xl shadow-2xl max-w-md w-full p-5 sm:p-8 my-auto max-h-[calc(100dvh-1.5rem)] overflow-y-auto"
+            data-testid="email-modal"
+            onFocus={(e) => {
+              const el = e.target as HTMLElement;
+              if (el.tagName === "INPUT") setTimeout(() => el.scrollIntoView?.({ block: "center", behavior: "smooth" }), 300);
+            }}
+          >
+            <div className="flex items-center justify-between mb-4 sm:mb-6">
+              <h2 id="email-modal-title" className="text-xl sm:text-2xl font-bold text-[#0B3C5D]">
                 {t("final.emailModalTitle")}
               </h2>
               <button
+                type="button"
                 onClick={() => closeEmailModal()}
-                className="text-slate-400 hover:text-slate-600"
+                aria-label={L("Cerrar", "Close")}
+                className="text-slate-400 hover:text-slate-600 p-1"
               >
                 <X className="w-6 h-6" />
               </button>
@@ -1176,6 +1190,7 @@ export function FinalCTA() {
                     pattern="[A-Za-z0-9\s\-]{10,14}"
                     maxLength={14}
                     required
+                    autoFocus
                     aria-label={L("Código de 10 caracteres", "10-character code")}
                     placeholder={L("Código de 10 caracteres", "10-character code")}
                     value={emailCode}
@@ -1215,6 +1230,18 @@ export function FinalCTA() {
                 {submitting ? t("final.emailSending") : emailStep === "email" ? L("Enviarme un código", "Send me a code") : t("final.emailSubmit")}
               </button>
             </form>
+            {/* 02-11s: the way out that never depends on email, and the next step with SEAL */}
+            <div className="mt-4 pt-4 border-t border-slate-200 text-sm text-slate-600 space-y-2" data-testid="email-modal-alternatives">
+              <button type="button" onClick={handleDownloadReport} className="text-[#0B3C5D] underline">
+                {L("Prefiero descargar el PDF en este dispositivo", "I'd rather download the PDF on this device")}
+              </button>
+              <p>
+                {L("¿Quieres que SEAL revise tu caso? Escríbenos al WhatsApp", "Want SEAL to review your case? Message us on WhatsApp")}{" "}
+                <a className="text-emerald-800 underline" href={`https://wa.me/${SEAL_COMPANY.phone.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
+                  {SEAL_COMPANY.phone}
+                </a>
+              </p>
+            </div>
           </div>
         </div>
       )}
