@@ -150,3 +150,11 @@ ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), 
 - **Si se cancela o no alcanza el tiempo:** no se pide ningún código y el mensaje explica qué hacer, en ES/EN. Cerrar el formulario también cancela la comprobación.
 - **Mediciones:** están en el `CIERRE-02-11C.md` del backend. El peor caso medido, 18 bits con la CPU 6 veces más lenta, fue de 8.2 s.
 - **Pruebas:** `tests/abuso-02-11o.test.ts` pasó de 6 a 9.
+
+## 02-11s — Proveedores en pantalla, chat, informe en móvil (2026-11-04)
+
+- Proveedores: `utils/differences.ts` da un veredicto por publicación (`match` | `confirm` | `incompatible`) con la misma comparación que la pantalla y los informes; `utils/verdictGroups.ts` saca las incompatibles ANTES de ordenar y muestra primero las claras («Coincide según el anuncio») y aparte las «Especificación por confirmar»; ordenar por precio/valoración no mezcla grupos. Las excluidas (las de la página y las del servidor) se pueden abrir con su motivo. Si todas contradicen: «No hay coincidencias claras…» + búsqueda asistida de SEAL, sin rellenar.
+  - Nuevo: «puntera compuesta/metálica» se lee; «sin látex» contra un título que no dice material → por confirmar; «220V/380V» → por confirmar la opción (antes «coincide»).
+- Chat: respuestas concretas para baterías de litio (datos UN38.3, Wh, MSDS, embalaje; decide el transportista) y para antes de pagar el anticipo (proforma, especificaciones, condiciones de pago, beneficiario = proveedor). Un mensaje que cambia el caso y pregunta algo responde las dos cosas; «Son 300 sillas. ¿…» ya no toma «300 sillas. Qué le pido al» como producto.
+- Informe por correo: diálogo con rol y nombre, se desplaza con el teclado abierto (alto visible), foco en el código, botón cerrar con etiqueta, descarga alternativa y WhatsApp de SEAL dentro del diálogo.
+- Pruebas: `tests/proveedores-02-11s.test.ts` (21), `tests/chat-02-11s.test.ts` (10); L10/L26 de `combined-review3` cambian a «por confirmar» a propósito.
