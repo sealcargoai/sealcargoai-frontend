@@ -109,6 +109,8 @@ describe("foto del producto (paso 1)", () => {
     const note = screen.getByText(/proveedor externo de inteligencia artificial/);
     expect(note.textContent).toMatch(/enviamos la foto y la descripción/);
     expect(note.textContent).toMatch(/SEAL no guarda la foto/);
+    // 02-11z1: the provider's name is not in the notice
+    expect(note.textContent).not.toMatch(/Groq/);
     expect(screen.queryByText("bomba de agua sumergible")).toBeNull();
     pick();
     await screen.findByText("bomba de agua sumergible");
