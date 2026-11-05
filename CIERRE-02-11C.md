@@ -173,3 +173,8 @@ ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), 
 - Página: `electricMatch.ts` toma voltajes y exclusiones del lector compartido; con fases mezcladas muestra el motivo del servidor y la nota de fases.
 - Aviso en pantalla (`utils/notice.ts`): tapaba el campo del código en el teléfono con el teclado abierto; ahora no toma toques, sube con una ventana abierta o el teclado visible y se quita al escribir.
 - Pruebas: vectores compartidos 25 → 72; `voltage-parity.json` (18 pedidos × 60 títulos difíciles = 1,080 pares, mismo resultado exacto en servidor y página). Con el código anterior 21 de 67 vectores daban otro veredicto. Backend `test/voltaje-02-11w.test.mjs` (8, recorrido descripción → traducción → consulta → resultados → clasificación, también el reintento). Frontend `tests/voltaje-02-11w.test.ts` (10) y `tests/aviso-02-11w.test.ts` (3). Suites: backend 228/228, frontend 2,214/2,214, e2e 47/47, build OK.
+
+## 02-11x — Foto opcional del producto (2026-11-05)
+
+- `PhotoAssist` en el paso 1 y `utils/photo.ts` (achica a ≤ 1024 px sin EXIF/GPS; textos que el cliente decide agregar). El backend (`/api/suppliers/image-analyze`, sealcargoai-backend 02-11x) solo sugiere; la búsqueda sigue con el texto confirmado. Sandbox: respuesta ficticia fija, la foto nunca sale.
+- Pruebas: `tests/foto-02-11x.test.tsx` (11). Suite 2,225/2,225, e2e 47/47, build OK.
