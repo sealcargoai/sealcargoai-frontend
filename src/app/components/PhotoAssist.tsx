@@ -148,10 +148,11 @@ export function PhotoAssist({ description, onChange }: { description: string; on
       )}
       {!preview && !busy && result?.kind === "error" && <p className="text-sm text-red-600" role="alert">{errorText(result.code)}</p>}
       <p className="text-xs text-slate-500">
-        {/* 02-11z: the description goes too (it tells the AI which object you mean); said before choosing the photo */}
+        {/* 02-11z: the description goes too (it tells the AI which object you mean); said before choosing the photo.
+            02-11z1: the provider is not named here (it can change); the general privacy policy is where it is named. */}
         {L(
-          "Al elegir una foto, enviamos la foto y la descripción que escribiste arriba a un proveedor externo de inteligencia artificial (Groq), solo para sugerirte qué producto es. SEAL no guarda la foto ni la incluye en correos ni casos, y en este paso tampoco guarda la descripción. Solo lo que decidas agregar a tu descripción sigue en tu consulta.",
-          "When you choose a photo, we send the photo and the description you wrote above to an external artificial intelligence provider (Groq), only to suggest what the product is. SEAL does not keep the photo or include it in emails or cases, and it does not keep the description at this step either. Only what you choose to add to your description stays in your request.",
+          "Al elegir una foto, enviamos la foto y la descripción que escribiste arriba a un proveedor externo de inteligencia artificial, solo para sugerirte qué producto es. SEAL no guarda la foto ni la incluye en correos ni casos, y en este paso tampoco guarda la descripción. Solo lo que decidas agregar a tu descripción sigue en tu consulta.",
+          "When you choose a photo, we send the photo and the description you wrote above to an external artificial intelligence provider, only to suggest what the product is. SEAL does not keep the photo or include it in emails or cases, and it does not keep the description at this step either. Only what you choose to add to your description stays in your request.",
         )}
       </p>
     </div>
