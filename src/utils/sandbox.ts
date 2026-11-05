@@ -43,6 +43,11 @@ export function sandboxResponse(url: string, method: string, body: unknown, stat
     return new Response(null, { status: 204 });
   }
   if (path === "/api/suppliers/quota") return json({ limit: 3, remaining: 3, reason: "" });
+  // 02-11x: the photo is never sent from the sandbox; a fixed, clearly fictitious suggestion answers
+  if (path === "/api/suppliers/image-analyze") {
+    state.blocked.push(path);
+    return json({ ok: true, isProduct: true, productEs: "[PRUEBA] bomba de agua sumergible", productEn: "submersible water pump", visibleSpecs: ["24V DC"], confidence: "high" });
+  }
   if (m !== "GET") {
     state.blocked.push(path);
     return json({ error: "sandbox", message: "No disponible en el entorno de prueba." }, 503);
