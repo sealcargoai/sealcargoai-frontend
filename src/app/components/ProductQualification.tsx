@@ -22,6 +22,7 @@ import {
 import logo from "../../imports/seal-logo.webp";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
+import { PhotoAssist } from "./PhotoAssist";
 import { Lx, unitsWord } from "../../utils/lang";
 import {
   recordSearch,
@@ -544,6 +545,8 @@ export function ProductQualification() {
                 ) : (
                   showErr("productType")
                 )}
+                {/* 02-11x: optional photo; the AI only suggests text the client decides to add */}
+                <PhotoAssist description={formData.productType} onChange={(next) => setFormData((d) => ({ ...d, productType: next }))} />
               </div>
             )}
 
