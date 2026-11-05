@@ -184,3 +184,7 @@ ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), 
 - El navegador envía la foto Y la descripción a `/api/suppliers/image-analyze`; el aviso solo hablaba de la foto. Ahora (visible antes de elegir la foto): «Al elegir una foto, enviamos la foto y la descripción que escribiste arriba a un proveedor externo de inteligencia artificial (Groq), solo para sugerirte qué producto es. SEAL no guarda la foto ni la incluye en correos ni casos, y en este paso tampoco guarda la descripción. Solo lo que decidas agregar a tu descripción sigue en tu consulta.» (EN equivalente). No se afirma nada sobre la retención del proveedor.
 - Sandbox: `window.__sealPhotoMode` ("unavailable" / "not_product") para las pruebas de navegador.
 - e2e B110-B116 (teléfono): aviso antes de elegir, cancelar selección, elegir, teclado abierto 393×360, usar y editar a mano, quitar foto, servicio caído y foto que no es producto. `npm run test:e2e` 54/54.
+
+## 02-11z1 — El aviso de la foto no nombra al proveedor (2026-11-05)
+
+- A pedido de Víctor: «…a un proveedor externo de inteligencia artificial, solo para sugerirte qué producto es…» (sin «(Groq)»), ES y EN. El aviso sigue diciendo que se envían la foto y la descripción; el nombre del proveedor va en la política de privacidad general. Prueba: el aviso no contiene «Groq».
