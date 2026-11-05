@@ -12,7 +12,7 @@ const { chromium, devices } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.11.05-z1";
+const EXPECT_VERSION = "2026.11.05-z2";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
@@ -724,7 +724,52 @@ try {
     check("B116 servicio caído y foto que no es producto: mensaje claro, descripción intacta y se puede seguir", errOk && went && np, JSON.stringify({ errOk, went, np }));
     await ctx.close();
   }
-  const apiAttempts = outside.filter((x) => /\/api\/|\/health|googletagmanager|google-analytics|doubleclick/.test(x));
+  // 02-11z2 · B117-B119: cost page downloads. The PDF and Excel generators are separate chunks loaded only on
+  // click; the files that come out are a real PDF and a real .xlsx; a chunk that fails to load is said on screen.
+  {
+    const SUP = { name: "Proveedor Ficticio QA", productName: "Bomba sumergible de prueba", price: 120, minOrder: 1, productUrl: "https://example.invalid/p" };
+    const openCosts = async (page) => {
+      await page.goto(`${BASE}/`);
+      await page.evaluate((usr) => {
+        const st = { usr, key: "e2e-costs", idx: 1 };
+        history.pushState(st, "", "/costs");
+        dispatchEvent(new PopStateEvent("popstate", { state: st }));
+      }, { supplier: SUP, quantity: "10", destination: "GT", productType: "bomba sumergible", productDescription: "bomba sumergible para pozo" });
+      await page.waitForSelector('button[aria-label="Exportar PDF"]', { timeout: 15000 });
+    };
+    const { ctx, page } = await newPage("es");
+    const chunks = [];
+    page.on("request", (r) => {
+      const m = r.url().match(/\/assets\/(reportExports|costPdf)-[^/]+\.js$/);
+      if (m) chunks.push(m[1]);
+    });
+    await openCosts(page);
+    const before = [...chunks];
+    const [pdf] = await Promise.all([page.waitForEvent("download", { timeout: 20000 }), page.click('button[aria-label="Exportar PDF"]')]);
+    const pdfBuf = fs.readFileSync(await pdf.path());
+    const afterPdf = [...chunks];
+    const [xls] = await Promise.all([page.waitForEvent("download", { timeout: 20000 }), page.click('button[aria-label="Exportar Excel"]')]);
+    const xlsBuf = fs.readFileSync(await xls.path());
+    check("B117 la página de costos no carga los generadores hasta que se pide el archivo", before.length === 0 && afterPdf.join() === "costPdf", JSON.stringify({ before, afterPdf, all: chunks }));
+    check(
+      "B118 «Exportar PDF» y «Exportar Excel» descargan un PDF y un .xlsx reales",
+      pdfBuf.subarray(0, 5).toString("latin1") === "%PDF-" && pdfBuf.length > 2000 && /\.pdf$/.test(pdf.suggestedFilename()) &&
+        xlsBuf.subarray(0, 2).toString("latin1") === "PK" && xlsBuf.includes(Buffer.from("xl/workbook.xml")) && /\.xlsx$/.test(xls.suggestedFilename()) && chunks.includes("reportExports"),
+      `${pdf.suggestedFilename()} ${pdfBuf.length} B · ${xls.suggestedFilename()} ${xlsBuf.length} B`,
+    );
+    await ctx.close();
+    // the Excel chunk cannot load (offline, a deploy in between): a clear message, no silent failure
+    const b = await newPage("es");
+    await b.page.route(/\/assets\/reportExports-[^/]+\.js$/, (r) => r.abort());
+    await openCosts(b.page);
+    await b.page.click('button[aria-label="Exportar Excel"]');
+    const said = await b.page.waitForSelector("text=No pudimos preparar el archivo en este momento", { timeout: 8000 }).then(() => true, () => false);
+    check("B119 si el generador de Excel no carga, se avisa en pantalla", said);
+    await b.ctx.close();
+  }
+  // 02-11z2: the cost page reads the exchange/freight rates (GET /api/rates, read-only, allowed by utils/sandbox.ts);
+  // here it was aborted too, and the page uses its default rates. Anything else to an API is a failure.
+  const apiAttempts = outside.filter((x) => /\/api\/|\/health|googletagmanager|google-analytics|doubleclick/.test(x) && !/^GET \S+\/api\/rates$/.test(x));
   check("B90 no request to an API or analytics host left the browser", apiAttempts.length === 0, JSON.stringify(apiAttempts.slice(0, 5)));
 } catch (e) {
   results.push({ id: "runner", ok: false, detail: String((e && e.stack) || e).slice(0, 400) });

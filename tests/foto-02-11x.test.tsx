@@ -111,6 +111,9 @@ describe("foto del producto (paso 1)", () => {
     expect(note.textContent).toMatch(/SEAL no guarda la foto/);
     // 02-11z1: the provider's name is not in the notice
     expect(note.textContent).not.toMatch(/Groq/);
+    // 02-11z2: the photo field points to the notice (read aloud before choosing a photo)
+    const field = screen.getByLabelText("Foto del producto (opcional)");
+    expect(document.getElementById(field.getAttribute("aria-describedby") || "")).toBe(note);
     expect(screen.queryByText("bomba de agua sumergible")).toBeNull();
     pick();
     await screen.findByText("bomba de agua sumergible");
