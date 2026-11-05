@@ -178,3 +178,9 @@ ExcelJS y jsPDF ya se cargaban solo con `import()` al exportar (`lazyExports`), 
 
 - `PhotoAssist` en el paso 1 y `utils/photo.ts` (achica a ≤ 1024 px sin EXIF/GPS; textos que el cliente decide agregar). El backend (`/api/suppliers/image-analyze`, sealcargoai-backend 02-11x) solo sugiere; la búsqueda sigue con el texto confirmado. Sandbox: respuesta ficticia fija, la foto nunca sale.
 - Pruebas: `tests/foto-02-11x.test.tsx` (11). Suite 2,225/2,225, e2e 47/47, build OK.
+
+## 02-11z — Aviso de privacidad de la foto completo; pruebas de navegador (2026-11-05)
+
+- El navegador envía la foto Y la descripción a `/api/suppliers/image-analyze`; el aviso solo hablaba de la foto. Ahora (visible antes de elegir la foto): «Al elegir una foto, enviamos la foto y la descripción que escribiste arriba a un proveedor externo de inteligencia artificial (Groq), solo para sugerirte qué producto es. SEAL no guarda la foto ni la incluye en correos ni casos, y en este paso tampoco guarda la descripción. Solo lo que decidas agregar a tu descripción sigue en tu consulta.» (EN equivalente). No se afirma nada sobre la retención del proveedor.
+- Sandbox: `window.__sealPhotoMode` ("unavailable" / "not_product") para las pruebas de navegador.
+- e2e B110-B116 (teléfono): aviso antes de elegir, cancelar selección, elegir, teclado abierto 393×360, usar y editar a mano, quitar foto, servicio caído y foto que no es producto. `npm run test:e2e` 54/54.

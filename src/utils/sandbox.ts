@@ -46,6 +46,10 @@ export function sandboxResponse(url: string, method: string, body: unknown, stat
   // 02-11x: the photo is never sent from the sandbox; a fixed, clearly fictitious suggestion answers
   if (path === "/api/suppliers/image-analyze") {
     state.blocked.push(path);
+    // 02-11z: browser tests switch the simulated answer (service down, not a product); sandbox builds only
+    const mode = (globalThis as { __sealPhotoMode?: string }).__sealPhotoMode || "";
+    if (mode === "unavailable") return json({ unavailable: true, reason: "busy" });
+    if (mode === "not_product") return json({ ok: true, isProduct: false, productEs: "", productEn: "", visibleSpecs: [], confidence: "high" });
     return json({ ok: true, isProduct: true, productEs: "[PRUEBA] bomba de agua sumergible", productEn: "submersible water pump", visibleSpecs: ["24V DC"], confidence: "high" });
   }
   if (m !== "GET") {

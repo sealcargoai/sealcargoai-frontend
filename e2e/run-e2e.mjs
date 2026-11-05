@@ -8,11 +8,11 @@
 // outside the sandbox. Nothing is sent: no leads, emails, events or searches.
 import { createRequire } from "node:module";
 // Playwright: the project's devDependency if installed, else the machine's global install
-const { chromium } = createRequire(import.meta.url)("playwright");
+const { chromium, devices } = createRequire(import.meta.url)("playwright");
 import { spawn, execSync } from "node:child_process";
 import fs from "node:fs";
 
-const EXPECT_VERSION = "2026.11.05-x";
+const EXPECT_VERSION = "2026.11.05-z";
 let BASE = process.env.E2E_BASE_URL || "";
 let server = null;
 if (!BASE) {
@@ -42,8 +42,8 @@ const results = [];
 const outside = [];
 let browser;
 
-async function newPage(lang = "es") {
-  const ctx = await browser.newContext({ locale: lang === "en" ? "en-US" : "es-GT" });
+async function newPage(lang = "es", { mobile = false } = {}) {
+  const ctx = await browser.newContext({ ...(mobile ? devices["Pixel 5"] : {}), locale: lang === "en" ? "en-US" : "es-GT" });
   await ctx.route("**/*", (route) => {
     const u = new URL(route.request().url());
     if (u.origin === origin) return route.continue();
@@ -619,6 +619,109 @@ try {
       c3.b === "5000" && c4.q === "700" && c4.b === "5000" && c4.sync,
       `${JSON.stringify([c3.b, c4.q, c4.b])} ${a3.slice(0, 50)}`,
     );
+    await ctx.close();
+  }
+  // 02-11z · B110-B116: optional product photo in step 1 (phone, keyboard open, choose/cancel, service error,
+  // manual edit). Sandbox: the photo never leaves the browser; the simulated answer is switched per test.
+  {
+    const { ctx, page } = await newPage("es", { mobile: true });
+    const openStep1 = async (product = "bombas para pozo") => {
+      await page.goto(`${BASE}/?qa=1`);
+      await page.evaluate((product) => {
+        sessionStorage.clear();
+        const caseId = "e2e" + Math.random().toString(36).slice(2, 8);
+        sessionStorage.setItem("seal_qualify_draft", JSON.stringify({ formData: { productType: product, quantity: "", budget: "", destination: "GT", volumeCbm: "", weightKg: "", material: "" }, step: 1, prev: null, caseId, rev: 1 }));
+        sessionStorage.setItem("seal_product", product);
+        sessionStorage.setItem("seal_qa", "1");
+      }, product);
+      await page.goto(`${BASE}/qualify`);
+      await page.waitForSelector("[data-testid=photo-assist]");
+    };
+    // a real JPEG made by this browser (no file from outside)
+    const jpeg = Buffer.from(
+      await page.evaluate(() => {
+        const c = document.createElement("canvas");
+        c.width = 640;
+        c.height = 480;
+        const x = c.getContext("2d");
+        x.fillStyle = "#dde";
+        x.fillRect(0, 0, 640, 480);
+        x.fillStyle = "#1f4fa0";
+        x.fillRect(260, 80, 120, 300);
+        return c.toDataURL("image/jpeg", 0.8).split(",")[1];
+      }),
+      "base64",
+    );
+    const photo = { name: "bomba.jpg", mimeType: "image/jpeg", buffer: jpeg };
+    const sentPhotos = () => page.evaluate(() => (window.__sealSandbox?.blocked || []).filter((p) => p === "/api/suppliers/image-analyze").length);
+    const desc = () => page.inputValue("#productType");
+    const visibleNotCovered = (sel) =>
+      page.locator(sel).first().evaluate((el) => {
+        el.scrollIntoView({ block: "center" });
+        const r = el.getBoundingClientRect();
+        const hit = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+        return r.top >= 0 && r.bottom <= window.innerHeight && !!hit && (hit === el || el.contains(hit));
+      });
+
+    await openStep1();
+    const note = await page.locator("[data-testid=photo-assist]").innerText();
+    check(
+      "B110 móvil: antes de elegir la foto, el aviso dice que se envían la foto y la descripción a un proveedor externo de IA",
+      /enviamos la foto y la descripción/.test(note) && /proveedor externo de inteligencia artificial/.test(note) && /SEAL no guarda la foto/.test(note) && (await sentPhotos()) === 0,
+      note.replace(/\s+/g, " ").slice(0, 120),
+    );
+
+    // cancel: the file picker closed without a photo → nothing is sent or shown
+    await page.setInputFiles("#product-photo", []);
+    await page.waitForTimeout(300);
+    check("B111 cancelar la selección: no se envía nada y el botón sigue", (await sentPhotos()) === 0 && (await page.locator("text=Agregar una foto del producto (opcional)").isVisible()) && (await desc()) === "bombas para pozo");
+
+    // choose a photo → suggestion; the description does not change by itself
+    await page.setInputFiles("#product-photo", photo);
+    await page.waitForSelector("text=[PRUEBA] bomba de agua sumergible");
+    check("B112 elegir foto: una sola solicitud, sugerencia visible y la descripción no cambia sola", (await sentPhotos()) === 1 && (await desc()) === "bombas para pozo", await desc());
+
+    // keyboard open (visible height ~360 px): the suggestion button and «Quitar foto» stay reachable
+    await page.setViewportSize({ width: 393, height: 360 });
+    await page.focus("#productType");
+    const reach = [await visibleNotCovered("text=Agregar a mi descripción"), await visibleNotCovered("text=Quitar foto")];
+    check("B113 teclado abierto (393×360): «Agregar a mi descripción» y «Quitar foto» se ven y no quedan tapados", reach.every(Boolean), JSON.stringify(reach));
+    await page.setViewportSize(devices["Pixel 5"].viewport);
+
+    // use it, then edit by hand: the hand edit is what continues (the suggestion is not re-applied)
+    await page.click("text=Agregar a mi descripción");
+    const merged = await desc();
+    await page.fill("#productType", "bomba sumergible de acero inoxidable para pozo de 30 m");
+    await page.click('button:has-text("Siguiente Paso")');
+    await page.waitForSelector("text=Paso 2 de 3");
+    const s1 = await state(page);
+    check(
+      "B114 usar la sugerencia y luego editar a mano: sigue la edición del cliente",
+      /\[PRUEBA\] bomba de agua sumergible/.test(merged) && s1.draft?.product === "bomba sumergible de acero inoxidable para pozo de 30 m",
+      JSON.stringify([merged, s1.draft?.product]),
+    );
+
+    // remove the photo: suggestion gone, description kept
+    await openStep1("bomba para riego");
+    await page.setInputFiles("#product-photo", photo);
+    await page.waitForSelector("text=Quitar foto");
+    await page.click("text=Quitar foto");
+    await page.waitForTimeout(200);
+    check("B115 «Quitar foto»: desaparece la sugerencia y la descripción queda igual", !(await page.locator("text=[PRUEBA] bomba de agua sumergible").count()) && (await desc()) === "bomba para riego");
+
+    // service error and «not a product»: clear message, description intact, the client can continue
+    await openStep1("bomba para riego");
+    await page.evaluate(() => (window.__sealPhotoMode = "unavailable"));
+    await page.setInputFiles("#product-photo", photo);
+    await page.waitForSelector("text=No pudimos analizar la foto en este momento");
+    const errOk = (await desc()) === "bomba para riego";
+    await page.click('button:has-text("Siguiente Paso")');
+    const went = await page.waitForSelector("text=Paso 2 de 3", { timeout: 5000 }).then(() => true, () => false);
+    await openStep1("bomba para riego");
+    await page.evaluate(() => (window.__sealPhotoMode = "not_product"));
+    await page.setInputFiles("#product-photo", photo);
+    const np = await page.waitForSelector("text=La foto no parece mostrar un producto", { timeout: 5000 }).then(() => true, () => false);
+    check("B116 servicio caído y foto que no es producto: mensaje claro, descripción intacta y se puede seguir", errOk && went && np, JSON.stringify({ errOk, went, np }));
     await ctx.close();
   }
   const apiAttempts = outside.filter((x) => /\/api\/|\/health|googletagmanager|google-analytics|doubleclick/.test(x));

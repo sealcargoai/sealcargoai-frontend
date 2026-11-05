@@ -105,7 +105,11 @@ describe("foto del producto (paso 1)", () => {
   it("aviso de privacidad visible; «Quitar foto» limpia la sugerencia", async () => {
     answer = { status: 200, body: PUMP };
     mount();
-    expect(screen.getByText(/No la guardamos ni la enviamos a SEAL/)).toBeTruthy();
+    // 02-11z: before choosing, it says that the photo AND the description go to an external AI provider
+    const note = screen.getByText(/proveedor externo de inteligencia artificial/);
+    expect(note.textContent).toMatch(/enviamos la foto y la descripción/);
+    expect(note.textContent).toMatch(/SEAL no guarda la foto/);
+    expect(screen.queryByText("bomba de agua sumergible")).toBeNull();
     pick();
     await screen.findByText("bomba de agua sumergible");
     fireEvent.click(screen.getByText("Quitar foto"));
@@ -113,6 +117,13 @@ describe("foto del producto (paso 1)", () => {
     expect(screen.getByText("Agregar una foto del producto (opcional)")).toBeTruthy();
   });
 });
+
+it("en inglés el aviso dice lo mismo (foto y descripción)", () => {
+    localStorage.setItem("seal_lang", "en");
+    mount();
+    expect(screen.getByText(/we send the photo and the description you wrote above to an external artificial intelligence provider/)).toBeTruthy();
+    localStorage.removeItem("seal_lang");
+  });
 
 describe("textos que arma la foto", () => {
   it("no duplica, respeta el máximo y compara sin tildes ni espacios", () => {
