@@ -68,7 +68,7 @@ export function PhotoAssist({ description, onChange }: { description: string; on
         : code === "photo_unreadable" || code === "image_invalid"
           ? L("No pudimos leer esa foto. Prueba con una JPG o PNG.", "We couldn't read that photo. Try a JPG or PNG.")
           : code === "too_many"
-            ? L("Se analizaron muchas fotos desde esta conexión. Continúa con la descripción o intenta más tarde.", "Many photos were analysed from this connection. Continue with the description or try later.")
+            ? L("Se analizaron muchas fotos desde esta conexión. Continúa con la descripción o intenta más tarde.", "Many photos were analyzed from this connection. Continue with the description or try later.")
             : L("No pudimos enviar la foto. Revisa tu conexión o continúa con la descripción.", "We couldn't send the photo. Check your connection or continue with the description.");
 
   const empty = !description.trim();
@@ -81,6 +81,8 @@ export function PhotoAssist({ description, onChange }: { description: string; on
         className="sr-only"
         id="product-photo"
         aria-label={L("Foto del producto (opcional)", "Product photo (optional)")}
+        // 02-11z2: a screen reader announces the privacy notice when the field is reached, before choosing
+        aria-describedby="product-photo-notice"
         onChange={(e) => onFile(e.target.files?.[0])}
       />
       {!preview && !busy && (
@@ -92,7 +94,7 @@ export function PhotoAssist({ description, onChange }: { description: string; on
       {busy && (
         <p className="flex items-center gap-2 text-sm text-slate-600" role="status">
           <Loader2 className="w-4 h-4 animate-spin" />
-          {L("Analizando la foto…", "Analysing the photo…")}
+          {L("Analizando la foto…", "Analyzing the photo…")}
         </p>
       )}
       {preview && !busy && (
@@ -137,7 +139,7 @@ export function PhotoAssist({ description, onChange }: { description: string; on
               </>
             )}
             {result?.kind === "not_product" && <p className="text-amber-700">{L("La foto no parece mostrar un producto. Prueba con otra foto o escribe la descripción.", "The photo doesn't seem to show a product. Try another photo or write the description.")}</p>}
-            {result?.kind === "unavailable" && <p className="text-amber-700">{L("No pudimos analizar la foto en este momento. Puedes continuar con la descripción.", "We couldn't analyse the photo right now. You can continue with the description.")}</p>}
+            {result?.kind === "unavailable" && <p className="text-amber-700">{L("No pudimos analizar la foto en este momento. Puedes continuar con la descripción.", "We couldn't analyze the photo right now. You can continue with the description.")}</p>}
             {result?.kind === "error" && <p className="text-red-600">{errorText(result.code)}</p>}
             <button type="button" onClick={reset} className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-700">
               <X className="w-3 h-3" />
@@ -147,7 +149,7 @@ export function PhotoAssist({ description, onChange }: { description: string; on
         </div>
       )}
       {!preview && !busy && result?.kind === "error" && <p className="text-sm text-red-600" role="alert">{errorText(result.code)}</p>}
-      <p className="text-xs text-slate-500">
+      <p id="product-photo-notice" className="text-xs leading-relaxed text-slate-600">
         {/* 02-11z: the description goes too (it tells the AI which object you mean); said before choosing the photo.
             02-11z1: the provider is not named here (it can change); the general privacy policy is where it is named. */}
         {L(
