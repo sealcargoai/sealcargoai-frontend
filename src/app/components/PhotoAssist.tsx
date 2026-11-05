@@ -148,9 +148,10 @@ export function PhotoAssist({ description, onChange }: { description: string; on
       )}
       {!preview && !busy && result?.kind === "error" && <p className="text-sm text-red-600" role="alert">{errorText(result.code)}</p>}
       <p className="text-xs text-slate-500">
+        {/* 02-11z: the description goes too (it tells the AI which object you mean); said before choosing the photo */}
         {L(
-          "La foto se envía a un servicio de IA solo para reconocer el producto. No la guardamos ni la enviamos a SEAL.",
-          "The photo is sent to an AI service only to recognise the product. We don't keep it or send it to SEAL.",
+          "Al elegir una foto, enviamos la foto y la descripción que escribiste arriba a un proveedor externo de inteligencia artificial (Groq), solo para sugerirte qué producto es. SEAL no guarda la foto ni la incluye en correos ni casos, y en este paso tampoco guarda la descripción. Solo lo que decidas agregar a tu descripción sigue en tu consulta.",
+          "When you choose a photo, we send the photo and the description you wrote above to an external artificial intelligence provider (Groq), only to suggest what the product is. SEAL does not keep the photo or include it in emails or cases, and it does not keep the description at this step either. Only what you choose to add to your description stays in your request.",
         )}
       </p>
     </div>
