@@ -1648,7 +1648,7 @@ export function SupplierResults() {
                           </span>
                         </div>
                         <div className="flex items-center justify-between">
-                          <span>{Lx("Seguro, aduana y destino", "Insurance, customs and destination")}</span>
+                          <span>{Lx("Honorarios de aduana", "Customs fees")}</span>
                           <span className="font-medium">
                             {formatQAmount(groupQ(est, ["insurance", "customs", "local"], est.exchangeRate))}
                           </span>
