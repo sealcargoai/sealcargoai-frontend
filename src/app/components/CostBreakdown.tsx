@@ -26,6 +26,7 @@ import {
 } from "recharts";
 import { listingDifferences } from "../../utils/differences";
 import { budgetNote, smallOrderNote, fixedChargesNames } from "../../utils/costNotes";
+import { fetchSizeEstimate, type SizeEstimate } from "../../utils/sizeEstimate";
 import { Lx } from "../../utils/lang";
 import { saleUnitInfo, unitWordFor, quantityIntent, productNoun } from "../../utils/saleUnit";
 // 02-11l: 480×320 WebP (24 KB) instead of the 1536×1024 PNG (2.2 MB); shown at most 85 px tall
@@ -200,8 +201,44 @@ export function CostBreakdown() {
   const priceNote = priceNoteFor(stateSupplier);
 
 
-  const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
-  const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
+  const givenCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
+  const givenKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
+  // 10-11: no volume or weight from the client → approximate cargo size from the AI (product + quantity),
+  // labelled as an estimate; the client can type the real m³ / kg on this page
+  const sizeProduct = String(stateSupplier?.productName || productDescription || productType || "");
+  const [aiSize, setAiSize] = useState<SizeEstimate | null>(null);
+  const [aiSizeLoading, setAiSizeLoading] = useState(false);
+  useEffect(() => {
+    if (givenCbm > 0 || givenKg > 0 || !sizeProduct || !(quantity > 0)) {
+      setAiSize(null);
+      setAiSizeLoading(false);
+      return;
+    }
+    let alive = true;
+    setAiSizeLoading(true);
+    fetchSizeEstimate(sizeProduct, quantity, String(unitInfo.unit || "")).then((s) => {
+      if (!alive) return;
+      setAiSize(s);
+      setAiSizeLoading(false);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [givenCbm, givenKg, sizeProduct, quantity, unitInfo.unit]);
+  const sizeEstimated = !(givenCbm > 0 || givenKg > 0) && !!aiSize;
+  const volumeCbm = givenCbm > 0 || givenKg > 0 ? givenCbm : aiSize?.cbm || 0;
+  const weightKg = givenCbm > 0 || givenKg > 0 ? givenKg : aiSize?.kg || 0;
+  const [sizeCbmInput, setSizeCbmInput] = useState("");
+  const [sizeKgInput, setSizeKgInput] = useState("");
+  const applySize = () => {
+    const c = parseFloat(sizeCbmInput.replace(/,/g, "")) || 0;
+    const k = parseFloat(sizeKgInput.replace(/,/g, "")) || 0;
+    if (!(c > 0 || k > 0) || c > 5000 || k > 2000000) return;
+    navigate(location.pathname, { replace: true, state: { ...(location.state ?? {}), volumeCbm: c > 0 ? String(c) : "", weightKg: k > 0 ? String(k) : "" } });
+    setSizeCbmInput("");
+    setSizeKgInput("");
+  };
   const rates = useRates();
   useEffect(() => {
     // only what the client chose; the default read from the description is recomputed
@@ -362,7 +399,7 @@ export function CostBreakdown() {
       </div>
     );
   }
-  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit: unitInfo.unit }, rates);
+  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit: unitInfo.unit, sizeEstimated }, rates);
   // 02-11c: every quetzal amount with centavos; the total is ALWAYS the sum of the printed lines
   const Q = (usd: number, decimals = 2) => formatQ(usd, costs.exchangeRate, decimals);
   const TOTAL = formatQTotal(costs, costs.exchangeRate);
@@ -831,13 +868,52 @@ export function CostBreakdown() {
             </div>
           ))}
           <p className="text-xs text-slate-500 px-1">{costs.fxNote}</p>
-          {costs.freightPending && (
+          {costs.freightPending && aiSizeLoading && (
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
+              {L("Estimando el tamaño de la carga para calcular el flete…", "Estimating the cargo size to calculate freight…")}
+            </div>
+          )}
+          {costs.freightPending && !aiSizeLoading && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
               ⚠️ {L(
-                "El total no incluye flete porque no indicaste volumen ni peso. Un ejecutivo de SEAL te cotiza el flete, o puedes volver al formulario y agregar el volumen (m³) o peso (kg).",
-                "The total doesn't include freight because no volume or weight was given. A SEAL executive can quote it, or you can go back to the form and add the volume (m³) or weight (kg).",
+                "El total no incluye flete porque no indicaste volumen ni peso. Escríbelos aquí abajo para calcularlo, o un ejecutivo de SEAL te cotiza el flete.",
+                "The total doesn't include freight because no volume or weight was given. Enter them below to calculate it, or a SEAL executive can quote the freight.",
               )}
             </div>
+          )}
+          {costs.freightEstimated && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800" data-testid="size-estimated">
+              ⚠️ {L(
+                `No indicaste volumen ni peso, así que el flete se calculó con un tamaño de carga aproximado: ${volumeCbm > 0 ? `${volumeCbm.toFixed(2)} m³` : ""}${volumeCbm > 0 && weightKg > 0 ? " y " : ""}${weightKg > 0 ? `${Math.round(weightKg).toLocaleString("en-US")} kg` : ""}, según el producto y la cantidad (${costs.freightMode === "FCL" ? "contenedor completo" : "carga consolidada"}). Si conoces las medidas reales del embalaje, escríbelas aquí abajo.`,
+                `No volume or weight was given, so freight was calculated with an approximate cargo size: ${volumeCbm > 0 ? `${volumeCbm.toFixed(2)} m³` : ""}${volumeCbm > 0 && weightKg > 0 ? " and " : ""}${weightKg > 0 ? `${Math.round(weightKg).toLocaleString("en-US")} kg` : ""}, based on the product and quantity (${costs.freightMode === "FCL" ? "full container" : "consolidated cargo"}). If you know the real packed size, enter it below.`,
+              )}
+            </div>
+          )}
+          {!aiSizeLoading && (
+            <form
+              className="p-4 bg-white border border-slate-200 rounded-lg text-sm flex flex-wrap items-end gap-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                applySize();
+              }}
+            >
+              <span className="w-full font-medium text-slate-700">
+                {givenCbm > 0 || givenKg > 0
+                  ? L("¿Cambió el tamaño de tu carga? Corrígelo aquí:", "Did your cargo size change? Correct it here:")
+                  : L("Tamaño real de tu carga (embalada):", "Real size of your cargo (packed):")}
+              </span>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500">{L("Volumen (m³)", "Volume (m³)")}</span>
+                <input inputMode="decimal" value={sizeCbmInput} onChange={(e) => setSizeCbmInput(e.target.value)} placeholder={volumeCbm > 0 ? volumeCbm.toFixed(2) : "3.5"} className="w-28 px-2 py-1.5 border border-slate-300 rounded" />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-xs text-slate-500">{L("Peso (kg)", "Weight (kg)")}</span>
+                <input inputMode="decimal" value={sizeKgInput} onChange={(e) => setSizeKgInput(e.target.value)} placeholder={weightKg > 0 ? String(Math.round(weightKg)) : "1200"} className="w-28 px-2 py-1.5 border border-slate-300 rounded" />
+              </label>
+              <button type="submit" className="px-4 py-2 rounded-lg bg-[#0B3C5D] text-white font-semibold">
+                {L("Recalcular flete", "Recalculate freight")}
+              </button>
+            </form>
           )}
         </div>
 
