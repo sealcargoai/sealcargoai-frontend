@@ -23,6 +23,7 @@ export interface Rates {
   customsFeesGTQ: number;   // SEAL customs brokerage fee, fixed in quetzales
   localChargesGTQ: number;  // destination charges (handling, inspection, storage…), fixed in quetzales
   transitDays: string;      // shown to the user
+  estUsdPerCbm: number;     // 10-11: without volume or weight, the m³ are estimated as FOB ÷ this (0 = do not estimate)
   exchangeRate: number;     // reference GTQ per 1 USD (costs are shown in quetzales)
 }
 
@@ -48,6 +49,9 @@ export const DEFAULT_RATES: Rates = {
   localChargesGTQ: 0,
   transitDays: "30-45",
   exchangeRate: 7.9,
+  // 10-11: approximate cargo density in value (US$ of FOB per m³) used when the client gives no volume or
+  // weight: a small order goes consolidated (1 m³ minimum), a large one fills a container
+  estUsdPerCbm: 3000,
 };
 
 // Shown wherever a cost appears: this tool estimates, SEAL quotes
@@ -62,10 +66,12 @@ export function estimateNote(): string {
 export const ratePct = (r: number): string => `${Number((Number(r) * 100).toFixed(2))}%`;
 
 /** What can move this preliminary scenario (shown on screen, PDF and Excel). */
-export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
+export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number; freightEstimated?: boolean }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
   return [
     costs.freightPending
       ? Lx("Flete: no está incluido; se cotiza con el volumen y el peso reales.", "Freight: not included; quoted with the actual volume and weight.")
+      : costs.freightEstimated
+      ? Lx("Flete: no indicaste volumen ni peso, así que se estimó el volumen según el valor del pedido; con los m³ o kg reales el flete puede cambiar bastante.", "Freight: you gave no volume or weight, so the volume was estimated from the order value; with the real m³ or kg the freight can change a lot.")
       : Lx("Flete: es una tarifa aproximada todo incluido hasta bodega en el perímetro de la capital; el monto real lo confirma SEAL con el volumen y peso reales.", "Freight: an approximate all-in rate to a warehouse around Guatemala City; SEAL confirms the real amount with the actual volume and weight."),
     Lx(
       `DAI: depende de la partida arancelaria; se usó ${ratePct(costs.dutyRate)} como referencia.`,
@@ -295,6 +301,7 @@ export interface CostResult {
   productCost: number;
   shipping: number;
   freightPending: boolean;
+  freightEstimated: boolean; // 10-11: m³ estimated from the order value (no volume or weight given)
   freightMode: "LCL" | "FCL" | null;
   freightDetail: string;
   chargeableCbm: number;
@@ -336,9 +343,15 @@ export function calculateFreight(
   volumeCbm: number,
   weightKg: number,
   rates: Rates,
-): { amount: number; mode: "LCL" | "FCL" | null; detail: string; chargeableCbm: number } {
+  fobUsd = 0,
+): { amount: number; mode: "LCL" | "FCL" | null; detail: string; chargeableCbm: number; estimated?: boolean } {
   // W/M: the greater of m³ and metric tons (1,000 kg = 1 m³)
-  const chargeable = Math.max(volumeCbm || 0, (weightKg || 0) / 1000);
+  const given = Math.max(volumeCbm || 0, (weightKg || 0) / 1000);
+  // 10-11: no volume or weight → approximate m³ from the order value (SEAL: «si es pequeño consolidado,
+  // si es grande contenedor»), said on the line; the client can still enter the real figures
+  const estimated = !given && rates.estUsdPerCbm > 0 && fobUsd > 0;
+  const chargeable = given || (estimated ? round2(fobUsd / rates.estUsdPerCbm) : 0);
+  const EST = () => (estimated ? Lx(" • volumen estimado según el valor del pedido (no indicaste m³ ni peso)", " • volume estimated from the order value (no m³ or weight given)") : "");
   if (!chargeable) {
     return { amount: 0, mode: null, detail: Lx("Por cotizar — indica volumen o peso", "To be quoted — enter volume or weight"), chargeableCbm: 0 };
   }
@@ -357,8 +370,9 @@ export function calculateFreight(
     return {
       amount: lclAmount,
       mode: "LCL",
-      detail: `${Lx("Carga consolidada", "Consolidated cargo")} • ${cbm.toFixed(2)} m³${chargeable < rates.lclMinCbm ? Lx(" (mínimo cobrable)", " (minimum chargeable)") : (weightKg || 0) / 1000 > (volumeCbm || 0) ? Lx(" (por peso: 1,000 kg = 1 m³)", " (by weight: 1,000 kg = 1 m³)") : ""} × ${formatQ(perCbm, rates.exchangeRate, 2)}/m³ • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
+      detail: `${Lx("Carga consolidada", "Consolidated cargo")} • ${cbm.toFixed(2)} m³${chargeable < rates.lclMinCbm ? Lx(" (mínimo cobrable)", " (minimum chargeable)") : (weightKg || 0) / 1000 > (volumeCbm || 0) ? Lx(" (por peso: 1,000 kg = 1 m³)", " (by weight: 1,000 kg = 1 m³)") : ""} × ${formatQ(perCbm, rates.exchangeRate, 2)}/m³${EST()} • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
       chargeableCbm: cbm,
+      estimated,
     };
   }
 
@@ -367,16 +381,18 @@ export function calculateFreight(
     return {
       amount: rates.container20,
       mode: "FCL",
-      detail: `${Lx("1 contenedor de 20'", "1 × 20' container")} (${chargeable.toFixed(1)} m³) • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
+      detail: `${Lx("1 contenedor de 20'", "1 × 20' container")} (${chargeable.toFixed(1)} m³)${EST()} • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
       chargeableCbm: chargeable,
+      estimated,
     };
   }
   const n40 = Math.ceil(chargeable / rates.container40Cbm);
   return {
     amount: n40 * rates.container40,
     mode: "FCL",
-    detail: `${Lx(`${n40} contenedor${n40 > 1 ? "es" : ""} de 40'`, `${n40} × 40' container${n40 > 1 ? "s" : ""}`)} (${chargeable.toFixed(1)} m³) • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
+    detail: `${Lx(`${n40} contenedor${n40 > 1 ? "es" : ""} de 40'`, `${n40} × 40' container${n40 > 1 ? "s" : ""}`)} (${chargeable.toFixed(1)} m³)${EST()} • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
     chargeableCbm: chargeable,
+    estimated,
   };
 }
 
@@ -388,7 +404,7 @@ export function calculateCosts(
   // Everything is kept unrounded; amounts are rounded only when shown
   const productCost = params.price * quantity; // FOB
 
-  const freight = calculateFreight(params.volumeCbm || 0, params.weightKg || 0, rates);
+  const freight = calculateFreight(params.volumeCbm || 0, params.weightKg || 0, rates, productCost);
   const shipping = freight.amount;
 
   // Insurance: 0 by default since 10-11 (it is inside the all-in freight); the rate/minimum can still be set
@@ -473,6 +489,7 @@ export function calculateCosts(
     productCost,
     shipping,
     freightPending: !freight.mode,
+    freightEstimated: !!freight.estimated,
     freightMode: freight.mode,
     freightDetail: freight.detail,
     chargeableCbm: freight.chargeableCbm,
