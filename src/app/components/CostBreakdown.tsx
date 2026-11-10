@@ -839,6 +839,14 @@ export function CostBreakdown() {
               )}
             </div>
           )}
+          {costs.freightEstimated && (
+            <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800">
+              ⚠️ {L(
+                `No indicaste volumen ni peso, así que el flete se calculó con un volumen aproximado de ${costs.chargeableCbm.toFixed(2)} m³ según el valor del pedido (${costs.freightMode === "FCL" ? "contenedor completo" : "carga consolidada"}). Para un monto más preciso, vuelve al formulario y agrega el volumen (m³) o peso (kg), o pide a un ejecutivo de SEAL que lo revise.`,
+                `No volume or weight was given, so freight was calculated with an approximate volume of ${costs.chargeableCbm.toFixed(2)} m³ based on the order value (${costs.freightMode === "FCL" ? "full container" : "consolidated cargo"}). For a more accurate amount, go back to the form and add the volume (m³) or weight (kg), or ask a SEAL executive to review it.`,
+              )}
+            </div>
+          )}
         </div>
 
         {/* Preliminary scenario + what can change it */}
