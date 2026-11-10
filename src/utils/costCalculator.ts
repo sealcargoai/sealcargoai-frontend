@@ -6,7 +6,8 @@ import { Lx } from "./lang";
 import { unitWordFor } from "./saleUnit";
 
 export interface Rates {
-  container40: number;      // USD per 40' container, origin → Guatemala
+  container40: number;      // USD per 40' container, all-in China → warehouse around Guatemala City
+  lclRatePerCbm: number;    // USD per m³ consolidated, all-in China → warehouse (0 = container40/m³ × lclFactor)
   container20: number;      // USD per 20' container (0 = not offered, use 40')
   container40Cbm: number;   // usable m³ in a 40'
   container20Cbm: number;   // usable m³ in a 20'
@@ -26,7 +27,11 @@ export interface Rates {
 }
 
 export const DEFAULT_RATES: Rates = {
-  container40: 6000,
+  // 10-11: SEAL's all-in reference freight (China → warehouse on the outskirts of Guatemala City, every
+  // charge included): consolidated US$2,045 per m³, 40' container US$11,750. Insurance and destination
+  // charges are inside the freight, so they are 0; the SEAL customs fee stays.
+  container40: 11750,
+  lclRatePerCbm: 2045,
   container20: 0,
   container40Cbm: 55,
   container20Cbm: 25,
@@ -35,12 +40,12 @@ export const DEFAULT_RATES: Rates = {
   lclMaxCbm: 15,
   dutyRate: 0.15,
   vatRate: 0.12,
-  insuranceRate: 0.01,
-  insuranceMin: 250,
+  insuranceRate: 0,
+  insuranceMin: 0,
   customsFees: 200,
-  localCharges: 450,
+  localCharges: 0,
   customsFeesGTQ: 1200,
-  localChargesGTQ: 9500, // Q4,500 + Q5,000
+  localChargesGTQ: 0,
   transitDays: "30-45",
   exchangeRate: 7.9,
 };
@@ -61,7 +66,7 @@ export function scenarioVariables(costs: { freightPending: boolean; dutyRate: nu
   return [
     costs.freightPending
       ? Lx("Flete: no está incluido; se cotiza con el volumen y el peso reales.", "Freight: not included; quoted with the actual volume and weight.")
-      : Lx("Flete: tarifa real de la naviera o consolidador y volumen/peso confirmados.", "Freight: actual carrier or consolidator rate and confirmed volume/weight."),
+      : Lx("Flete: es una tarifa aproximada todo incluido hasta bodega en el perímetro de la capital; el monto real lo confirma SEAL con el volumen y peso reales.", "Freight: an approximate all-in rate to a warehouse around Guatemala City; SEAL confirms the real amount with the actual volume and weight."),
     Lx(
       `DAI: depende de la partida arancelaria; se usó ${ratePct(costs.dutyRate)} como referencia.`,
       `DAI duty: depends on the tariff heading; ${ratePct(costs.dutyRate)} was used as reference.`,
@@ -70,7 +75,7 @@ export function scenarioVariables(costs: { freightPending: boolean; dutyRate: nu
       ? Lx("Precio: se usó el precio medio del rango publicado; el precio negociado puede ser otro.", "Price: the midpoint of the published range was used; the negotiated price may differ.")
       : Lx("Precio: el precio final lo confirma la proforma del proveedor.", "Price: the final price is confirmed by the supplier's proforma."),
     Lx("Tipo de cambio del día de pago y de la DUCA.", "Exchange rate on the payment and DUCA dates."),
-    Lx("Gastos en destino: almacenaje, revisión física y días en puerto.", "Destination charges: storage, physical inspection and days at port."),
+    Lx("Revisión física, almacenaje extra o días adicionales en puerto, si los hubiera.", "Physical inspection, extra storage or additional days at port, if any."),
   ];
 }
 
@@ -314,7 +319,18 @@ export interface CostResult {
 
 
 // 02-11: where the freight figure comes from, said on the line itself (it is not a carrier quote)
-const FREIGHT_ORIGIN = () => Lx(" • tarifa referencial de SEAL, no es cotización de naviera", " • SEAL reference rate, not a carrier quote");
+const FREIGHT_ORIGIN = () => Lx(" • todo incluido de China a bodega en el perímetro de la capital • tarifa aproximada de SEAL, a confirmar con ventas", " • all-in from China to a warehouse around Guatemala City • approximate SEAL rate, to be confirmed with sales");
+
+/** USD per m³ consolidated, all-in. */
+export function lclPerCbm(rates: Rates): number {
+  return rates.lclRatePerCbm > 0 ? rates.lclRatePerCbm : (rates.container40 / rates.container40Cbm) * rates.lclFactor;
+}
+
+/** 10-11: the m³ from which one 40' container costs less than consolidated (≈5.75 m³ at 11,750 / 2,045). */
+export function lclToFclBreakevenCbm(rates: Rates): number {
+  const per = lclPerCbm(rates);
+  return per > 0 ? Math.min(rates.lclMaxCbm, rates.container40 / per) : rates.lclMaxCbm;
+}
 
 export function calculateFreight(
   volumeCbm: number,
@@ -327,17 +343,20 @@ export function calculateFreight(
     return { amount: 0, mode: null, detail: Lx("Por cotizar — indica volumen o peso", "To be quoted — enter volume or weight"), chargeableCbm: 0 };
   }
 
-  if (chargeable <= rates.lclMaxCbm) {
-    // 02-11j (review): the line is exactly «m³ shown × rate shown»: the rate in quetzales with centavos and
-    // the m³ with 2 decimals, so 3.30 m³ × Q1,551.27 = Q5,119.19 is the line (not Q5,119.20)
-    const perCbmQ = round2(((rates.container40 / rates.container40Cbm) * rates.lclFactor) * rates.exchangeRate);
+  // 10-11: consolidated while it is cheaper than a full container (and within lclMaxCbm); a 40' container
+  // otherwise. The line is exactly «m³ shown × rate shown» in quetzales with centavos.
+  const perCbmQ = round2(lclPerCbm(rates) * rates.exchangeRate);
+  const lclCbm = round2(Math.max(rates.lclMinCbm, chargeable));
+  const lclAmount = round2(perCbmQ * lclCbm) / rates.exchangeRate;
+  const fclAmount = rates.container20 > 0 && chargeable <= rates.container20Cbm
+    ? rates.container20
+    : Math.ceil(chargeable / rates.container40Cbm) * rates.container40;
+  if (chargeable <= rates.lclMaxCbm && lclAmount <= fclAmount) {
     const perCbm = perCbmQ / rates.exchangeRate;
-    const cbm = round2(Math.max(rates.lclMinCbm, chargeable));
+    const cbm = lclCbm;
     return {
-      amount: round2(perCbmQ * cbm) / rates.exchangeRate,
+      amount: lclAmount,
       mode: "LCL",
-      // 02-11j: the rate per m³ with centavos (Q1,551 × 3.30 did not give the line's Q5,119.20) and why
-      // the m³ charged can differ from the volume entered (minimum, or weight)
       detail: `${Lx("Carga consolidada", "Consolidated cargo")} • ${cbm.toFixed(2)} m³${chargeable < rates.lclMinCbm ? Lx(" (mínimo cobrable)", " (minimum chargeable)") : (weightKg || 0) / 1000 > (volumeCbm || 0) ? Lx(" (por peso: 1,000 kg = 1 m³)", " (by weight: 1,000 kg = 1 m³)") : ""} × ${formatQ(perCbm, rates.exchangeRate, 2)}/m³ • ${rates.transitDays} ${Lx("días", "days")}${FREIGHT_ORIGIN()}`,
       chargeableCbm: cbm,
     };
@@ -372,7 +391,7 @@ export function calculateCosts(
   const freight = calculateFreight(params.volumeCbm || 0, params.weightKg || 0, rates);
   const shipping = freight.amount;
 
-  // Insurance: 1% of FOB, minimum USD 250
+  // Insurance: 0 by default since 10-11 (it is inside the all-in freight); the rate/minimum can still be set
   const insurance = Math.max(productCost * rates.insuranceRate, rates.insuranceMin);
 
   // Guatemala: DAI on CIF, IVA on CIF + DAI
@@ -392,7 +411,7 @@ export function calculateCosts(
 
   // 02-11j: the rate as used (7.5%, never «8%» for a 7.5% calculation)
   const pct = ratePct;
-  const lines: CostLine[] = [
+  const allLines: CostLine[] = [
     {
       key: "product",
       label: Lx("Costo de producto (FOB)", "Product cost (FOB)"),
@@ -402,7 +421,7 @@ export function calculateCosts(
     },
     {
       key: "freight",
-      label: freight.mode === "FCL" ? Lx("Flete marítimo (contenedor)", "Ocean freight (container)") : Lx("Flete marítimo", "Ocean freight"),
+      label: freight.mode === "FCL" ? Lx("Flete China → Guatemala, todo incluido (contenedor)", "Freight China → Guatemala, all-in (container)") : Lx("Flete China → Guatemala, todo incluido", "Freight China → Guatemala, all-in"),
       detail: freight.detail,
       amount: shipping,
       color: "#3B82F6",
@@ -418,14 +437,14 @@ export function calculateCosts(
       key: "duties",
       // reference rate: the real one depends on the tariff heading
       label: Lx("DAI (arancel) referencial", "DAI (import duty), reference"),
-      detail: `${pct(rates.dutyRate)} ${shipping > 0 ? Lx("sobre valor CIF (FOB + flete + seguro)", "on CIF value (FOB + freight + insurance)") : Lx("sobre FOB + seguro (falta sumar el flete al CIF)", "on FOB + insurance (freight still to be added to CIF)")} ${qText(baseCifQ)}`,
+      detail: `${pct(rates.dutyRate)} ${shipping > 0 ? (insurance > 0 ? Lx("sobre valor CIF (FOB + flete + seguro)", "on CIF value (FOB + freight + insurance)") : Lx("sobre valor CIF (FOB + flete)", "on CIF value (FOB + freight)")) : Lx("sobre FOB (falta sumar el flete al CIF)", "on FOB (freight still to be added to CIF)")} ${qText(baseCifQ)}`,
       amount: importDuties,
       color: "#60A5FA",
     },
     {
       key: "vat",
       label: Lx("IVA", "IVA (VAT)"),
-      detail: `${pct(rates.vatRate)} ${shipping > 0 ? Lx("sobre CIF + DAI", "on CIF + DAI") : Lx("sobre FOB + seguro + DAI (sin flete)", "on FOB + insurance + DAI (without freight)")} ${qText(baseVatQ)}`,
+      detail: `${pct(rates.vatRate)} ${shipping > 0 ? Lx("sobre CIF + DAI", "on CIF + DAI") : Lx("sobre FOB + DAI (sin flete)", "on FOB + DAI (without freight)")} ${qText(baseVatQ)}`,
       amount: taxes,
       color: "#93C5FD",
     },
@@ -446,6 +465,8 @@ export function calculateCosts(
       color: "#A78BFA",
     },
   ];
+  // 10-11: insurance and destination charges are inside the all-in freight: no «Q0.00» lines for them
+  const lines = allLines.filter((l) => !((l.key === "insurance" || l.key === "local") && !(l.amount > 0)));
 
   return {
     saleUnit: params.saleUnit || "",

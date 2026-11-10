@@ -22,14 +22,23 @@ export function budgetNote(costs: CostResult, budget: number, Q: (usd: number) =
       );
   const tail = costs.freightPending
     ? Lx(
-        ` El presupuesto es solo para la compra al proveedor: traerla a Guatemala suma aparte ${formatQAmount(extraQ)} en seguro, impuestos y gastos; el flete se cotiza aparte y no está incluido.`,
-        ` The budget covers only the supplier purchase: bringing it to Guatemala adds ${formatQAmount(extraQ)} in insurance, taxes and charges; freight is quoted separately and not included.`,
+        ` El presupuesto es solo para la compra al proveedor: traerla a Guatemala suma aparte ${formatQAmount(extraQ)} en impuestos y honorarios de aduana; el flete se cotiza aparte y no está incluido.`,
+        ` The budget covers only the supplier purchase: bringing it to Guatemala adds ${formatQAmount(extraQ)} in taxes and customs fees; freight is quoted separately and not included.`,
       )
     : Lx(
-        ` El presupuesto es solo para la compra al proveedor: traerla a Guatemala suma aparte ${formatQAmount(extraQ)} en flete, seguro, impuestos y gastos.`,
-        ` The budget covers only the supplier purchase: bringing it to Guatemala adds ${formatQAmount(extraQ)} in freight, insurance, taxes and charges.`,
+        ` El presupuesto es solo para la compra al proveedor: traerla a Guatemala suma aparte ${formatQAmount(extraQ)} en flete (todo incluido), impuestos y honorarios de aduana.`,
+        ` The budget covers only the supplier purchase: bringing it to Guatemala adds ${formatQAmount(extraQ)} in freight (all-in), taxes and customs fees.`,
       );
   return head + tail;
+}
+
+/** 10-11: the names of the fixed charges present in this estimate («honorarios de aduana» by default). */
+export function fixedChargesNames(costs: CostResult): string {
+  const has = (k: string) => costs.lines.some((l) => l.key === k && l.amount > 0);
+  const es = [has("insurance") && "seguro mínimo", has("customs") && "honorarios de aduana", has("local") && "gastos en destino"].filter(Boolean) as string[];
+  const en = [has("insurance") && "minimum insurance", has("customs") && "customs fee", has("local") && "destination charges"].filter(Boolean) as string[];
+  const join = (a: string[], and: string) => (a.length > 1 ? `${a.slice(0, -1).join(", ")} ${and} ${a[a.length - 1]}` : a[0] || "");
+  return Lx(join(es, "y"), join(en, "and"));
 }
 
 /** Small orders: fixed charges weigh more than the product itself; "" otherwise. */
@@ -46,7 +55,7 @@ export function smallOrderNote(costs: CostResult, unitOne: string, Q: (usd: numb
   const productQ = groupQ(costs, ["product"], costs.exchangeRate);
   void Q;
   return Lx(
-    `En este pedido, los cargos que no dependen de la cantidad (seguro mínimo, honorarios de aduana y gastos en destino) suman ${formatQAmount(fixedQ)}, más que el producto (${formatQAmount(productQ)}). Por eso el costo por ${unitOne} sale alto; con una cantidad mayor se reparte entre más unidades.${insuranceMin ? " Además, el seguro mínimo forma parte del valor CIF, así que también sube la base del DAI y del IVA." : ""}`,
-    `In this order, the charges that don't depend on quantity (minimum insurance, customs fee and destination charges) add up to ${formatQAmount(fixedQ)}, more than the product (${formatQAmount(productQ)}). That's why the cost per ${unitOne} is high; with a larger quantity it is spread over more units.${insuranceMin ? " Also, the minimum insurance is part of the CIF value, so it also raises the DAI and IVA base." : ""}`,
+    `En este pedido, los cargos que no dependen de la cantidad (${fixedChargesNames(costs)}) suman ${formatQAmount(fixedQ)}, más que el producto (${formatQAmount(productQ)}). Por eso el costo por ${unitOne} sale alto; con una cantidad mayor se reparte entre más unidades.${insuranceMin ? " Además, el seguro mínimo forma parte del valor CIF, así que también sube la base del DAI y del IVA." : ""}`,
+    `In this order, the charges that don't depend on quantity (${fixedChargesNames(costs)}) add up to ${formatQAmount(fixedQ)}, more than the product (${formatQAmount(productQ)}). That's why the cost per ${unitOne} is high; with a larger quantity it is spread over more units.${insuranceMin ? " Also, the minimum insurance is part of the CIF value, so it also raises the DAI and IVA base." : ""}`,
   );
 }
