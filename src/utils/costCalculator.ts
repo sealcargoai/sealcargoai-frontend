@@ -384,7 +384,7 @@ export function calculateFreight(
 }
 
 export function calculateCosts(
-  params: { price: number; quantity: number; volumeCbm?: number; weightKg?: number; saleUnit?: string; sizeEstimated?: boolean },
+  params: { price: number; quantity: number; volumeCbm?: number; weightKg?: number; saleUnit?: string; sizeEstimated?: boolean; sizeSource?: "package" | "specs" | "ai" },
   rates: Rates = DEFAULT_RATES,
 ): CostResult {
   const quantity = params.quantity || 1;
@@ -427,7 +427,13 @@ export function calculateCosts(
       key: "freight",
       label: freight.mode === "FCL" ? Lx("Flete China → Guatemala, todo incluido (contenedor)", "Freight China → Guatemala, all-in (container)") : Lx("Flete China → Guatemala, todo incluido", "Freight China → Guatemala, all-in"),
       detail: freightEstimated
-        ? `${freight.detail} • ${Lx("tamaño de carga aproximado según el producto y la cantidad (no indicaste m³ ni peso)", "approximate cargo size based on the product and quantity (no m³ or weight given)")}`
+        ? `${freight.detail} • ${
+            params.sizeSource === "package"
+              ? Lx("medidas del empaque publicadas por el proveedor en Alibaba", "packing size published by the supplier on Alibaba")
+              : params.sizeSource === "specs"
+              ? Lx("medidas del equipo publicadas en Alibaba (no del empaque)", "equipment size published on Alibaba (not packed)")
+              : Lx("tamaño de carga aproximado según el producto y la cantidad (no indicaste m³ ni peso)", "approximate cargo size based on the product and quantity (no m³ or weight given)")
+          }`
         : freight.detail,
       amount: shipping,
       color: "#3B82F6",
