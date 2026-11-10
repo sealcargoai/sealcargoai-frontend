@@ -295,7 +295,7 @@ export function moneyLines(money: OrderMoney, c: OrderCounts): string {
     else {
       const diff = b.e4 - sub;
       const scopeNote = b.scope === "importacion"
-        ? Lx(" Ojo: comparo solo el valor del producto; tu presupuesto parece incluir la importación, que además suma flete, seguro, impuestos y gastos en destino.", " Note: I compare only the product value; your budget seems to include the import, which also adds freight, insurance, taxes and destination charges.")
+        ? Lx(" Ojo: comparo solo el valor del producto; tu presupuesto parece incluir la importación, que además suma flete (todo incluido), impuestos y honorarios de aduana.", " Note: I compare only the product value; your budget seems to include the import, which also adds freight, insurance, taxes and destination charges.")
         : "";
       line += diff >= 0
         ? Lx(
@@ -309,8 +309,8 @@ export function moneyLines(money: OrderMoney, c: OrderCounts): string {
     }
   }
   line += Lx(
-    " Es solo el valor del producto, no una cotización confirmada: el costo de importarlo suma además flete, seguro, impuestos (DAI e IVA) y gastos en destino.",
-    " It's only the product value, not a confirmed quote: importing it also adds freight, insurance, taxes (DAI and IVA) and destination charges.",
+    " Es solo el valor del producto, no una cotización confirmada: el costo de importarlo suma además flete (todo incluido hasta bodega), impuestos (DAI e IVA) y honorarios de aduana.",
+    " It's only the product value, not a confirmed quote: importing it also adds freight (all-in to the warehouse), taxes (DAI and IVA) and customs fees.",
   );
   return line;
 }
