@@ -62,10 +62,12 @@ export function estimateNote(): string {
 export const ratePct = (r: number): string => `${Number((Number(r) * 100).toFixed(2))}%`;
 
 /** What can move this preliminary scenario (shown on screen, PDF and Excel). */
-export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
+export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number; freightEstimated?: boolean }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
   return [
     costs.freightPending
       ? Lx("Flete: no está incluido; se cotiza con el volumen y el peso reales.", "Freight: not included; quoted with the actual volume and weight.")
+      : costs.freightEstimated
+      ? Lx("Flete: no indicaste volumen ni peso, así que se usó un tamaño de carga aproximado según el producto y la cantidad; con los m³ o kg reales el flete puede cambiar.", "Freight: no volume or weight was given, so an approximate cargo size based on the product and quantity was used; with the real m³ or kg the freight may change.")
       : Lx("Flete: es una tarifa aproximada todo incluido hasta bodega en el perímetro de la capital; el monto real lo confirma SEAL con el volumen y peso reales.", "Freight: an approximate all-in rate to a warehouse around Guatemala City; SEAL confirms the real amount with the actual volume and weight."),
     Lx(
       `DAI: depende de la partida arancelaria; se usó ${ratePct(costs.dutyRate)} como referencia.`,
@@ -295,6 +297,7 @@ export interface CostResult {
   productCost: number;
   shipping: number;
   freightPending: boolean;
+  freightEstimated: boolean; // 10-11: cargo size estimated (no volume or weight given by the client)
   freightMode: "LCL" | "FCL" | null;
   freightDetail: string;
   chargeableCbm: number;
@@ -381,7 +384,7 @@ export function calculateFreight(
 }
 
 export function calculateCosts(
-  params: { price: number; quantity: number; volumeCbm?: number; weightKg?: number; saleUnit?: string },
+  params: { price: number; quantity: number; volumeCbm?: number; weightKg?: number; saleUnit?: string; sizeEstimated?: boolean },
   rates: Rates = DEFAULT_RATES,
 ): CostResult {
   const quantity = params.quantity || 1;
@@ -390,6 +393,7 @@ export function calculateCosts(
 
   const freight = calculateFreight(params.volumeCbm || 0, params.weightKg || 0, rates);
   const shipping = freight.amount;
+  const freightEstimated = !!params.sizeEstimated && !!freight.mode;
 
   // Insurance: 0 by default since 10-11 (it is inside the all-in freight); the rate/minimum can still be set
   const insurance = Math.max(productCost * rates.insuranceRate, rates.insuranceMin);
@@ -422,7 +426,9 @@ export function calculateCosts(
     {
       key: "freight",
       label: freight.mode === "FCL" ? Lx("Flete China → Guatemala, todo incluido (contenedor)", "Freight China → Guatemala, all-in (container)") : Lx("Flete China → Guatemala, todo incluido", "Freight China → Guatemala, all-in"),
-      detail: freight.detail,
+      detail: freightEstimated
+        ? `${freight.detail} • ${Lx("tamaño de carga aproximado según el producto y la cantidad (no indicaste m³ ni peso)", "approximate cargo size based on the product and quantity (no m³ or weight given)")}`
+        : freight.detail,
       amount: shipping,
       color: "#3B82F6",
     },
@@ -473,6 +479,7 @@ export function calculateCosts(
     productCost,
     shipping,
     freightPending: !freight.mode,
+    freightEstimated,
     freightMode: freight.mode,
     freightDetail: freight.detail,
     chargeableCbm: freight.chargeableCbm,
