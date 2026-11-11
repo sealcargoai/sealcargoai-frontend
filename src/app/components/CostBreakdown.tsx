@@ -156,6 +156,8 @@ export function CostBreakdown() {
   const [priceBasis, setPriceBasis] = useState<"unit" | "piece" | undefined>(storedChoices.priceBasis);
   const [confirmedPack, setConfirmedPack] = useState<number | undefined>(storedChoices.confirmedPack);
   const [completeConfirmed, setCompleteConfirmed] = useState<boolean>(!!storedChoices.completeConfirmed);
+  // 11-11: the estimate uses the supplier's minimum order unless the client chooses their own quantity
+  const [keepBelowMoq, setKeepBelowMoq] = useState<boolean>(!!storedChoices.keepBelowMoq);
   const [packChanged, setPackChanged] = useState(false);
   const stateQuantity = location.state?.quantity ?? "1000";
   const stateBudget = location.state?.budget ?? "";
@@ -166,7 +168,7 @@ export function CostBreakdown() {
   // scenario shared with the supplier list and the reports (utils/scenario)
   const sc = resolveScenario(
     originalSupplier,
-    { customPrice, usePublished, qtyMode: qtyModeChoice, customPack, priceBasis, confirmedPack, completeConfirmed },
+    { customPrice, usePublished, qtyMode: qtyModeChoice, customPack, priceBasis, confirmedPack, completeConfirmed, keepBelowMoq },
     { requestedQty, productType: String(stateProductType), description: String(location.state?.productDescription ?? "") },
   );
   const { priceFlag, needsPriceDecision, needsUnitDecision, needsBasisDecision, unitInfo, intent, qtyMode, packSize, piecesPerUnit, quantity } = sc;
@@ -243,12 +245,12 @@ export function CostBreakdown() {
   const rates = useRates();
   useEffect(() => {
     // only what the client chose; the default read from the description is recomputed
-    const choices: CostChoices = { qtyMode: qtyModeChoice, customPack, customPrice, usePublished, priceBasis, confirmedPack, completeConfirmed: completeConfirmed || undefined };
+    const choices: CostChoices = { qtyMode: qtyModeChoice, customPack, customPrice, usePublished, priceBasis, confirmedPack, completeConfirmed: completeConfirmed || undefined, keepBelowMoq: keepBelowMoq || undefined };
     saveCostChoices(choiceKey, choices);
     if (JSON.stringify(location.state?.costChoices ?? {}) === JSON.stringify(choices)) return;
     navigate(location.pathname, { replace: true, state: { ...(location.state ?? {}), costChoices: choices } });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [qtyModeChoice, customPack, customPrice, usePublished, priceBasis, confirmedPack, completeConfirmed]);
+  }, [qtyModeChoice, customPack, customPrice, usePublished, priceBasis, confirmedPack, completeConfirmed, keepBelowMoq]);
   if (!isLiveData) return <NoSupplierNotice hasSupplierWithoutPrice={!!stateSupplier?.name} />;
   const packChangedNote = packChanged ? (
     <div role="alert" className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-900 mb-4">
@@ -564,7 +566,7 @@ export function CostBreakdown() {
                     // the final report rebuilds the same scenario (in the language in use)
                     scenarioInput: {
                       supplier: originalSupplier,
-                      choices: { customPrice, usePublished, qtyMode: qtyModeChoice, customPack, priceBasis, confirmedPack, completeConfirmed },
+                      choices: { customPrice, usePublished, qtyMode: qtyModeChoice, customPack, priceBasis, confirmedPack, completeConfirmed, keepBelowMoq },
                       requestedQty,
                     },
                     budget: stateBudget,
@@ -644,6 +646,25 @@ export function CostBreakdown() {
           <div role="note" className="bg-amber-50 border border-amber-300 rounded-xl p-4 text-sm text-amber-900 mb-6">
             <span className="font-semibold">{L("Pedido mínimo: ", "Minimum order: ")}</span>
             {sc.moqNote}
+            {sc.belowMoq && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setKeepBelowMoq(!sc.moqApplied ? false : true)}
+                  className="px-3 py-1.5 rounded-lg border border-amber-400 bg-white text-xs font-semibold"
+                >
+                  {sc.moqApplied
+                    ? L(
+                        `Calcular con mi cantidad (${sc.quantityAsked.toLocaleString("en-US")})`,
+                        `Calculate with my quantity (${sc.quantityAsked.toLocaleString("en-US")})`,
+                      )
+                    : L(
+                        `Calcular con el pedido mínimo (${sc.moq.toLocaleString("en-US")})`,
+                        `Calculate with the minimum order (${sc.moq.toLocaleString("en-US")})`,
+                      )}
+                </button>
+              </div>
+            )}
           </div>
         )}
         {/* the same assumptions the PDF and Excel carry: what was converted or taken as given */}

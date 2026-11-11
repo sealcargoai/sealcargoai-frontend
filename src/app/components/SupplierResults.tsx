@@ -816,7 +816,7 @@ export function SupplierResults() {
       description: descriptionText,
     });
   const moqText = (s: Supplier) => {
-    const n = Number(String(s.moq ?? "").replace(/,/g, ""));
+    const n = parseInt((String(s.moq ?? "").replace(/,/g, "").match(/\d+/) || ["0"])[0]) || 0;
     if (!(n > 0)) return Lx("N/D", "N/A");
     const unit = (s as { saleUnit?: string }).saleUnit;
     if (unit) return `${n.toLocaleString("en-US")} ${unitWordFor(unit, n)}`;
@@ -1379,7 +1379,9 @@ export function SupplierResults() {
                           const sc = scenarioFor(supplier);
                           return sc.moqNote ? (
                             <div className="text-[11px] leading-tight text-amber-800 mt-1">
-                              {sc.moqNote.startsWith("El pedido mínimo publicado es") || sc.moqNote.startsWith("The published minimum")
+                              {sc.moqApplied
+                                ? Lx(`Costo calculado con el mínimo (pediste ${sc.quantityAsked.toLocaleString("en-US")})`, `Cost calculated with the minimum (you asked for ${sc.quantityAsked.toLocaleString("en-US")})`)
+                                : sc.moqNote.startsWith("El pedido mínimo publicado es") || sc.moqNote.startsWith("The published minimum")
                                 ? /sin indicar|without saying/.test(sc.moqNote)
                                   ? Lx("Unidad del mínimo por confirmar", "Minimum's unit to confirm")
                                   : Lx("Tu pedido queda por debajo", "Your order is below it")
