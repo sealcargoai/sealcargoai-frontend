@@ -26,7 +26,7 @@ import {
 } from "recharts";
 import { listingDifferences } from "../../utils/differences";
 import { budgetNote, smallOrderNote, fixedChargesNames } from "../../utils/costNotes";
-import { fetchSizeEstimate, type SizeEstimate } from "../../utils/sizeEstimate";
+import { orderSize, type SizeEstimate } from "../../utils/sizeEstimate";
 import { Lx } from "../../utils/lang";
 import { saleUnitInfo, unitWordFor, quantityIntent, productNoun } from "../../utils/saleUnit";
 // 02-11l: 480×320 WebP (24 KB) instead of the 1536×1024 PNG (2.2 MB); shown at most 85 px tall
@@ -216,7 +216,8 @@ export function CostBreakdown() {
     }
     let alive = true;
     setAiSizeLoading(true);
-    fetchSizeEstimate(sizeProduct, quantity, String(unitInfo.unit || "")).then((s) => {
+    // 10-11: first the supplier's packing data on Alibaba, then the AI (with the unit price as a size hint)
+    orderSize({ productUrl: String(stateSupplier?.productUrl || ""), product: sizeProduct, quantity, unit: String(unitInfo.unit || ""), price: Number(stateSupplier?.price) || 0 }).then((s) => {
       if (!alive) return;
       setAiSize(s);
       setAiSizeLoading(false);
@@ -225,7 +226,7 @@ export function CostBreakdown() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [givenCbm, givenKg, sizeProduct, quantity, unitInfo.unit]);
+  }, [givenCbm, givenKg, sizeProduct, quantity, unitInfo.unit, stateSupplier?.productUrl, stateSupplier?.price]);
   const sizeEstimated = !(givenCbm > 0 || givenKg > 0) && !!aiSize;
   const volumeCbm = givenCbm > 0 || givenKg > 0 ? givenCbm : aiSize?.cbm || 0;
   const weightKg = givenCbm > 0 || givenKg > 0 ? givenKg : aiSize?.kg || 0;
@@ -399,7 +400,7 @@ export function CostBreakdown() {
       </div>
     );
   }
-  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit: unitInfo.unit, sizeEstimated }, rates);
+  const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit: unitInfo.unit, sizeEstimated, sizeSource: aiSize?.source }, rates);
   // 02-11c: every quetzal amount with centavos; the total is ALWAYS the sum of the printed lines
   const Q = (usd: number, decimals = 2) => formatQ(usd, costs.exchangeRate, decimals);
   const TOTAL = formatQTotal(costs, costs.exchangeRate);
@@ -870,7 +871,7 @@ export function CostBreakdown() {
           <p className="text-xs text-slate-500 px-1">{costs.fxNote}</p>
           {costs.freightPending && aiSizeLoading && (
             <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg text-sm text-blue-800">
-              {L("Estimando el tamaño de la carga para calcular el flete…", "Estimating the cargo size to calculate freight…")}
+              {L("Buscando las medidas del empaque del proveedor para calcular el flete…", "Looking up the supplier's packing size to calculate freight…")}
             </div>
           )}
           {costs.freightPending && !aiSizeLoading && (
@@ -883,10 +884,25 @@ export function CostBreakdown() {
           )}
           {costs.freightEstimated && (
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800" data-testid="size-estimated">
-              ⚠️ {L(
-                `No indicaste volumen ni peso, así que el flete se calculó con un tamaño de carga aproximado: ${volumeCbm > 0 ? `${volumeCbm.toFixed(2)} m³` : ""}${volumeCbm > 0 && weightKg > 0 ? " y " : ""}${weightKg > 0 ? `${Math.round(weightKg).toLocaleString("en-US")} kg` : ""}, según el producto y la cantidad (${costs.freightMode === "FCL" ? "contenedor completo" : "carga consolidada"}). Si conoces las medidas reales del embalaje, escríbelas aquí abajo.`,
-                `No volume or weight was given, so freight was calculated with an approximate cargo size: ${volumeCbm > 0 ? `${volumeCbm.toFixed(2)} m³` : ""}${volumeCbm > 0 && weightKg > 0 ? " and " : ""}${weightKg > 0 ? `${Math.round(weightKg).toLocaleString("en-US")} kg` : ""}, based on the product and quantity (${costs.freightMode === "FCL" ? "full container" : "consolidated cargo"}). If you know the real packed size, enter it below.`,
-              )}
+              {(() => {
+                const size = `${volumeCbm > 0 ? `${volumeCbm.toFixed(2)} m³` : ""}${volumeCbm > 0 && weightKg > 0 ? L(" y ", " and ") : ""}${weightKg > 0 ? `${Math.round(weightKg).toLocaleString("en-US")} kg` : ""}`;
+                const mode = costs.freightMode === "FCL" ? L("contenedor completo", "full container") : L("carga consolidada", "consolidated cargo");
+                const src = aiSize?.source;
+                return src === "package"
+                  ? L(
+                      `📦 Medidas del empaque publicadas por el proveedor en Alibaba${aiSize?.text ? ` (${aiSize.text}` : ""}${aiSize?.text ? ")" : ""}: para tu pedido suman ${size} (${mode}). Confírmalas con el proveedor; si tienes otras, escríbelas aquí abajo.`,
+                      `📦 Packing size published by the supplier on Alibaba${aiSize?.text ? ` (${aiSize.text})` : ""}: your order adds up to ${size} (${mode}). Confirm them with the supplier; if you have other figures, enter them below.`,
+                    )
+                  : src === "specs"
+                  ? L(
+                      `📐 El proveedor no publicó el empaque, así que se usaron las medidas del equipo en Alibaba${aiSize?.text ? ` (${aiSize.text})` : ""}: ${size} (${mode}). Embalado puede variar; si tienes las medidas reales, escríbelas aquí abajo.`,
+                      `📐 The supplier didn't publish the packing, so the equipment size on Alibaba was used${aiSize?.text ? ` (${aiSize.text})` : ""}: ${size} (${mode}). Packed it may differ; if you have the real size, enter it below.`,
+                    )
+                  : L(
+                      `⚠️ El proveedor no publicó medidas, así que el flete se calculó con un tamaño de carga aproximado: ${size}, según el producto y la cantidad (${mode}). Si conoces las medidas reales del embalaje, escríbelas aquí abajo.`,
+                      `⚠️ The supplier didn't publish a size, so freight was calculated with an approximate cargo size: ${size}, based on the product and quantity (${mode}). If you know the real packed size, enter it below.`,
+                    );
+              })()}
             </div>
           )}
           {!aiSizeLoading && (
