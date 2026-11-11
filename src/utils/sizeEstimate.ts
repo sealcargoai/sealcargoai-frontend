@@ -44,24 +44,40 @@ interface Packaging {
   text: string;
 }
 const packCache = new Map<string, Promise<Packaging | null>>();
+const PACK_WAIT_MS = 25000;
 
 export function fetchPackaging(productUrl: string): Promise<Packaging | null> {
   const u = String(productUrl || "").trim();
   if (!/alibaba\.com\/product-detail\//.test(u)) return Promise.resolve(null);
   if (!packCache.has(u)) {
-    packCache.set(
-      u,
-      fetch(`${API_URL}/api/suppliers/packaging?${new URLSearchParams({ url: u })}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          const p = d?.packaging;
-          const cbm = Number(p?.cbm) || 0;
-          const kg = Number(p?.kg) || 0;
-          if (!(cbm > 0 || kg > 0)) return null;
-          return { source: p.source === "specs" ? "specs" : "package", cbm, kg, batch: Math.max(1, Number(p.batch) || 1), text: String(p.text || "") } as Packaging;
-        })
-        .catch(() => null),
+    // 10-11b: reading a product page can take long; after PACK_WAIT_MS the page goes on with the AI estimate
+    // (the server keeps reading and caches it, so the next visit gets the supplier's figures). A failed or
+    // timed-out read is forgotten here so a later visit asks again.
+    let settled = false;
+    const read = fetch(`${API_URL}/api/suppliers/packaging?${new URLSearchParams({ url: u })}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => {
+        const p = d?.packaging;
+        const cbm = Number(p?.cbm) || 0;
+        const kg = Number(p?.kg) || 0;
+        if (!(cbm > 0 || kg > 0)) {
+          if (!d || d.reason) packCache.delete(u);
+          return null;
+        }
+        settled = true;
+        return { source: p.source === "specs" ? "specs" : "package", cbm, kg, batch: Math.max(1, Number(p.batch) || 1), text: String(p.text || "") } as Packaging;
+      })
+      .catch(() => {
+        packCache.delete(u);
+        return null;
+      });
+    const timeout = new Promise<null>((resolve) =>
+      setTimeout(() => {
+        if (!settled) packCache.delete(u);
+        resolve(null);
+      }, PACK_WAIT_MS),
     );
+    packCache.set(u, Promise.race([read, timeout]));
   }
   return packCache.get(u)!;
 }
