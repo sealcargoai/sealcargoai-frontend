@@ -26,10 +26,11 @@ import {
 } from "lucide-react";
 // 02-11l: 480×320 WebP (24 KB) instead of the 1536×1024 PNG (2.2 MB); shown at most 85 px tall
 import logo from "../../imports/seal-logo.webp";
+import { useCaseRates } from "../../utils/classification";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { SEAL_COMPANY } from "../../utils/company";
-import { calculateCosts, useRates, formatQ, formatUSD, formatUnitUSD, formatUnitQ, formatQAmount, formatQTotal, groupQ } from "../../utils/costCalculator";
+import { calculateCosts, formatQ, formatUSD, formatUnitUSD, formatUnitQ, formatQAmount, formatQTotal, groupQ } from "../../utils/costCalculator";
 import { Lx, plural } from "../../utils/lang";
 import { sealRefusalMessage } from "../../utils/sendErrors";
 import { requestedSpecs, matchSpecs, orderBySpecs, type Spec } from "../../utils/capacity";
@@ -798,7 +799,8 @@ export function SupplierResults() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const rates = useRates();
+  // 20-11: the DAI of the tariff classifier when the client chose it for this product (15% reference otherwise)
+  const rates = useCaseRates();
 
   // ── State ─────────────────────────────────────────────────────────────────
   // Selection: the one the client chose earlier (kept in this page's history

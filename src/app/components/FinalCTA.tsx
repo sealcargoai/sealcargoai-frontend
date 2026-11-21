@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 // 02-11l: 480×320 WebP (24 KB) instead of the 1536×1024 PNG (2.2 MB); shown at most 85 px tall
 import logo from "../../imports/seal-logo.webp";
+import { useCaseRates } from "../../utils/classification";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import { NoSupplierNotice, hasUsableSupplier, SupplierDisclaimer, sealDisclaimer, badgeText, TrustBadge, supplierPriceInfo } from "./SelectedSupplier";
@@ -35,7 +36,6 @@ import { reportRefusal } from "../../utils/reportSend";
 import { loadCostPdf, loadReportExports, exportLoadFailed } from "../../utils/lazyExports";
 import {
   calculateCosts,
-  useRates,
   formatQ,
   formatUSD,
   estimateNote,
@@ -171,7 +171,8 @@ export function FinalCTA() {
 
   const volumeCbm = parseFloat(String(location.state?.volumeCbm ?? "")) || 0;
   const weightKg = parseFloat(String(location.state?.weightKg ?? "")) || 0;
-  const rates = useRates();
+  // 20-11: the DAI of the tariff classifier when the client chose it for this product (15% reference otherwise)
+  const rates = useCaseRates();
   const saleUnit = saleUnitInfo(stateSupplier, productType).unit;
   const costs = calculateCosts({ price, quantity, volumeCbm, weightKg, saleUnit }, rates);
   // Assumptions from the costs page (pieces per set, price basis, minimum order…)

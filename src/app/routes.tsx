@@ -19,6 +19,8 @@ export const router = createBrowserRouter([
       { path: "suppliers", lazy: () => import("./components/SupplierResults").then((m) => ({ Component: m.SupplierResults })) },
       { path: "costs", lazy: () => import("./components/CostBreakdown").then((m) => ({ Component: m.CostBreakdown })) },
       { path: "risk", lazy: () => import("./components/RiskCompliance").then((m) => ({ Component: m.RiskCompliance })) },
+      // 20-11: tariff classifier (lead magnet): inciso, DAI general and preferential, permits
+      { path: "clasificador", lazy: () => import("./components/TariffClassifier").then((m) => ({ Component: m.TariffClassifier })) },
       { path: "report", lazy: () => import("./components/FinalCTA").then((m) => ({ Component: m.FinalCTA })) },
       { path: "*", Component: NotFound },
     ],

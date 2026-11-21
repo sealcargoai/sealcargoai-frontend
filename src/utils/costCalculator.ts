@@ -24,6 +24,8 @@ export interface Rates {
   localChargesGTQ: number;  // destination charges (handling, inspection, storage…), fixed in quetzales
   transitDays: string;      // shown to the user
   exchangeRate: number;     // reference GTQ per 1 USD (costs are shown in quetzales)
+  // 20-11: set when the DAI comes from SEAL's tariff classifier for this product (utils/classification)
+  dutySource?: { inciso: string; basis: string };
 }
 
 export const DEFAULT_RATES: Rates = {
@@ -62,17 +64,22 @@ export function estimateNote(): string {
 export const ratePct = (r: number): string => `${Number((Number(r) * 100).toFixed(2))}%`;
 
 /** What can move this preliminary scenario (shown on screen, PDF and Excel). */
-export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number; freightEstimated?: boolean }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
+export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number; freightEstimated?: boolean; dutySource?: { inciso: string; basis: string } }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
   return [
     costs.freightPending
       ? Lx("Flete: no está incluido; se cotiza con el volumen y el peso reales.", "Freight: not included; quoted with the actual volume and weight.")
       : costs.freightEstimated
       ? Lx("Flete: no indicaste volumen ni peso, así que se usó un tamaño de carga aproximado según el producto y la cantidad; con los m³ o kg reales el flete puede cambiar.", "Freight: no volume or weight was given, so an approximate cargo size based on the product and quantity was used; with the real m³ or kg the freight may change.")
       : Lx("Flete: es una tarifa aproximada todo incluido hasta bodega en el perímetro de la capital; el monto real lo confirma SEAL con el volumen y peso reales.", "Freight: an approximate all-in rate to a warehouse around Guatemala City; SEAL confirms the real amount with the actual volume and weight."),
-    Lx(
-      `DAI: depende de la partida arancelaria; se usó ${ratePct(costs.dutyRate)} como referencia.`,
-      `DAI duty: depends on the tariff heading; ${ratePct(costs.dutyRate)} was used as reference.`,
-    ),
+    costs.dutySource
+      ? Lx(
+          `DAI: ${ratePct(costs.dutyRate)} según la clasificación preliminar del clasificador SEAL (inciso ${costs.dutySource.inciso}, ${costs.dutySource.basis}); un agente aduanero de SEAL confirma la partida.`,
+          `DAI duty: ${ratePct(costs.dutyRate)} from the preliminary classification of the SEAL classifier (line ${costs.dutySource.inciso}, ${costs.dutySource.basis}); a SEAL customs broker confirms it.`,
+        )
+      : Lx(
+          `DAI: depende de la partida arancelaria; se usó ${ratePct(costs.dutyRate)} como referencia.`,
+          `DAI duty: depends on the tariff heading; ${ratePct(costs.dutyRate)} was used as reference.`,
+        ),
     opts.priceIsMidpoint
       ? Lx("Precio: se usó el precio medio del rango publicado; el precio negociado puede ser otro.", "Price: the midpoint of the published range was used; the negotiated price may differ.")
       : Lx("Precio: el precio final lo confirma la proforma del proveedor.", "Price: the final price is confirmed by the supplier's proforma."),
@@ -310,6 +317,7 @@ export interface CostResult {
   totalCost: number;
   perUnit: number;
   dutyRate: number;
+  dutySource?: { inciso: string; basis: string };
   vatRate: number;
   insuranceRate: number;
   insuranceMin: number;
@@ -448,8 +456,8 @@ export function calculateCosts(
     {
       key: "duties",
       // reference rate: the real one depends on the tariff heading
-      label: Lx("DAI (arancel) referencial", "DAI (import duty), reference"),
-      detail: `${pct(rates.dutyRate)} ${shipping > 0 ? (insurance > 0 ? Lx("sobre valor CIF (FOB + flete + seguro)", "on CIF value (FOB + freight + insurance)") : Lx("sobre valor CIF (FOB + flete)", "on CIF value (FOB + freight)")) : Lx("sobre FOB (falta sumar el flete al CIF)", "on FOB (freight still to be added to CIF)")} ${qText(baseCifQ)}`,
+      label: rates.dutySource ? Lx(`DAI (arancel) — inciso ${rates.dutySource.inciso}`, `DAI (import duty) — line ${rates.dutySource.inciso}`) : Lx("DAI (arancel) referencial", "DAI (import duty), reference"),
+      detail: `${pct(rates.dutyRate)}${rates.dutySource ? ` (${rates.dutySource.basis})` : ""} ${shipping > 0 ? (insurance > 0 ? Lx("sobre valor CIF (FOB + flete + seguro)", "on CIF value (FOB + freight + insurance)") : Lx("sobre valor CIF (FOB + flete)", "on CIF value (FOB + freight)")) : Lx("sobre FOB (falta sumar el flete al CIF)", "on FOB (freight still to be added to CIF)")} ${qText(baseCifQ)}`,
       amount: importDuties,
       color: "#60A5FA",
     },
@@ -498,6 +506,7 @@ export function calculateCosts(
     totalCost,
     perUnit: totalCost / quantity, // unrounded: shown in quetzales with 2 decimals
     dutyRate: rates.dutyRate,
+    ...(rates.dutySource ? { dutySource: { inciso: rates.dutySource.inciso, basis: rates.dutySource.basis } } : {}),
     vatRate: rates.vatRate,
     insuranceRate: rates.insuranceRate,
     insuranceMin: rates.insuranceMin,
