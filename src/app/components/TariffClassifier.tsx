@@ -32,6 +32,7 @@ const FUNDAMENTO: [string, string, string][] = [
   ["notas_explicativas", "Notas Explicativas del Sistema Armonizado", "Harmonized System Explanatory Notes"],
   ["subpartida_e_inciso", "Subpartida e inciso", "Subheading and tariff line"],
   ["descartes", "Alternativas descartadas", "Alternatives ruled out"],
+  ["texto", "Fundamento", "Justification"],
 ];
 
 type Step = "intro" | "contact" | "goods" | "working" | "result";
