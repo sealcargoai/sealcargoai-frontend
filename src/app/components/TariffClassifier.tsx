@@ -471,6 +471,11 @@ export function TariffClassifier() {
       {step === "result" && result && (
         <section className="max-w-3xl mx-auto px-6 py-12 space-y-6">
           <Progress n={3} L={L} />
+          {result.simulado && (
+            <div className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-900 font-semibold">
+              {L("MODO DE PRUEBA: resultado simulado, sin inteligencia artificial y sin costo. No es una clasificación real.", "TEST MODE: simulated result, no AI and no cost. Not a real classification.")}
+            </div>
+          )}
           <div className={card}>
             <p className="text-sm uppercase tracking-wide text-slate-500">{L("Fracción arancelaria preliminar (inciso SAC)", "Preliminary tariff line (SAC)")}</p>
             <p className="text-4xl font-bold text-[#0B3C5D] my-2 tabular-nums">{result.inciso}</p>
