@@ -4,7 +4,7 @@
 // dataLayer; requests are counted only when the server registered them with a
 // case number. A WhatsApp click is measured apart: it does not prove a lead.
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
-export type FunnelEvent = "visita" | "consulta_iniciada" | "resultados" | "contacto_abierto" | "whatsapp_clic" | "solicitud_enviada";
+export type FunnelEvent = "visita" | "consulta_iniciada" | "resultados" | "contacto_abierto" | "whatsapp_clic" | "solicitud_enviada" | "clasificador_visita" | "clasificador_contacto" | "clasificador_resultado" | "clasificador_usar_dai";
 
 /** Anonymous id of this browser (random, not derived from the person). */
 export function visitorId(): string {

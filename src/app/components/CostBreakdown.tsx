@@ -31,6 +31,7 @@ import { Lx } from "../../utils/lang";
 import { saleUnitInfo, unitWordFor, quantityIntent, productNoun } from "../../utils/saleUnit";
 // 02-11l: 480×320 WebP (24 KB) instead of the 1536×1024 PNG (2.2 MB); shown at most 85 px tall
 import logo from "../../imports/seal-logo.webp";
+import { useCaseRates } from "../../utils/classification";
 import { useLanguage } from "../context/LanguageContext";
 import { LanguageToggle } from "./LanguageToggle";
 import {
@@ -45,7 +46,6 @@ import { SEAL_COMPANY } from "../../utils/company";
 import { loadCostPdf, loadReportExports, exportLoadFailed } from "../../utils/lazyExports";
 import {
   calculateCosts,
-  useRates,
   formatQ,
   formatQCents,
   formatUSD, formatUnitUSD, formatUnitQ,
@@ -240,7 +240,8 @@ export function CostBreakdown() {
     setSizeCbmInput("");
     setSizeKgInput("");
   };
-  const rates = useRates();
+  // 20-11: the DAI of the tariff classifier when the client chose it for this product (15% reference otherwise)
+  const rates = useCaseRates();
   useEffect(() => {
     // only what the client chose; the default read from the description is recomputed
     const choices: CostChoices = { qtyMode: qtyModeChoice, customPack, customPrice, usePublished, priceBasis, confirmedPack, completeConfirmed: completeConfirmed || undefined };
@@ -1080,6 +1081,12 @@ export function CostBreakdown() {
                 </span>
               </li>
             </ul>
+            {!rates.dutySource && (
+              // 20-11: the reference DAI can be replaced by the one of the tariff classifier for this product
+              <button type="button" onClick={() => navigate("/clasificador")} className="mt-3 text-sm font-semibold text-[#0B3C5D] underline">
+                {L("Clasificar mi producto para usar su DAI real en lugar del 15% de referencia", "Classify my product to use its real duty instead of the 15% reference")}
+              </button>
+            )}
             <div className="mt-4">
               <ContactSeal source="costos" requestType="Solicitud de cotización formal (desde la estimación)" context={caseNow} label={L("Enviar mi caso a SEAL para cotizar", "Send my case to SEAL for a quote")} />
             </div>
