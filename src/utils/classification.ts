@@ -42,6 +42,7 @@ export interface ClassificationResult {
   aviso: string;
   caso: string;
   restantes: number;
+  simulado?: boolean; // 21-11: test mode without AI (SEAL's QA accounts)
 }
 
 export interface ProductInput {
