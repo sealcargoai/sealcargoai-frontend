@@ -24,6 +24,16 @@ export interface Rates {
   localChargesGTQ: number;  // destination charges (handling, inspection, storage…), fixed in quetzales
   transitDays: string;      // shown to the user
   exchangeRate: number;     // reference GTQ per 1 USD (costs are shown in quetzales)
+  // 23-11: air courier China → Guatemala for small cargo (SEAL «FORMATO DE COSTOS», sheet Courier). The
+  // calculator prices both ways and uses whichever gives the lower total. airPerLb = 0 turns air off.
+  airPerLb: number;         // USD per chargeable pound (the greater of actual and volumetric weight)
+  airReception: number;     // USD per shipment: reception at origin
+  airInsurance: number;     // USD per shipment: «seguro resguardo»
+  airHandling: number;      // USD per shipment: handling
+  airStorage: number;       // USD per shipment: storage
+  airCustomsFee: number;    // USD: SEAL customs fee when the cargo goes by courier (replaces customsFeesGTQ)
+  airVolDivisor: number;    // volumetric weight: L × W × H in cm ÷ this = kg (5,000 = 200 kg per m³)
+  airTransitDays: string;   // shown when the estimate goes by air ("" = not shown)
   // 20-11: set when the DAI comes from SEAL's tariff classifier for this product (utils/classification)
   dutySource?: { inciso: string; basis: string };
 }
@@ -50,6 +60,14 @@ export const DEFAULT_RATES: Rates = {
   localChargesGTQ: 0,
   transitDays: "30-45",
   exchangeRate: 7.9,
+  airPerLb: 12.88,
+  airReception: 5.6,
+  airInsurance: 1.51,
+  airHandling: 10.14,
+  airStorage: 50,
+  airCustomsFee: 200,
+  airVolDivisor: 5000,
+  airTransitDays: "",
 };
 
 // Shown wherever a cost appears: this tool estimates, SEAL quotes
@@ -64,12 +82,14 @@ export function estimateNote(): string {
 export const ratePct = (r: number): string => `${Number((Number(r) * 100).toFixed(2))}%`;
 
 /** What can move this preliminary scenario (shown on screen, PDF and Excel). */
-export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number; freightEstimated?: boolean; dutySource?: { inciso: string; basis: string } }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
+export function scenarioVariables(costs: { freightPending: boolean; dutyRate: number; freightEstimated?: boolean; freightMode?: string | null; dutySource?: { inciso: string; basis: string } }, opts: { priceIsMidpoint?: boolean } = {}): string[] {
   return [
     costs.freightPending
       ? Lx("Flete: no está incluido; se cotiza con el volumen y el peso reales.", "Freight: not included; quoted with the actual volume and weight.")
       : costs.freightEstimated
       ? Lx("Flete: no indicaste volumen ni peso, así que se usó un tamaño de carga aproximado según el producto y la cantidad; con los m³ o kg reales el flete puede cambiar.", "Freight: no volume or weight was given, so an approximate cargo size based on the product and quantity was used; with the real m³ or kg the freight may change.")
+      : costs.freightMode === "AIR"
+      ? Lx("Flete: courier aéreo con tarifa aproximada por libra (el mayor entre peso real y volumétrico) más recepción, seguro, manejo y almacenaje; el monto real lo confirma SEAL con el peso y las medidas reales.", "Freight: air courier at an approximate rate per pound (the greater of actual and volumetric weight) plus reception, insurance, handling and storage; SEAL confirms the real amount with the actual weight and size.")
       : Lx("Flete: es una tarifa aproximada todo incluido hasta bodega en el perímetro de la capital; el monto real lo confirma SEAL con el volumen y peso reales.", "Freight: an approximate all-in rate to a warehouse around Guatemala City; SEAL confirms the real amount with the actual volume and weight."),
     costs.dutySource
       ? Lx(
@@ -258,6 +278,7 @@ export function sanitizeRates(raw: unknown): Rates {
     if (!Number.isFinite(n) || n < 0) continue;
     if (k === "exchangeRate" && !(n >= 1 && n <= 50)) continue;
     if (/Cbm$/.test(k) && k !== "lclMinCbm" && !(n > 0)) continue;
+    if (k === "airVolDivisor" && !(n > 0)) continue;
     if (/Rate$/.test(k) && k !== "exchangeRate" && n > 1) continue;
     (out as unknown as Record<string, unknown>)[k] = n;
   }
@@ -305,7 +326,7 @@ export interface CostResult {
   shipping: number;
   freightPending: boolean;
   freightEstimated: boolean; // 10-11: cargo size estimated (no volume or weight given by the client)
-  freightMode: "LCL" | "FCL" | null;
+  freightMode: "LCL" | "FCL" | "AIR" | null;
   freightDetail: string;
   chargeableCbm: number;
   insurance: number;
@@ -391,15 +412,61 @@ export function calculateFreight(
   };
 }
 
+/** 23-11: pounds per kilogram. */
+export const LB_PER_KG = 2.20462;
+
+/**
+ * 23-11: air courier China → Guatemala (SEAL «FORMATO DE COSTOS», sheet Courier):
+ * chargeable pounds × rate per pound + reception at origin + «seguro resguardo» + handling + storage.
+ * Chargeable pounds = the greater of the actual and the volumetric weight (m³ × 1,000,000 ÷ airVolDivisor kg),
+ * rounded up to the whole pound. The line is exactly «lb shown × rate shown + fixed charges shown» in quetzales.
+ */
+export function calculateAirFreight(
+  volumeCbm: number,
+  weightKg: number,
+  rates: Rates,
+): { amount: number; mode: "AIR" | null; detail: string; chargeableCbm: number; chargeableLb: number } {
+  const actualKg = Math.max(0, weightKg || 0);
+  const volKg = rates.airVolDivisor > 0 ? (Math.max(0, volumeCbm || 0) * 1_000_000) / rates.airVolDivisor : 0;
+  const kg = Math.max(actualKg, volKg);
+  if (!(rates.airPerLb > 0) || !(kg > 0)) return { amount: 0, mode: null, detail: "", chargeableCbm: 0, chargeableLb: 0 };
+  const lb = Math.max(1, Math.ceil(round2(kg * LB_PER_KG)));
+  const fx = rates.exchangeRate;
+  const perLbQ = round2(rates.airPerLb * fx);
+  const fixedUSD = rates.airReception + rates.airInsurance + rates.airHandling + rates.airStorage;
+  const fixedQ = round2(fixedUSD * fx);
+  const amount = round2(perLbQ * lb + fixedQ) / fx;
+  const byVolume = volKg > actualKg;
+  return {
+    amount,
+    mode: "AIR",
+    detail: `${Lx("Courier aéreo", "Air courier")} • ${lb.toLocaleString("en-US")} lb${byVolume ? Lx(" (peso volumétrico)", " (volumetric weight)") : ""} × ${formatQ(perLbQ / fx, fx, 2)}/lb + ${qText(fixedQ)} ${Lx("de recepción en origen, seguro, manejo y almacenaje", "for origin reception, insurance, handling and storage")}${rates.airTransitDays ? ` • ${rates.airTransitDays} ${Lx("días", "days")}` : ""}${Lx(" • tarifa aproximada de SEAL, a confirmar con ventas", " • approximate SEAL rate, to be confirmed with sales")}`,
+    chargeableCbm: Math.max(0, volumeCbm || 0),
+    chargeableLb: lb,
+  };
+}
+
 export function calculateCosts(
   params: { price: number; quantity: number; volumeCbm?: number; weightKg?: number; saleUnit?: string; sizeEstimated?: boolean; sizeSource?: "package" | "specs" | "ai" },
   rates: Rates = DEFAULT_RATES,
 ): CostResult {
+  const ocean = costsWithFreight(params, rates, calculateFreight(params.volumeCbm || 0, params.weightKg || 0, rates));
+  // 23-11: small cargo can come by air courier; the estimate uses whichever total is lower
+  const air = calculateAirFreight(params.volumeCbm || 0, params.weightKg || 0, rates);
+  if (!air.mode || !ocean.freightMode) return ocean;
+  const byAir = costsWithFreight(params, rates, air);
+  return linesTotalQ(byAir, rates.exchangeRate) < linesTotalQ(ocean, rates.exchangeRate) ? byAir : ocean;
+}
+
+function costsWithFreight(
+  params: { price: number; quantity: number; volumeCbm?: number; weightKg?: number; saleUnit?: string; sizeEstimated?: boolean; sizeSource?: "package" | "specs" | "ai" },
+  rates: Rates,
+  freight: { amount: number; mode: "LCL" | "FCL" | "AIR" | null; detail: string; chargeableCbm: number },
+): CostResult {
   const quantity = params.quantity || 1;
   // Everything is kept unrounded; amounts are rounded only when shown
   const productCost = params.price * quantity; // FOB
-
-  const freight = calculateFreight(params.volumeCbm || 0, params.weightKg || 0, rates);
+  const isAir = freight.mode === "AIR";
   const shipping = freight.amount;
   const freightEstimated = !!params.sizeEstimated && !!freight.mode;
 
@@ -412,7 +479,8 @@ export function calculateCosts(
   const taxes = (cif + importDuties) * rates.vatRate;
 
   // Fixed quetzal fees are kept exact (not rounded in USD) so they show as Q1,200 / Q9,500
-  const customsFees = rates.customsFeesGTQ > 0 ? rates.customsFeesGTQ / rates.exchangeRate : Math.round(rates.customsFees);
+  // 23-11: by air courier the SEAL customs fee is US$200 (airCustomsFee)
+  const customsFees = isAir ? rates.airCustomsFee : rates.customsFeesGTQ > 0 ? rates.customsFeesGTQ / rates.exchangeRate : Math.round(rates.customsFees);
   const localCharges = rates.localChargesGTQ > 0 ? rates.localChargesGTQ / rates.exchangeRate : Math.round(rates.localCharges);
 
   const totalCost = productCost + shipping + insurance + importDuties + taxes + customsFees + localCharges;
@@ -433,7 +501,7 @@ export function calculateCosts(
     },
     {
       key: "freight",
-      label: freight.mode === "FCL" ? Lx("Flete China → Guatemala, todo incluido (contenedor)", "Freight China → Guatemala, all-in (container)") : Lx("Flete China → Guatemala, todo incluido", "Freight China → Guatemala, all-in"),
+      label: isAir ? Lx("Flete aéreo courier China → Guatemala", "Air courier freight China → Guatemala") : freight.mode === "FCL" ? Lx("Flete China → Guatemala, todo incluido (contenedor)", "Freight China → Guatemala, all-in (container)") : Lx("Flete China → Guatemala, todo incluido", "Freight China → Guatemala, all-in"),
       detail: freightEstimated
         ? `${freight.detail} • ${
             params.sizeSource === "package"
