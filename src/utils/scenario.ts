@@ -21,6 +21,7 @@ export interface CostChoices {
   priceBasis?: "unit" | "piece"; // the published price is per sale unit or per piece
   confirmedPack?: number; // pieces per pack when the price was confirmed (a change asks again)
   completeConfirmed?: boolean; // the client confirmed the listing is the complete product
+  keepBelowMoq?: boolean; // 11-11: calculate with the client's quantity even if it is below the supplier's minimum
 }
 
 interface Ctx {
@@ -54,6 +55,12 @@ export interface Scenario {
   publishedPerPiece: number; // published price ÷ pieces per unit (0 when not applicable)
   notes: string[]; // assumptions to keep in the reports
   moqNote: string; // "" when the order meets the minimum or there is none
+  // 11-11: the quantity was raised to the supplier's minimum order (the client can keep their own)
+  moqApplied: boolean;
+  belowMoq: boolean; // the client's quantity is below a minimum in a comparable unit
+  quantityAsked: number; // the client's quantity in sale units, before applying the minimum
+  moq: number; // the published minimum (0 = none)
+  moqUnit: string;
 }
 
 export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): Scenario {
@@ -226,7 +233,12 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
 
   // Minimum order, in the same unit as the quantity
   let moqNote = "";
-  const moq = Number(String(supplier?.moq ?? "").replace(/,/g, ""));
+  let moqApplied = false;
+  let belowMoq = false;
+  let quantityAsked = quantity;
+  // «100 pieces» or 100: the leading number
+  const moq = parseInt((String(supplier?.moq ?? "").replace(/,/g, "").match(/\d+/) || ["0"])[0]) || 0;
+  const moqUnitOut = String(supplier?.saleUnit || "");
   if (moq > 1) {
     const moqUnit = String(supplier?.saleUnit || "");
     if (!moqUnit && (unitInfo.multi || packSizeFromTitle(supplier?.productName) > 1)) {
@@ -238,7 +250,19 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
       // the minimum is in the platform's sale unit (a machine: 1 unit)
       const sameUnit = !moqUnit || moqUnit === unitInfo.unit || (unitInfo.unit === "piece" && !unitInfo.multi);
       const ordered = sameUnit ? quantity : moqUnit === "piece" && piecesPerUnit > 1 ? quantity * piecesPerUnit : quantity;
-      if (ordered < moq) {
+      if (ordered < moq && !choices.keepBelowMoq) {
+        // 11-11: the estimate follows the supplier's minimum order: a scenario below it is not a real purchase
+        belowMoq = true;
+        quantityAsked = quantity;
+        quantity = sameUnit ? moq : Math.ceil(moq / Math.max(1, piecesPerUnit));
+        moqApplied = true;
+        const w = unitWordFor(moqUnit || unitInfo.unit, moq);
+        moqNote = Lx(
+          `El pedido mínimo del proveedor es ${moq.toLocaleString("en-US")} ${w} y tu pedido era de ${ordered.toLocaleString("en-US")} ${unitWordFor(moqUnit || unitInfo.unit, ordered)}: el cálculo se hizo con el pedido mínimo (${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}). Si el proveedor te acepta menos, puedes calcular con tu cantidad.`,
+          `The supplier's minimum order is ${moq.toLocaleString("en-US")} ${w} and your order was ${ordered.toLocaleString("en-US")} ${unitWordFor(moqUnit || unitInfo.unit, ordered)}: the estimate uses the minimum order (${quantity.toLocaleString("en-US")} ${unitWordFor(unitInfo.unit, quantity)}). If the supplier accepts less, you can calculate with your quantity.`,
+        );
+      } else if (ordered < moq) {
+        belowMoq = true;
         const w = unitWordFor(moqUnit || unitInfo.unit, moq);
         moqNote = Lx(
           `El pedido mínimo publicado es ${moq.toLocaleString("en-US")} ${w} y tu pedido equivale a ${ordered.toLocaleString("en-US")} ${unitWordFor(moqUnit || unitInfo.unit, ordered)}: está por debajo del mínimo. Confirma con el proveedor si acepta esa cantidad o ajusta el pedido.`,
@@ -252,6 +276,7 @@ export function resolveScenario(original: any, choices: CostChoices, ctx: Ctx): 
   return {
     supplier, requestedPieces, countedIn: countedIn ? (intent as "pair" | "dozen") : "", priceFlag, needsPriceDecision, needsCompleteDecision, confirmationReset: !confirmationValid, needsUnitDecision, needsBasisDecision, unitInfo, intent, qtyMode,
     packSize, piecesPerUnit, quantity, price, ownPrice, publishedPerPiece, notes, moqNote,
+    moqApplied, belowMoq, quantityAsked, moq, moqUnit: moqUnitOut,
   };
 }
 
