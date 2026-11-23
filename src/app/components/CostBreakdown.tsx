@@ -887,7 +887,7 @@ export function CostBreakdown() {
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-sm text-yellow-800" data-testid="size-estimated">
               {(() => {
                 const size = `${volumeCbm > 0 ? `${volumeCbm.toFixed(2)} m³` : ""}${volumeCbm > 0 && weightKg > 0 ? L(" y ", " and ") : ""}${weightKg > 0 ? `${Math.round(weightKg).toLocaleString("en-US")} kg` : ""}`;
-                const mode = costs.freightMode === "FCL" ? L("contenedor completo", "full container") : L("carga consolidada", "consolidated cargo");
+                const mode = costs.freightMode === "AIR" ? L("courier aéreo", "air courier") : costs.freightMode === "FCL" ? L("contenedor completo", "full container") : L("carga consolidada", "consolidated cargo");
                 const src = aiSize?.source;
                 return src === "package"
                   ? L(
@@ -1073,13 +1073,26 @@ export function CostBreakdown() {
                   <span>{v}</span>
                 </li>
               ))}
-              <li className="flex items-start gap-2">
-                <span className="text-blue-500 mt-1">•</span>
-                <span>
-                  {L("Tránsito marítimo de referencia:", "Reference ocean transit:")}{" "}
-                  <b>{rates.transitDays} {L("días", "days")}</b>.
-                </span>
-              </li>
+              {costs.freightMode === "AIR" ? (
+                // 23-11: small cargo priced by air courier (cheaper than the 1 m³ consolidated minimum)
+                <li className="flex items-start gap-2" data-testid="air-courier-note">
+                  <span className="text-blue-500 mt-1">•</span>
+                  <span>
+                    {L(
+                      `Por el tamaño de la carga sale más barato por courier aéreo que en carga consolidada marítima (mínimo cobrable ${rates.lclMinCbm} m³)${rates.airTransitDays ? `; tránsito aéreo de referencia: ${rates.airTransitDays} días` : ""}. El courier cobra por libra, el mayor entre el peso real y el volumétrico.`,
+                      `Given the cargo size it is cheaper by air courier than by consolidated ocean cargo (minimum chargeable ${rates.lclMinCbm} m³)${rates.airTransitDays ? `; reference air transit: ${rates.airTransitDays} days` : ""}. The courier charges per pound, the greater of actual and volumetric weight.`,
+                    )}
+                  </span>
+                </li>
+              ) : (
+                <li className="flex items-start gap-2">
+                  <span className="text-blue-500 mt-1">•</span>
+                  <span>
+                    {L("Tránsito marítimo de referencia:", "Reference ocean transit:")}{" "}
+                    <b>{rates.transitDays} {L("días", "days")}</b>.
+                  </span>
+                </li>
+              )}
             </ul>
             {!rates.dutySource && (
               // 20-11: the reference DAI can be replaced by the one of the tariff classifier for this product
