@@ -83,7 +83,8 @@ describe("flete LCL: tarifa con centavos y por qué cambian los m³", () => {
     }
   });
   it("0.3 m³ → «1.00 m³ (mínimo cobrable)»; 800 kg sin volumen → «(por peso…)»", () => {
-    expect(line(cc.calculateCosts({ price: 10, quantity: 10, volumeCbm: 0.3 }), "freight").detail).toContain("1.00 m³ (mínimo cobrable)");
+    // 23-11: 0.3 m³ by default goes by air courier (cheaper); the ocean minimum is checked with air off
+    expect(line(cc.calculateCosts({ price: 10, quantity: 10, volumeCbm: 0.3 }, { ...cc.DEFAULT_RATES, airPerLb: 0 }), "freight").detail).toContain("1.00 m³ (mínimo cobrable)");
     expect(line(cc.calculateCosts({ price: 10, quantity: 10, weightKg: 2500 }), "freight").detail).toContain("2.50 m³ (por peso: 1,000 kg = 1 m³)");
   });
 });
